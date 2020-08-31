@@ -13,6 +13,8 @@ PsiJavaFile:InstanceOf1.java
       <empty list>
     PsiReferenceList
       <empty list>
+    PsiReferenceList
+      <empty list>
     PsiJavaToken:LBRACE('{')
     PsiWhiteSpace('\n  ')
     PsiClassInitializer
@@ -24,7 +26,7 @@ PsiJavaFile:InstanceOf1.java
         PsiReturnStatement
           PsiKeyword:return('return')
           PsiWhiteSpace(' ')
-          PsiInstanceofExpression:a instanceof
+          PsiInstanceofExpression
             PsiReferenceExpression:a
               PsiReferenceParameterList
                 <empty list>

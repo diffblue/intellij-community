@@ -10,38 +10,7 @@
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("run").withParameters("java.lang.String", "java.lang.String", "java.lang.String[]").definedInClass("groovy.lang.GroovyShell"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("run").withParameters("java.lang.String", "java.lang.String", "java.util.List").definedInClass("groovy.lang.GroovyShell"))]]></place>
   </injection>
-  <injection language="SQL" injector-id="java">
-    <display-name>Connection (java.sql)</display-name>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("nativeSQL").withParameters("java.lang.String").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareCall").withParameters("java.lang.String").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareCall").withParameters("java.lang.String", "int", "int").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareCall").withParameters("java.lang.String", "int", "int", "int").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String", "int").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String", "int", "int").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String", "int", "int", "int").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String", "int[]").definedInClass("java.sql.Connection"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("prepareStatement").withParameters("java.lang.String", "java.lang.String[]").definedInClass("java.sql.Connection"))]]></place>
-  </injection>
-  <injection language="SQL" injector-id="java">
-    <display-name>EntityManager.createNativeQuery (javax.persistence)</display-name>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createNativeQuery").withParameters("java.lang.String").definedInClass("javax.persistence.EntityManager"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createNativeQuery").withParameters("java.lang.String", "java.lang.Class").definedInClass("javax.persistence.EntityManager"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createNativeQuery").withParameters("java.lang.String", "java.lang.String").definedInClass("javax.persistence.EntityManager"))]]></place>
-  </injection>
-  <injection language="JPAQL" injector-id="java">
-    <display-name>EntityManager.createQuery (javax.persistence)</display-name>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createQuery").withParameters("java.lang.String").definedInClass("javax.persistence.EntityManager"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createQuery").withParameters("java.lang.String", "java.lang.Class").definedInClass("javax.persistence.EntityManager"))]]></place>
-  </injection>
-  <injection language="SQL" injector-id="java">
-    <display-name>NamedNativeQuery.query (javax.persistence)</display-name>
-    <place><![CDATA[psiMethod().withName("query").withParameters().definedInClass("javax.persistence.NamedNativeQuery")]]></place>
-  </injection>
-  <injection language="JPAQL" injector-id="java">
-    <display-name>NamedQuery.query (javax.persistence)</display-name>
-    <place><![CDATA[psiMethod().withName("query").withParameters().definedInClass("javax.persistence.NamedQuery")]]></place>
-  </injection>
+
   <injection language="XPath" injector-id="java">
     <display-name>Node.createXPath (org.dom4j)</display-name>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createXPath").withParameters("java.lang.String").definedInClass("org.dom4j.Node"))]]></place>
@@ -53,11 +22,6 @@
   <injection language="XPath" injector-id="java">
     <display-name>Node.selectSingleNode (org.dom4j)</display-name>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("selectSingleNode").withParameters("java.lang.String").definedInClass("org.dom4j.Node"))]]></place>
-  </injection>
-  <injection language="RegExp" injector-id="java">
-    <display-name>Path.value (javax.ws.rs)</display-name>
-    <value-pattern>[^:]*:[\s]*([^\}]*)</value-pattern>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("value").withParameters().definedInClass("javax.ws.rs.Path"))]]></place>
   </injection>
   <injection language="RegExp" injector-id="java">
     <display-name>Pattern (java.util.regex)</display-name>
@@ -75,32 +39,10 @@
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("skip").withParameters("java.lang.String").definedInClass("java.util.Scanner"))]]></place>
   </injection>
   <injection language="RegExp" injector-id="java">
-    <display-name>Pattern.regexp (javax.validation.constraints)</display-name>
-      <place><![CDATA[psiMethod().withName("regexp").withParameters().definedInClass("javax.validation.constraints.Pattern")]]></place>
-  </injection>
-  <injection language="HQL" injector-id="java">
-    <display-name>Session.createQuery (org.hibernate)</display-name>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createQuery").definedInClass("org.hibernate.query.QueryProducer"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createQuery").definedInClass("org.hibernate.Session"))]]></place>
-  </injection>
-  <injection language="SQL" injector-id="java">
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createSQLQuery").definedInClass("org.hibernate.query.QueryProducer"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("createNativeQuery").definedInClass("org.hibernate.query.QueryProducer"))]]></place>
+    <display-name>Pattern.regexp (javax/jakarta.validation.constraints)</display-name>
+      <place><![CDATA[psiMethod().withName("regexp").withParameters().definedInClass(psiClass().withQualifiedName(string().oneOf("javax.validation.constraints.Pattern", "jakarta.validation.constraints.Pattern")))]]></place>
   </injection>
 
-  <injection language="SQL" injector-id="java">
-    <display-name>Statement (java.sql)</display-name>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("addBatch").withParameters("java.lang.String").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("execute").withParameters("java.lang.String").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("execute").withParameters("java.lang.String", "int").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("execute").withParameters("java.lang.String", "int[]").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("execute").withParameters("java.lang.String", "java.lang.String[]").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("executeQuery").withParameters("java.lang.String").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("executeUpdate").withParameters("java.lang.String").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("executeUpdate").withParameters("java.lang.String", "int").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("executeUpdate").withParameters("java.lang.String", "int[]").definedInClass("java.sql.Statement"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("executeUpdate").withParameters("java.lang.String", "java.lang.String[]").definedInClass("java.sql.Statement"))]]></place>
-  </injection>
   <injection language="RegExp" injector-id="java">
     <display-name>String (java.lang)</display-name>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("replaceAll").withParameters("java.lang.String", "java.lang.String").definedInClass("java.lang.String"))]]></place>
@@ -116,6 +58,10 @@
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluate").withParameters("java.lang.String", "java.lang.Object", "javax.xml.namespace.QName").definedInClass("javax.xml.xpath.XPath"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluate").withParameters("java.lang.String", "org.xml.sax.InputSource").definedInClass("javax.xml.xpath.XPath"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluate").withParameters("java.lang.String", "org.xml.sax.InputSource", "javax.xml.namespace.QName").definedInClass("javax.xml.xpath.XPath"))]]></place>
+    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluateExpression").withParameters("java.lang.String", "java.lang.Object").definedInClass("javax.xml.xpath.XPath"))]]></place>
+    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluateExpression").withParameters("java.lang.String", "java.lang.Object", "java.lang.Class").definedInClass("javax.xml.xpath.XPath"))]]></place>
+    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluateExpression").withParameters("java.lang.String", "org.xml.sax.InputSource").definedInClass("javax.xml.xpath.XPath"))]]></place>
+    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("evaluateExpression").withParameters("java.lang.String", "org.xml.sax.InputSource", "java.lang.Class").definedInClass("javax.xml.xpath.XPath"))]]></place>
   </injection>
   <injection language="XPath" injector-id="java">
     <display-name>XPath (org.jdom.xpath)</display-name>
@@ -138,7 +84,7 @@
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("PrintStream").withParameters("java.lang.String", "java.lang.String").definedInClass("java.io.PrintStream"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("encode").withParameters("java.lang.String", "java.lang.String").definedInClass("java.net.URLEncoder"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("decode").withParameters("java.lang.String", "java.lang.String").definedInClass("java.net.URLDecoder"))]]></place>
-    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("setCharacterEncoding").withParameters("java.lang.String").definedInClass("javax.servlet.ServletResponse"))]]></place>
+    <place><![CDATA[psiParameter().ofMethod(0, psiMethod().withName("setCharacterEncoding").withParameters("java.lang.String").definedInClass(psiClass().withQualifiedName(string().oneOf("javax.servlet.ServletResponse", "jakarta.servlet.ServletResponse"))))]]></place>
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("newReader").withParameters("java.nio.channels.ReadableByteChannel", "java.lang.String").definedInClass("java.nio.channels.Channels"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("newWriter").withParameters("java.nio.channels.WritableByteChannel", "java.lang.String").definedInClass("java.nio.channels.Channels"))]]></place>
     <place><![CDATA[psiParameter().ofMethod(1, psiMethod().withName("createXMLEventReader").withParameters("java.io.InputStream", "java.lang.String").definedInClass("javax.xml.stream.XMLInputFactory"))]]></place>

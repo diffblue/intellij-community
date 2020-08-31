@@ -7,10 +7,9 @@ import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
-import com.intellij.psi.search.PsiElementProcessor.CollectFilteredElements;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.tree.IElementType;
-import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.util.RefactoringUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.InspectionGadgetsFix;
@@ -19,7 +18,9 @@ import com.siyeh.ig.psiutils.HighlightUtils;
 import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 public class ExtractParameterAsLocalVariableFix extends InspectionGadgetsFix {
 
@@ -35,7 +36,7 @@ public class ExtractParameterAsLocalVariableFix extends InspectionGadgetsFix {
     if (!(element instanceof PsiExpression)) {
       return;
     }
-    final PsiExpression expression = ParenthesesUtils.stripParentheses((PsiExpression)element);
+    final PsiExpression expression = PsiUtil.skipParenthesizedExprDown((PsiExpression)element);
     if (!(expression instanceof PsiReferenceExpression)) {
       return;
     }
@@ -63,7 +64,6 @@ public class ExtractParameterAsLocalVariableFix extends InspectionGadgetsFix {
     assert body instanceof PsiCodeBlock;
     final String parameterName = parameter.getName();
     final PsiExpression rhs = parameterReference.isValid() ? getRightSideIfLeftSideOfSimpleAssignment(parameterReference, body) : null;
-    assert parameterName != null;
     final JavaCodeStyleManager javaCodeStyleManager = JavaCodeStyleManager.getInstance(project);
     final String variableName = javaCodeStyleManager.suggestUniqueVariableName(parameterName, body, true);
     final CommentTracker tracker = new CommentTracker();
@@ -78,29 +78,30 @@ public class ExtractParameterAsLocalVariableFix extends InspectionGadgetsFix {
     PsiDeclarationStatement newStatement = (PsiDeclarationStatement)
       JavaPsiFacade.getElementFactory(project).createStatementFromText(
         type.getCanonicalText() + ' ' + variableName + '=' + initializerText + ';', body);
-    final CollectFilteredElements<PsiReferenceExpression> collector = new CollectFilteredElements<>(
-      e -> e instanceof PsiReferenceExpression && ((PsiReferenceExpression)e).resolve() == parameter);
     final PsiCodeBlock codeBlock = (PsiCodeBlock)body;
+    List<PsiReferenceExpression> refs = new ArrayList<>();
     PsiStatement anchor = null;
     for (PsiStatement statement : codeBlock.getStatements()) {
       if (anchor == null) {
         if (rhs == null && !JavaHighlightUtil.isSuperOrThisCall(statement, true, true)) {
           anchor = statement;
-          PsiTreeUtil.processElements(statement, collector);
+          SyntaxTraverser.psiTraverser(statement).filter(PsiReferenceExpression.class)
+            .filter(ref -> ref.isReferenceTo(parameter)).addAllTo(refs);
         }
         else if (statement.getTextRange().contains(parameterReference.getTextRange())) {
           anchor = statement;
         }
       }
       else {
-        PsiTreeUtil.processElements(statement, collector);
+        SyntaxTraverser.psiTraverser(statement).filter(PsiReferenceExpression.class)
+          .filter(ref -> ref.isReferenceTo(parameter)).addAllTo(refs);
       }
     }
     assert anchor != null;
     newStatement = (PsiDeclarationStatement)(rhs == null
                                              ? codeBlock.addBefore(newStatement, anchor)
                                              : tracker.replaceAndRestoreComments(anchor, newStatement));
-    replaceReferences(collector.getCollection(), variableName, body);
+    replaceReferences(refs, variableName, body);
     if (isOnTheFly()) {
       final PsiLocalVariable variable = (PsiLocalVariable)newStatement.getDeclaredElements()[0];
       final PsiReference[] references = ReferencesSearch.search(variable, variable.getUseScope()).toArray(PsiReference.EMPTY_ARRAY);
@@ -129,12 +130,12 @@ public class ExtractParameterAsLocalVariableFix extends InspectionGadgetsFix {
     if (!JavaTokenType.EQ.equals(tokenType)) {
       return null;
     }
-    final PsiExpression lExpression = ParenthesesUtils.stripParentheses(assignmentExpression.getLExpression());
+    final PsiExpression lExpression = PsiUtil.skipParenthesizedExprDown(assignmentExpression.getLExpression());
     if (!reference.equals(lExpression)) {
       return null;
     }
     final PsiExpression rExpression = assignmentExpression.getRExpression();
-    if (ParenthesesUtils.stripParentheses(rExpression) instanceof PsiAssignmentExpression) {
+    if (PsiUtil.skipParenthesizedExprDown(rExpression) instanceof PsiAssignmentExpression) {
       return null;
     }
     final PsiElement grandParent = parent.getParent();

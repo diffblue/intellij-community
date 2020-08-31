@@ -3,14 +3,13 @@ package com.intellij.util
 
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.psi.PsiMethod
-import com.intellij.psi.impl.JavaSimplePropertyIndex
 import com.intellij.psi.impl.PropertyIndexValue
+import com.intellij.psi.impl.javaSimplePropertyGist
 import com.intellij.psi.util.PropertyMemberType
 import com.intellij.psi.util.PropertyUtil
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
-import com.intellij.util.indexing.FileContentImpl
-import com.intellij.util.indexing.IndexingDataKeys
+import gnu.trove.TIntObjectHashMap
 import kotlin.test.assertNotEquals
 
 class JavaPropertyDetectionTest : LightJavaCodeInsightFixtureTestCase() {
@@ -129,12 +128,17 @@ class JavaPropertyDetectionTest : LightJavaCodeInsightFixtureTestCase() {
           }
         }
       }
-    """.trimIndent(), mapOf(Pair(0, PropertyIndexValue("name", true)), Pair(2, PropertyIndexValue("Boo.Foo.CONST", true))))
+    """.trimIndent(), TIntObjectHashMap<PropertyIndexValue>().apply {
+      put(0, PropertyIndexValue("name", true))
+      put(2, PropertyIndexValue("Boo.Foo.CONST", true))
+    })
   }
 
   fun testIndexDoesntContainPolyadicExpressions() {
     assertJavaSimplePropertyIndex("""
       public class Foo {
+        public int getX() { x + 1; }
+      
         public String getName() {
           return n + a + m + e;
         }
@@ -151,7 +155,7 @@ class JavaPropertyDetectionTest : LightJavaCodeInsightFixtureTestCase() {
           return new String();
         }
       }
-    """.trimIndent(), emptyMap())
+    """.trimIndent(), TIntObjectHashMap())
   }
 
   private fun assertPropertyMember(text: String, memberType: PropertyMemberType) {
@@ -173,12 +177,9 @@ class JavaPropertyDetectionTest : LightJavaCodeInsightFixtureTestCase() {
     assertEquals(expectedDecision, if (memberType == PropertyMemberType.GETTER) PropertyUtil.isSimpleGetter(method, false) else PropertyUtil.isSimpleSetter(method, false))
   }
 
-  private fun assertJavaSimplePropertyIndex(text: String, expected: Map<Int, PropertyIndexValue>) {
+  private fun assertJavaSimplePropertyIndex(text: String, expected: TIntObjectHashMap<PropertyIndexValue>) {
     val file = myFixture.configureByText(JavaFileType.INSTANCE, text)
-    val content = FileContentImpl.createByFile(file.virtualFile)
-    content.putUserData(IndexingDataKeys.PROJECT, project)
-    val data = JavaSimplePropertyIndex().indexer.map(content)
-
+    val data = javaSimplePropertyGist.getFileData(file)
     assertEquals(expected, data)
   }
 }

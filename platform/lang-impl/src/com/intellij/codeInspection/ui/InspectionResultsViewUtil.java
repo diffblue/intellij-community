@@ -1,20 +1,7 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ui;
 
+import com.intellij.codeInspection.InspectionsBundle;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
 import com.intellij.codeInspection.reference.RefElement;
 import com.intellij.codeInspection.reference.RefEntity;
@@ -30,6 +17,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,7 +26,7 @@ import javax.swing.*;
 /**
  * @author Dmitry Batkovich
  */
-public class InspectionResultsViewUtil {
+public final class InspectionResultsViewUtil {
   static void releaseEditor(@Nullable Editor editor) {
     if (editor != null && !editor.isDisposed()) {
       EditorFactory.getInstance().releaseEditor(editor);
@@ -77,21 +65,21 @@ public class InspectionResultsViewUtil {
   @NotNull
   static JComponent getInvalidEntityLabel(@NotNull RefEntity entity) {
     final String name = entity.getName();
-    return createLabelForText("\'" + name + "\' is no longer valid.");
+    return createLabelForText(InspectionsBundle.message("inspections.view.invalid.label", name));
   }
 
   public static JComponent getPreviewIsNotAvailable(@NotNull RefEntity entity) {
     final String name = entity.getQualifiedName();
-    return createLabelForText("Preview is not available for \'" + name + "\'.");
+    return createLabelForText(InspectionsBundle.message("inspections.view.no.preview.label", name));
   }
 
   @NotNull
   static JComponent getApplyingFixLabel(@NotNull InspectionToolWrapper wrapper) {
-    return createLabelForText("Applying quick fix for \'" + wrapper.getDisplayName() + "\'...");
+    return createLabelForText(InspectionsBundle.message("inspections.view.applying.quick.label", wrapper.getDisplayName()));
   }
 
   @NotNull
-  static JLabel createLabelForText(String text) {
+  static JLabel createLabelForText(@Nls String text) {
     final JLabel multipleSelectionLabel = new JBLabel(text);
     multipleSelectionLabel.setVerticalAlignment(SwingConstants.TOP);
     multipleSelectionLabel.setBorder(JBUI.Borders.empty(16, 12, 0, 0));

@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi;
 
 import com.intellij.lang.jvm.JvmTypeDeclaration;
@@ -20,16 +6,17 @@ import com.intellij.lang.jvm.types.JvmReferenceType;
 import com.intellij.lang.jvm.types.JvmSubstitutor;
 import com.intellij.lang.jvm.types.JvmType;
 import com.intellij.lang.jvm.types.JvmTypeResolveResult;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayFactory;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Represents a class type.
@@ -46,7 +33,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
     this(languageLevel, PsiAnnotation.EMPTY_ARRAY);
   }
 
-  protected PsiClassType(LanguageLevel languageLevel, @NotNull PsiAnnotation[] annotations) {
+  protected PsiClassType(LanguageLevel languageLevel, PsiAnnotation @NotNull [] annotations) {
     super(annotations);
     myLanguageLevel = languageLevel;
   }
@@ -83,8 +70,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
    *
    * @return the array of type arguments, or an empty array if the type does not point to a generic class or interface.
    */
-  @NotNull
-  public abstract PsiType[] getParameters();
+  public abstract PsiType @NotNull [] getParameters();
 
   public int getParameterCount() {
     return getParameters().length;
@@ -94,7 +80,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
   public boolean equals(Object obj) {
     if (this == obj) return true;
     if (!(obj instanceof PsiClassType)) {
-      return obj instanceof PsiCapturedWildcardType && 
+      return obj instanceof PsiCapturedWildcardType &&
              ((PsiCapturedWildcardType)obj).getLowerBound().equalsToText(CommonClassNames.JAVA_LANG_OBJECT) &&
              equalsToText(CommonClassNames.JAVA_LANG_OBJECT);
     }
@@ -102,7 +88,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
 
     String className = getClassName();
     String otherClassName = otherClassType.getClassName();
-    if (!Comparing.equal(className, otherClassName)) return false;
+    if (!Objects.equals(className, otherClassName)) return false;
 
     if (getParameterCount() != otherClassType.getParameterCount()) return false;
 
@@ -175,8 +161,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
   }
 
   @Override
-  @NotNull
-  public PsiType[] getSuperTypes() {
+  public PsiType @NotNull [] getSuperTypes() {
     ClassResolveResult resolveResult = resolveGenerics();
     PsiClass aClass = resolveResult.getElement();
     if (aClass == null) return EMPTY_ARRAY;
@@ -258,6 +243,15 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
     return getClassName();
   }
 
+  /**
+   * If class-type is created from the explicit reference in the code returns that reference.
+   * @return reference which the type is created from. Returns null if not applicable.
+   */
+  @ApiStatus.Experimental
+  public @Nullable PsiElement getPsiContext() {
+    return null;
+  }
+  
   @Nullable
   @Override
   public JvmTypeResolveResult resolveType() {
@@ -334,7 +328,7 @@ public abstract class PsiClassType extends PsiType implements JvmReferenceType {
   }
 
   public abstract static class Stub extends PsiClassType {
-    protected Stub(LanguageLevel languageLevel, @NotNull PsiAnnotation[] annotations) {
+    protected Stub(LanguageLevel languageLevel, PsiAnnotation @NotNull [] annotations) {
       super(languageLevel, annotations);
     }
 

@@ -16,6 +16,7 @@
 package com.jetbrains.python.inspections;
 
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
+import com.jetbrains.python.inspections.unusedLocal.PyUnusedLocalInspection;
 import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 
@@ -106,6 +107,23 @@ public class PyUnusedLocalInspectionTest extends PyInspectionTestCase {
   public void testVariableStartingWithUnderscore() {
     final PyUnusedLocalInspection inspection = new PyUnusedLocalInspection();
     inspection.ignoreVariablesStartingWithUnderscore = false;
+    doTest(inspection);
+  }
+
+  // PY-20893
+  public void testExceptionTargetStartingWithUnderscore() {
+    final PyUnusedLocalInspection inspection = new PyUnusedLocalInspection();
+    inspection.ignoreVariablesStartingWithUnderscore = true;
+    doTest(inspection);
+  }
+
+  // PY-31388
+  public void testIgnoringVariablesStartingWithUnderscore() {
+    final PyUnusedLocalInspection inspection = new PyUnusedLocalInspection();
+    inspection.ignoreVariablesStartingWithUnderscore = true;
+    inspection.ignoreLambdaParameters = false;
+    inspection.ignoreLoopIterationVariables = false;
+    inspection.ignoreTupleUnpacking = false;
     doTest(inspection);
   }
 

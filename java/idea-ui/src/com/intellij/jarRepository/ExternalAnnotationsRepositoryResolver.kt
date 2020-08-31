@@ -1,10 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.jarRepository
 
 import com.intellij.codeInsight.ExternalAnnotationsArtifactsResolver
 import com.intellij.codeInsight.externalAnnotation.location.AnnotationsLocation
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
 import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
@@ -29,8 +28,8 @@ class ExternalAnnotationsRepositoryResolver : ExternalAnnotationsArtifactsResolv
     val LOG = Logger.getInstance(ExternalAnnotationsRepositoryResolver::class.java)
   }
 
-  override fun resolve(project: Project, library: Library, mavenId: String?): Library {
-    var mavenLibDescriptor = extractDescriptor(mavenId, library, false) ?: return library
+  override fun resolve(project: Project, library: Library, mavenId: String?): Boolean {
+    var mavenLibDescriptor = extractDescriptor(mavenId, library, false) ?: return false
     var roots = JarRepositoryManager
       .loadDependenciesSync(project,
                              mavenLibDescriptor,
@@ -40,7 +39,7 @@ class ExternalAnnotationsRepositoryResolver : ExternalAnnotationsArtifactsResolv
       as MutableList<OrderRoot>?
 
     if (roots == null || roots.isEmpty()) {
-      mavenLibDescriptor = extractDescriptor(mavenId, library, true) ?: return library
+      mavenLibDescriptor = extractDescriptor(mavenId, library, true) ?: return false
       roots = JarRepositoryManager
         .loadDependenciesSync(project,
                               mavenLibDescriptor,
@@ -50,14 +49,14 @@ class ExternalAnnotationsRepositoryResolver : ExternalAnnotationsArtifactsResolv
         as MutableList<OrderRoot>?
     }
 
-    invokeAndWaitIfNeeded {
+    ApplicationManager.getApplication().invokeAndWait {
       updateLibrary(roots, mavenLibDescriptor, library)
     }
 
-    return library
+    return roots != null && roots.isNotEmpty()
   }
 
-  override fun resolve(project: Project, library: Library, location: AnnotationsLocation): Library {
+  override fun resolve(project: Project, library: Library, location: AnnotationsLocation): Boolean {
     val descriptor = JpsMavenRepositoryLibraryDescriptor(location.groupId, location.artifactId, location.version, false)
     val repos = if (location.repositoryUrls.isNotEmpty()) {
       location.repositoryUrls.mapIndexed { index, url ->
@@ -71,10 +70,13 @@ class ExternalAnnotationsRepositoryResolver : ExternalAnnotationsArtifactsResolv
 
     val roots = JarRepositoryManager
                   .loadDependenciesSync(project, descriptor, setOf(ArtifactKind.ANNOTATIONS), repos, null)
-                ?: return library
 
-    invokeAndWaitIfNeeded { updateLibrary(roots, descriptor, library) }
-    return library
+    if (roots == null || roots.isEmpty()) {
+      return false;
+    }
+
+    ApplicationManager.getApplication().invokeAndWait { updateLibrary(roots, descriptor, library) }
+    return true
   }
 
   override fun resolveAsync(project: Project, library: Library, mavenId: String?): Promise<Library> {

@@ -1,21 +1,23 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui;
 
 import com.intellij.openapi.diagnostic.Logger;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Encapsulates EDT-related checks and processing. The general idea is that intellij threading model is tightly bound with EDT
+ * <p>Encapsulates EDT-related checks and processing. The general idea is that IntelliJ threading model is tightly bound with EDT
  * (e.g. write access is allowed from EDT only and any task executed from EDT is implicitly granted read access). That makes
- * a huge bottleneck in non-intellij environments like upsource - every vcs revision there is represented as a separate ide project
- * object, hence, global shared write lock and single EDT become a problem.
- * <p/>
- * That's why it should be possible to change that model in non-intellij environment - that involves either custom read/write locks
- * processing or custom EDT processing as well. This interface covers EDT part.
+ * a huge bottleneck in non-IntelliJ environments like Upsource - every vcs revision there is represented as a separate ide project
+ * object, hence, global shared write lock and single EDT become a problem.</p>
+ *
+ * <p>That's why it should be possible to change that model in non-IntelliJ environment - that involves either custom read/write locks
+ * processing or custom EDT processing as well. This interface covers EDT part.</p>
  */
 public abstract class EdtInvocationManager {
   private static final AtomicReference<EdtInvocationManager> ourInstance = new AtomicReference<>();
@@ -38,9 +40,14 @@ public abstract class EdtInvocationManager {
     return result;
   }
 
-  @SuppressWarnings("unused") // Used in upsource
-  public static void setEdtInvocationManager(@NotNull EdtInvocationManager edtInvocationManager) {
-    ourInstance.set(edtInvocationManager);
+  @SuppressWarnings("unused") // Used in Upsource
+  public static @Nullable EdtInvocationManager setEdtInvocationManager(@NotNull EdtInvocationManager edtInvocationManager) {
+    return ourInstance.getAndSet(edtInvocationManager);
+  }
+
+  @ApiStatus.Internal
+  public static void restoreEdtInvocationManager(@NotNull EdtInvocationManager current, @Nullable EdtInvocationManager old) {
+    ourInstance.compareAndSet(current, old);
   }
 
   /**
@@ -61,24 +68,13 @@ public abstract class EdtInvocationManager {
         invokeAndWait(runnable);
       }
       catch (Exception e) {
-        Logger.getInstance("#com.intellij.util.ui.EdtInvocationManager").error(e);
+        Logger.getInstance(EdtInvocationManager.class).error(e);
       }
     }
   }
 
-  public static void executeWithCustomManager(@NotNull EdtInvocationManager manager, @NotNull Runnable runnable) {
-    EdtInvocationManager old = null;
-    try {
-      old = ourInstance.getAndSet(manager);
-      runnable.run();
-    }
-    finally {
-      ourInstance.compareAndSet(manager, old);
-    }
-  }
-
   /**
-   * The default {@link EdtInvocationManager} implementation which works with the EDT via SwingUtilities.
+   * The default {@link EdtInvocationManager} implementation that uses {@link EventQueue}.
    */
   public static class SwingEdtInvocationManager extends EdtInvocationManager {
     @Override
@@ -88,7 +84,6 @@ public abstract class EdtInvocationManager {
 
     @Override
     public void invokeLater(@NotNull Runnable task) {
-      //noinspection SSBasedInspection
       EventQueue.invokeLater(task);
     }
 

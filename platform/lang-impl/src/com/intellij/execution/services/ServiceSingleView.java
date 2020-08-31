@@ -3,14 +3,15 @@ package com.intellij.execution.services;
 
 import com.intellij.execution.services.ServiceModel.ServiceViewItem;
 import com.intellij.execution.services.ServiceViewModel.ServiceViewModelListener;
+import com.intellij.openapi.application.AppUIExecutor;
 import com.intellij.openapi.project.Project;
-import com.intellij.ui.AppUIUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.concurrency.Promises;
 
 import java.awt.*;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,12 +25,7 @@ class ServiceSingleView extends ServiceView {
     super(new BorderLayout(), project, model, ui);
     ui.setServiceToolbar(ServiceViewActionProvider.getInstance());
     add(ui.getComponent(), BorderLayout.CENTER);
-    myListener = new ServiceViewModelListener() {
-      @Override
-      public void rootsChanged() {
-        updateItem();
-      }
-    };
+    myListener = this::updateItem;
     model.addModelListener(myListener);
     model.getInvoker().invokeLater(this::updateItem);
   }
@@ -45,6 +41,12 @@ class ServiceSingleView extends ServiceView {
 
     showContent();
     return Promises.resolvedPromise();
+  }
+
+  @Override
+  Promise<Void> expand(@NotNull Object service, @NotNull Class<?> contributorClass) {
+    ServiceViewItem item = myRef.get();
+    return item == null || !item.getValue().equals(service) ? Promises.rejectedPromise("Service not found") : Promises.resolvedPromise();
   }
 
   @Override
@@ -78,20 +80,22 @@ class ServiceSingleView extends ServiceView {
   }
 
   private void updateItem() {
-    ServiceViewItem oldValue = myRef.get();
+    WeakReference<ServiceViewItem> oldValueRef = new WeakReference<>(myRef.get());
     ServiceViewItem newValue = ContainerUtil.getOnlyItem(getModel().getRoots());
+    WeakReference<ServiceViewItem> newValueRef = new WeakReference<>(newValue);
     myRef.set(newValue);
-    AppUIUtil.invokeOnEdt(() -> {
+    AppUIExecutor.onUiThread().expireWith(getProject()).submit(() -> {
       if (mySelected) {
-        if (newValue != null) {
-          ServiceViewDescriptor descriptor = newValue.getViewDescriptor();
-          if (oldValue == null) {
+        ServiceViewItem value = newValueRef.get();
+        if (value != null) {
+          ServiceViewDescriptor descriptor = value.getViewDescriptor();
+          if (oldValueRef.get() == null) {
             onViewSelected(descriptor);
           }
           myUi.setDetailsComponent(descriptor.getContentComponent());
         }
       }
-    }, myProject.getDisposed());
+    });
   }
 
   private void showContent() {
@@ -108,7 +112,7 @@ class ServiceSingleView extends ServiceView {
   }
 
   @Override
-  List<Object> getChildrenSafe(@NotNull Object value) {
+  List<Object> getChildrenSafe(@NotNull List<Object> valueSubPath) {
     return Collections.emptyList();
   }
 }

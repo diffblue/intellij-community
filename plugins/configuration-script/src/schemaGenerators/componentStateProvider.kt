@@ -3,31 +3,43 @@ package com.intellij.configurationScript.schemaGenerators
 import com.intellij.configurationScript.LOG
 import com.intellij.configurationScript.SchemaGenerator
 import com.intellij.configurationStore.ComponentSerializationUtil
+import com.intellij.ide.plugins.IdeaPluginDescriptorImpl
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.components.BaseState
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.ServiceDescriptor
 import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.extensions.PluginDescriptor
-import com.intellij.serviceContainer.ServiceManagerImpl
 import com.intellij.util.ReflectionUtil
-import gnu.trove.THashMap
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
 import org.jetbrains.io.JsonObjectBuilder
 
 internal class ComponentStateJsonSchemaGenerator : SchemaGenerator {
-  private val pathToStateClass: MutableMap<String, Class<out BaseState>> = THashMap()
+  private val pathToStateClass: MutableMap<String, Class<out BaseState>> = Object2ObjectOpenHashMap()
 
-  // well, schema is generated without project - we cannot rely on created component adapter for services
+  private val objectSchemaGenerator = OptionClassJsonSchemaGenerator("classDefinitions")
+
+  override val definitionNodeKey: CharSequence?
+    get() = objectSchemaGenerator.definitionNodeKey
+
+  // schema is generated without project - we cannot rely on created component adapter for services
   override fun generate(rootBuilder: JsonObjectBuilder) {
-    ServiceManagerImpl.processProjectDescriptors(::processServiceDescriptor)
+    for (plugin in PluginManagerCore.getLoadedPlugins()) {
+      for (serviceDescriptor in (plugin as IdeaPluginDescriptorImpl).project.services) {
+        processServiceDescriptor(serviceDescriptor, plugin)
+      }
+    }
     doGenerate(rootBuilder, pathToStateClass)
   }
+
+  override fun generateDefinitions() = objectSchemaGenerator.describe()
 
   internal fun doGenerate(rootBuilder: JsonObjectBuilder, pathToStateClass: Map<String, Class<out BaseState>>) {
     if (pathToStateClass.isEmpty()) {
       return
     }
 
-    val pathToJsonObjectBuilder: MutableMap<String, JsonObjectBuilder> = THashMap()
+    val pathToJsonObjectBuilder: MutableMap<String, JsonObjectBuilder> = Object2ObjectOpenHashMap()
     for (path in pathToStateClass.keys.sorted()) {
       val keys = path.split(".")
       val jsonObjectBuilder: JsonObjectBuilder
@@ -44,7 +56,7 @@ internal class ComponentStateJsonSchemaGenerator : SchemaGenerator {
       jsonObjectBuilder.map(keys.last()) {
         "type" to "object"
         map("properties") {
-          buildJsonSchema(ReflectionUtil.newInstance(pathToStateClass.getValue(path)), this)
+          buildJsonSchema(ReflectionUtil.newInstance(pathToStateClass.getValue(path)), this, objectSchemaGenerator)
         }
         "additionalProperties" to false
       }

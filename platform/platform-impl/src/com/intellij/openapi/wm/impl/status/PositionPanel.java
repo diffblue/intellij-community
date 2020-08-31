@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.status;
 
 import com.intellij.ide.util.EditorGotoLineNumberDialog;
@@ -8,14 +8,19 @@ import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.event.*;
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.StatusBarWidget;
 import com.intellij.ui.UIBundle;
 import com.intellij.util.Alarm;
 import com.intellij.util.Consumer;
+import com.intellij.util.ui.update.MergingUpdateQueue;
+import com.intellij.util.ui.update.Update;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -24,7 +29,7 @@ import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 
-public final class PositionPanel extends EditorBasedWidget
+public class PositionPanel extends EditorBasedWidget
   implements StatusBarWidget.Multiframe, StatusBarWidget.TextPresentation,
              CaretListener, SelectionListener, BulkAwareDocumentListener.Simple, PropertyChangeListener {
 
@@ -37,6 +42,7 @@ public final class PositionPanel extends EditorBasedWidget
   private static final String CHAR_COUNT_UNKNOWN = "...";
 
   private Alarm myAlarm;
+  private MergingUpdateQueue myQueue;
   private CodePointCountTask myCountTask;
 
   private String myText;
@@ -79,7 +85,18 @@ public final class PositionPanel extends EditorBasedWidget
 
   @Override
   public String getTooltipText() {
-    return UIBundle.message("go.to.line.command.name");
+    String toolTip = UIBundle.message("go.to.line.command.name");
+    String shortcut = getShortcutText();
+
+    if (!Registry.is("ide.helptooltip.enabled") && StringUtil.isNotEmpty(shortcut)) {
+      return toolTip + " (" + shortcut + ")";
+    }
+    return toolTip;
+  }
+
+  @Override
+  public String getShortcutText() {
+    return KeymapUtil.getFirstKeyboardShortcutText("GotoLine");
   }
 
   @Override
@@ -106,6 +123,7 @@ public final class PositionPanel extends EditorBasedWidget
   public void install(@NotNull StatusBar statusBar) {
     super.install(statusBar);
     myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
+    myQueue = new MergingUpdateQueue("PositionPanel", 100, true, null, this);
     EditorEventMulticaster multicaster = EditorFactory.getInstance().getEventMulticaster();
     multicaster.addCaretListener(this, this);
     multicaster.addSelectionListener(this, this);
@@ -141,13 +159,10 @@ public final class PositionPanel extends EditorBasedWidget
 
   @Override
   public void afterDocumentChange(@NotNull Document document) {
-    Editor[] editors = EditorFactory.getInstance().getEditors(document);
-    for (Editor editor : editors) {
-      if (isFocusedEditor(editor)) {
-        updatePosition(editor);
-        break;
-      }
-    }
+    EditorFactory.getInstance().editors(document)
+      .filter(this::isFocusedEditor)
+      .findFirst()
+      .ifPresent(this::updatePosition);
   }
 
   private boolean isFocusedEditor(Editor editor) {
@@ -156,16 +171,18 @@ public final class PositionPanel extends EditorBasedWidget
   }
 
   private void updatePosition(final Editor editor) {
-    if (editor == null || DISABLE_FOR_EDITOR.isIn(editor)) {
-      myText = "";
-    }
-    else {
-      if (!isOurEditor(editor)) return;
-      myText = getPositionText(editor);
-    }
-    if (myStatusBar != null) {
-      myStatusBar.updateWidget(ID());
-    }
+    myQueue.queue(Update.create(this, () -> {
+      boolean empty = editor == null || DISABLE_FOR_EDITOR.isIn(editor);
+      if (!empty && !isOurEditor(editor)) return;
+
+      String newText = empty ? "" : getPositionText(editor);
+      if (newText.equals(myText)) return;
+
+      myText = newText;
+      if (myStatusBar != null) {
+        myStatusBar.updateWidget(ID());
+      }
+    }));
   }
 
   private void updateTextWithCodePointCount(int codePointCount) {
@@ -229,7 +246,7 @@ public final class PositionPanel extends EditorBasedWidget
     updatePosition(getFocusedEditor());
   }
 
-  private class CodePointCountTask implements Runnable {
+  private final class CodePointCountTask implements Runnable {
     private final CharSequence text;
     private final int startOffset;
     private final int endOffset;
@@ -251,7 +268,6 @@ public final class PositionPanel extends EditorBasedWidget
     @Override
     public void run() {
       int count = calculate();
-      //noinspection SSBasedInspection
       SwingUtilities.invokeLater(() -> {
         if (this == myCountTask) {
           updateTextWithCodePointCount(count);

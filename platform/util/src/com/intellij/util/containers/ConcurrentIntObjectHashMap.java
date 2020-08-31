@@ -209,7 +209,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
    * never be used in index calculations because of table bounds.
    */
   static int spread(int h) {
-    return (int)((h ^ (h >>> 16)) & HASH_BITS);
+    return (h ^ (h >>> 16)) & HASH_BITS;
   }
 
   /**
@@ -953,9 +953,8 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
    *
    * @return an enumeration of the keys in this table
    */
-  @NotNull
   @Override
-  public int[] keys() {
+  public int @NotNull [] keys() {
     Object[] entries = new EntrySetView<>(this).toArray();
     int[] result = new int[entries.length];
     for (int i = 0; i < entries.length; i++) {
@@ -992,7 +991,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
    */
   public long mappingCount() {
     long n = sumCount();
-    return (n < 0L) ? 0L : n; // ignore transient negative values
+    return Math.max(n, 0L); // ignore transient negative values
   }
 
 
@@ -1175,7 +1174,7 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
       Node<V>[] tab = table;
       int n;
       if (tab == null || (n = tab.length) == 0) {
-        n = (sc > c) ? sc : c;
+        n = Math.max(sc, c);
         if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
           try {
             if (table == tab) {
@@ -2483,9 +2482,8 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
 
     private static final String oomeMsg = "Required array size too large";
 
-    @NotNull
     @Override
-    public final Object[] toArray() {
+    public final Object @NotNull [] toArray() {
       long sz = map.mappingCount();
       if (sz > MAX_ARRAY_SIZE) {
         throw new OutOfMemoryError(oomeMsg);
@@ -2511,10 +2509,9 @@ class ConcurrentIntObjectHashMap<V> implements ConcurrentIntObjectMap<V> {
       return (i == n) ? r : Arrays.copyOf(r, i);
     }
 
-    @NotNull
     @Override
     @SuppressWarnings("unchecked")
-    public final <T> T[] toArray(@NotNull T[] a) {
+    public final <T> T @NotNull [] toArray(T @NotNull [] a) {
       long sz = map.mappingCount();
       if (sz > MAX_ARRAY_SIZE) {
         throw new OutOfMemoryError(oomeMsg);

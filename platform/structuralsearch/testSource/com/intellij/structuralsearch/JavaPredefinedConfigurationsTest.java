@@ -1,21 +1,18 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch;
 
-import com.intellij.openapi.fileTypes.StdFileTypes;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.psi.PsiElement;
 import com.intellij.structuralsearch.plugin.ui.Configuration;
-import com.intellij.structuralsearch.plugin.ui.SearchConfiguration;
 
-import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * @author Bas Leijdekkers
  */
-public class JavaPredefinedConfigurationsTest extends StructuralSearchTestCase {
+public class JavaPredefinedConfigurationsTest extends PredefinedConfigurationsTestCase {
   public void testAll() {
     final Configuration[] templates = JavaPredefinedConfigurations.createPredefinedTemplates();
     final Map<String, Configuration> configurationMap = Stream.of(templates).collect(Collectors.toMap(Configuration::getName, x -> x));
@@ -144,7 +141,7 @@ public class JavaPredefinedConfigurationsTest extends StructuralSearchTestCase {
            "}",
            "<T> X(String s) {}", "<T extends U, V> X(int i) {}");
     doTest(configurationMap.remove(SSRBundle.message("predefined.configuration.all.methods.of.the.class.within.hierarchy")),
-           "class X {}",
+           "class X {}", JavaFileType.INSTANCE,
            PsiElement::getText,
            "registerNatives", "getClass", "hashCode", "equals", "clone", "toString", "notify", "notifyAll", "wait", "wait", "wait", "finalize");
     doTest(configurationMap.remove(SSRBundle.message("predefined.configuration.methods.with.final.parameters")),
@@ -244,23 +241,47 @@ public class JavaPredefinedConfigurationsTest extends StructuralSearchTestCase {
            "   int z(int i) {" +
            "     return i;" +
            "   }");
+    doTest(configurationMap.remove(SSRBundle.message("predefined.configuration.switches")),
+           "class X {{" +
+           "  int i = switch (1) {" +
+           "            default -> {}" +
+           "          }" +
+           "  switch (2) {" +
+           "    case 1,2:" +
+           "      break;" +
+           "    default:" +
+           "  }" +
+           "}}",
+           "switch (1) {" +
+           "            default -> {}" +
+           "          }",
+           "switch (2) {" +
+           "    case 1,2:" +
+           "      break;" +
+           "    default:" +
+           "  }");
+    doTest(configurationMap.remove(SSRBundle.message("predefined.configuration.comments.containing.word")),
+           "// bug\n" +
+           "/* bugs are here */\n" +
+           "/**\n" +
+           "* may\n" +
+           "* contain\n" +
+           "* one bug\n" +
+           "*/\n" +
+           "/* buggy */\n" +
+           "// bug?",
+           "// bug",
+           "/**\n"+
+           "* may\n" +
+           "* contain\n" +
+           "* one bug\n" +
+           "*/",
+           "// bug?");
     //assertTrue((templates.length - configurationMap.size()) + " of " + templates.length +
     //           " existing templates tested. Untested templates: " + configurationMap.keySet(), configurationMap.isEmpty());
   }
 
-  private void doTest(Configuration template, String source, String... results) {
-    doTest(template, source, e -> StructuralSearchUtil.getPresentableElement(e).getText(), results);
-  }
-
-  private void doTest(Configuration template, String source, Function<? super PsiElement, String> resultConverter, String... expectedResults) {
-    if (!(template instanceof SearchConfiguration)) fail();
-    final SearchConfiguration searchConfiguration = (SearchConfiguration)template;
-    options = searchConfiguration.getMatchOptions();
-    final List<MatchResult> matches = testMatcher.testFindMatches(source, options, true, StdFileTypes.JAVA, false);
-    assertEquals(template.getName(), expectedResults.length, matches.size());
-    final String[] actualResults = matches.stream().map(MatchResult::getMatch).map(resultConverter).toArray(String[]::new);
-    for (int i = 0; i < actualResults.length; i++) {
-      assertEquals(template.getName(), expectedResults[i], actualResults[i]);
-    }
+  protected void doTest(Configuration template, String source, String... results) {
+    doTest(template, source, JavaFileType.INSTANCE, results);
   }
 }

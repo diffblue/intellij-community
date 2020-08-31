@@ -12,12 +12,9 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.xml.XmlAttributeValue;
 import com.intellij.spellchecker.SpellCheckerManager.DictionaryLevel;
 import com.intellij.spellchecker.inspections.PlainTextSplitter;
-import com.intellij.spellchecker.quickfixes.ChangeTo;
-import com.intellij.spellchecker.quickfixes.RenameTo;
-import com.intellij.spellchecker.quickfixes.SaveTo;
-import com.intellij.spellchecker.quickfixes.SpellCheckerQuickFix;
+import com.intellij.spellchecker.quickfixes.*;
 import com.intellij.spellchecker.settings.SpellCheckerSettings;
-import org.jetbrains.annotations.ApiStatus;
+import com.intellij.util.KeyedLazyInstance;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,7 +28,8 @@ public class SpellcheckingStrategy {
   protected final Tokenizer<PsiComment> myCommentTokenizer = new CommentTokenizer();
   protected final Tokenizer<XmlAttributeValue> myXmlAttributeTokenizer = new XmlAttributeValueTokenizer();
 
-  public static final ExtensionPointName<SpellcheckingStrategy> EP_NAME = ExtensionPointName.create("com.intellij.spellchecker.support");
+  public static final ExtensionPointName<KeyedLazyInstance<SpellcheckingStrategy>> EP_NAME =
+    ExtensionPointName.create("com.intellij.spellchecker.support");
   public static final Tokenizer EMPTY_TOKENIZER = new Tokenizer() {
     @Override
     public void tokenize(@NotNull PsiElement element, TokenConsumer consumer) {
@@ -86,22 +84,22 @@ public class SpellcheckingStrategy {
     return getDefaultRegularFixes(useRename, wordWithTypo, element);
   }
 
-  /**
-   * @deprecated will be removed in 2018.X, use @link {@link SpellcheckingStrategy#getDefaultRegularFixes(boolean, String, PsiElement)} instead
-   */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2018.3")
-  @Deprecated
-  public static SpellCheckerQuickFix[] getDefaultRegularFixes(boolean useRename, String wordWithTypo) {
-    return getDefaultRegularFixes(useRename, wordWithTypo, null);
-  }
-
   public static SpellCheckerQuickFix[] getDefaultRegularFixes(boolean useRename, String wordWithTypo, @Nullable PsiElement element) {
-    final SpellCheckerSettings settings = element != null ? SpellCheckerSettings.getInstance(element.getProject()) : null;
-    if (settings != null && settings.isUseSingleDictionaryToSave()) {
-      return new SpellCheckerQuickFix[]{useRename ? new RenameTo(wordWithTypo) : new ChangeTo(wordWithTypo),
-        new SaveTo(wordWithTypo, DictionaryLevel.getLevelByName(settings.getDictionaryToSave()))};
+    if (element == null) {
+      return new SpellCheckerQuickFix[]{useRename ? new RenameTo(wordWithTypo) : new ChangeTo(wordWithTypo), new SaveTo(wordWithTypo)};
     }
-    return new SpellCheckerQuickFix[]{useRename ? new RenameTo(wordWithTypo) : new ChangeTo(wordWithTypo), new SaveTo(wordWithTypo)};
+
+    final SpellCheckerSettings settings = SpellCheckerSettings.getInstance(element.getProject());
+    if (settings.isUseSingleDictionaryToSave()) {
+      return new SpellCheckerQuickFix[]{
+        useRename ? new RenameTo(wordWithTypo) : new ChangeTo(wordWithTypo),
+        new SaveTo(wordWithTypo, DictionaryLevel.getLevelByName(settings.getDictionaryToSave()))
+      };
+    }
+    return new SpellCheckerQuickFix[]{
+      useRename ? new RenameTo(wordWithTypo) : new ChangeTo(wordWithTypo),
+      new SaveTo(wordWithTypo)
+    };
   }
 
   public static SpellCheckerQuickFix[] getDefaultBatchFixes() {
@@ -115,7 +113,7 @@ public class SpellcheckingStrategy {
 
       final String valueTextTrimmed = element.getValue().trim();
       // do not inspect colors like #00aaFF
-      if (valueTextTrimmed.startsWith("#") && valueTextTrimmed.length() <= 7 && isHexString(valueTextTrimmed.substring(1))) {
+      if (valueTextTrimmed.startsWith("#") && valueTextTrimmed.length() <= 9 && isHexString(valueTextTrimmed.substring(1))) {
         return;
       }
 

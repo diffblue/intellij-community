@@ -623,8 +623,24 @@
       "key": "SearchMatch.startBackground"
     },
     {
+      "key": "Settings.Spotlight.borderColor",
+      "description": "Color of the border around highlighted items when searching in the Settings dialog"
+    },
+    {
       "key": "SidePanel.background",
       "description": "Left-side tree background in the Settings and Project Structure dialogs"
+    },
+    {
+      "key": "Slider.buttonColor"
+    },
+    {
+      "key": "Slider.buttonBorderColor"
+    },
+    {
+      "key": "Slider.trackColor"
+    },
+    {
+      "key": "Slider.tickColor"
     },
     {
       "key": "SpeedSearch.background",

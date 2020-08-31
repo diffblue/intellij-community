@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.application.options.codeStyle;
 
 import com.intellij.application.options.schemes.SchemeNameGenerator;
@@ -29,7 +15,6 @@ import com.intellij.psi.impl.source.codeStyle.CodeStyleSchemeImpl;
 import com.intellij.psi.impl.source.codeStyle.CodeStyleSchemesImpl;
 import com.intellij.util.EventDispatcher;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,7 +22,7 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
+public final class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
   private final static Logger LOG = Logger.getInstance(CodeStyleSchemesModel.class);
 
   private final List<CodeStyleScheme> mySchemes = new ArrayList<>();
@@ -52,14 +37,14 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
 
   private final @NotNull OverridingStatus myOverridingStatus = new OverridingStatus();
 
-  public CodeStyleSchemesModel(Project project) {
+  public CodeStyleSchemesModel(@NotNull Project project) {
     myProject = project;
-    myProjectScheme = new ProjectScheme();
+    myProjectScheme = new ProjectScheme(project);
     myDefault = CodeStyleSchemes.getInstance().getDefaultScheme();
     reset();
   }
 
-  public void selectScheme(final CodeStyleScheme selected, @Nullable Object source) {
+  public void selectScheme(CodeStyleScheme selected, @Nullable Object source) {
     if (mySelectedScheme != selected) {
       mySelectedScheme = selected;
       myDispatcher.getMulticaster().currentSchemeChanged(source);
@@ -105,11 +90,12 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
 
   public void reset() {
     mySchemes.clear();
-    ContainerUtil.addAll(mySchemes, CodeStyleSchemesImpl.getSchemeManager().getAllSchemes());
+    mySchemes.addAll(CodeStyleSchemesImpl.getSchemeManager().getAllSchemes());
     mySchemes.add(myProjectScheme);
     updateClonedSettings();
 
-    mySelectedScheme = getProjectSettings().USE_PER_PROJECT_SETTINGS ? myProjectScheme : CodeStyleSchemes.getInstance().findPreferredScheme(getProjectSettings().PREFERRED_PROJECT_CODE_STYLE);
+    CodeStyleSettingsManager projectSettings = CodeStyleSettingsManager.getInstance(myProject);
+    mySelectedScheme = projectSettings.USE_PER_PROJECT_SETTINGS ? myProjectScheme : CodeStyleSchemes.getInstance().findPreferredScheme(projectSettings.PREFERRED_PROJECT_CODE_STYLE);
 
     myDispatcher.getMulticaster().schemeListChanged();
     myDispatcher.getMulticaster().currentSchemeChanged(this);
@@ -135,19 +121,18 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
     return mySelectedScheme instanceof ProjectScheme;
   }
 
-  private CodeStyleSettingsManager getProjectSettings() {
-    return CodeStyleSettingsManager.getInstance(myProject);
-  }
-
   public boolean isSchemeListModified() {
     CodeStyleSchemes schemes = CodeStyleSchemes.getInstance();
-    if (getProjectSettings().USE_PER_PROJECT_SETTINGS != isProjectScheme(mySelectedScheme)) return true;
+    CodeStyleSettingsManager projectSettings = CodeStyleSettingsManager.getInstance(myProject);
+    if (projectSettings.USE_PER_PROJECT_SETTINGS != isProjectScheme(mySelectedScheme)) {
+      return true;
+    }
     if (!isProjectScheme(mySelectedScheme) &&
-        getSelectedScheme() != schemes.findPreferredScheme(getProjectSettings().PREFERRED_PROJECT_CODE_STYLE)) {
+        getSelectedScheme() != schemes.findPreferredScheme(projectSettings.PREFERRED_PROJECT_CODE_STYLE)) {
       return true;
     }
     Set<CodeStyleScheme> configuredSchemesSet = new HashSet<>(getIdeSchemes());
-    return !configuredSchemesSet.equals(new THashSet<>(CodeStyleSchemesImpl.getSchemeManager().getAllSchemes()));
+    return !configuredSchemesSet.equals(new HashSet<>(CodeStyleSchemesImpl.getSchemeManager().getAllSchemes()));
   }
 
   public void apply() {
@@ -158,7 +143,7 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
   }
 
   private void commitProjectSettings() {
-    CodeStyleSettingsManager projectSettingsManager = getProjectSettings();
+    CodeStyleSettingsManager projectSettingsManager = CodeStyleSettingsManager.getInstance(myProject);
     projectSettingsManager.USE_PER_PROJECT_SETTINGS = isProjectScheme(mySelectedScheme);
     projectSettingsManager.PREFERRED_PROJECT_CODE_STYLE = mySelectedScheme instanceof ProjectScheme ? null : mySelectedScheme.getName();
     CodeStyleSettings projectSettings = myProjectScheme.getCodeStyleSettings();
@@ -180,9 +165,12 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
     return ContainerUtil.filter(mySchemes, scheme -> !(scheme instanceof ProjectScheme));
   }
 
+  /**
+   * @deprecated Not used anymore.
+   */
   @SuppressWarnings("unused")
   @Deprecated
-  public static boolean cannotBeModified(final CodeStyleScheme currentScheme) {
+  public static boolean cannotBeModified(CodeStyleScheme currentScheme) {
     return false;
   }
 
@@ -199,7 +187,7 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
   public void fireSchemeListChanged() {
     myDispatcher.getMulticaster().schemeListChanged();
   }
-  
+
   public void fireAfterCurrentSettingsChanged() {
     myDispatcher.getMulticaster().afterCurrentSettingsChanged();
   }
@@ -213,7 +201,8 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
 
   public CodeStyleScheme exportProjectScheme(@NotNull String name) {
     CodeStyleScheme newScheme = createNewScheme(name, myProjectScheme);
-    ((CodeStyleSchemeImpl)newScheme).setCodeStyleSettings(getCloneSettings(myProjectScheme).clone());
+    ((CodeStyleSchemeImpl)newScheme).setCodeStyleSettings(
+      CodeStyleSettingsManager.getInstance().cloneSettings(getCloneSettings(myProjectScheme)));
     addScheme(newScheme, false);
 
     return newScheme;
@@ -277,7 +266,7 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
 
   public List<CodeStyleScheme> getAllSortedSchemes() {
     List<CodeStyleScheme> schemes = new ArrayList<>(getSchemes());
-    Collections.sort(schemes, (s1, s2) -> {
+    schemes.sort((s1, s2) -> {
       if (isProjectScheme(s1)) return -1;
       if (isProjectScheme(s2)) return 1;
       if (s1.isDefault()) return -1;
@@ -291,11 +280,14 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
     return myProject;
   }
 
-  private class ProjectScheme extends CodeStyleSchemeImpl {
-    ProjectScheme() {
+  private static final class ProjectScheme extends CodeStyleSchemeImpl {
+    ProjectScheme(@NotNull Project project) {
       super(CodeStyleScheme.PROJECT_SCHEME_NAME, false, CodeStyleSchemes.getInstance().getDefaultScheme());
-      CodeStyleSettings perProjectSettings = getProjectSettings().getMainProjectCodeStyle();
-      if (perProjectSettings != null) setCodeStyleSettings(perProjectSettings);
+
+      CodeStyleSettings perProjectSettings = CodeStyleSettingsManager.getInstance(project).getMainProjectCodeStyle();
+      if (perProjectSettings != null) {
+        setCodeStyleSettings(perProjectSettings);
+      }
     }
   }
 
@@ -388,6 +380,10 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
   public static class ModelSettings extends CodeStyleSettings {
     private volatile boolean myLocked;
 
+    public ModelSettings() {
+      super(true, true);
+    }
+
     public static ModelSettings createFrom(@NotNull CodeStyleSettings settings) {
       ModelSettings modelSettings = new ModelSettings();
       modelSettings.copyFrom(settings);
@@ -422,8 +418,7 @@ public class CodeStyleSchemesModel implements SchemesModel<CodeStyleScheme> {
       myModifiers = modifiers;
     }
 
-    @NotNull
-    public CodeStyleSettingsModifier[] getModifiers() {
+    public CodeStyleSettingsModifier @NotNull [] getModifiers() {
       return myModifiers != null && !myModifiers.isEmpty()
              ? myModifiers.toArray(new CodeStyleSettingsModifier[0])
              : EMPTY_MODIFIER_ARRAY;

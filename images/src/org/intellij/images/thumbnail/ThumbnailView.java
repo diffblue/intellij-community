@@ -27,7 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Thumbnail thumbnail is a component with thumbnails for a set of {@link com.intellij.openapi.vfs.VirtualFile}.
+ * Thumbnail thumbnail is a component with thumbnails for a set of {@link VirtualFile}.
  *
  * @author <a href="mailto:aefimov.box@gmail.com">Alexey Efimov</a>
  */
@@ -61,12 +61,11 @@ public interface ThumbnailView extends Disposable, ImageComponentDecorator {
 
   boolean isSelected(@NotNull VirtualFile file);
 
-  @NotNull
-  VirtualFile[] getSelection();
+  VirtualFile @NotNull [] getSelection();
 
   /**
    * Scroll to selection. If ToolWindow is not active, then
-   * it will perform activatation before scroll.
+   * it will perform activation before scroll.
    */
   void scrollToSelection();
 
@@ -89,8 +88,7 @@ public interface ThumbnailView extends Disposable, ImageComponentDecorator {
   /**
    * null means all files accepted
    */
-  @Nullable
-  TagFilter[] getTagFilters();
+  TagFilter @Nullable [] getTagFilters();
 
   /**
    * update UI: preview visibility, etc

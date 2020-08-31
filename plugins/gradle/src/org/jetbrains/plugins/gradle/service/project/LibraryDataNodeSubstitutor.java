@@ -7,6 +7,7 @@ import com.intellij.openapi.externalSystem.model.project.*;
 import com.intellij.openapi.roots.DependencyScope;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.gradle.util.GradleVersion;
@@ -28,7 +29,7 @@ import static org.jetbrains.plugins.gradle.service.project.GradleProjectResolver
  * {@link LibraryDataNodeSubstitutor} provides the facility to replace library dependencies with the related module dependencies
  * based on artifacts and source compilation output mapping
  */
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public class LibraryDataNodeSubstitutor {
   private @NotNull final ProjectResolverContext resolverContext;
   private @Nullable final File gradleUserHomeDir;
@@ -187,7 +188,7 @@ public class LibraryDataNodeSubstitutor {
 
     if (libraryDependencyDataNode.getParent() != null) {
       if (libraryPaths.size() > 1) {
-        List<String> toRemove = ContainerUtil.newSmartList();
+        List<String> toRemove = new SmartList<>();
         for (String path : libraryPaths) {
           final File binaryPath = new File(path);
           if (binaryPath.isFile()) {

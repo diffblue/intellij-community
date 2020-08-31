@@ -27,6 +27,7 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.psi.MethodInheritanceUtils;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -34,7 +35,7 @@ import java.util.List;
 import java.util.Set;
 
 class ExtractedClassBuilder {
-  private static final Logger LOGGER = Logger.getInstance("com.siyeh.rpp.extractclass.ExtractedClassBuilder");
+  private static final Logger LOGGER = Logger.getInstance(ExtractedClassBuilder.class);
 
   private String className;
   private String packageName;
@@ -181,7 +182,7 @@ class ExtractedClassBuilder {
 
   private void calculateBackpointerName() {
     final String baseName;
-    if (originalClassName.indexOf((int)'.') == 0) {
+    if (originalClassName.indexOf('.') == 0) {
       baseName = StringUtil.decapitalize(originalClassName);
     }
     else {
@@ -384,7 +385,7 @@ class ExtractedClassBuilder {
     }
 
     @Override
-    public void visitElement(PsiElement element) {
+    public void visitElement(@NotNull PsiElement element) {
 
       super.visitElement(element);
       final PsiElement[] children = element.getChildren();
@@ -483,22 +484,16 @@ class ExtractedClassBuilder {
 
     private void delegate(final PsiExpression rhs, final PsiField field, final PsiJavaToken sign, final IElementType tokenType,
                           final String fieldName) {
-      if (tokenType.equals(JavaTokenType.EQ)) {
-        final String setterName = GenerateMembersUtil.suggestSetterName(field);
-        out.append(fieldName + '.' + setterName + '(');
-        rhs.accept(this);
-        out.append(')');
-      }
-      else {
+      final String setterName = GenerateMembersUtil.suggestSetterName(field);
+      out.append(fieldName).append('.').append(setterName).append('(');
+      if (!tokenType.equals(JavaTokenType.EQ)) {
         final String operator = sign.getText().substring(0, sign.getTextLength() - 1);
-        final String setterName = GenerateMembersUtil.suggestSetterName(field);
-        out.append(fieldName + '.' + setterName + '(');
         final String getterName = GenerateMembersUtil.suggestGetterName(field);
-        out.append(fieldName + '.' + getterName + "()");
+        out.append(fieldName).append('.').append(getterName).append("()");
         out.append(operator);
-        rhs.accept(this);
-        out.append(')');
       }
+      rhs.accept(this);
+      out.append(')');
     }
 
 

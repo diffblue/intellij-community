@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util;
 
 import com.intellij.diagnostic.StartUpMeasurer;
@@ -9,13 +9,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.image.BufferedImage;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 
 @ApiStatus.Internal
-public class SVGLoaderPrebuilt {
+public final class SVGLoaderPrebuilt {
 
   @NotNull
   @ApiStatus.Internal
@@ -25,9 +24,14 @@ public class SVGLoaderPrebuilt {
   }
 
   @Nullable
-  private static URL preBuiltImageURL(@Nullable URL url, double scale) {
+  public static URL preBuiltImageURL(@Nullable URL url, double scale) {
     if (url == null) return null;
     try {
+      if (!url.getFile().endsWith("svg")) return null;
+      if (url.getQuery() != null) return null;
+      if (url.getRef() != null) return null;
+      if (!url.getProtocol().equalsIgnoreCase("jar") && !url.getProtocol().equalsIgnoreCase("file")) return null;
+
       return new URL(url, url.toString() + getPreBuiltImageURLSuffix(scale));
     }
     catch (MalformedURLException e) {
@@ -50,7 +54,7 @@ public class SVGLoaderPrebuilt {
       IconLoadMeasurer.svgPreBuiltLoad.addDurationStartedAt(start);
       return result;
     }
-    catch (IOException e) {
+    catch (Exception e) {
       return null;
     }
   }

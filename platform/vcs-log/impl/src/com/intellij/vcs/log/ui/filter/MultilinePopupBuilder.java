@@ -19,6 +19,7 @@ import com.google.common.primitives.Chars;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonShortcuts;
+import com.intellij.openapi.actionSystem.impl.AutoPopupSupportingListener;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.DumbAwareAction;
@@ -35,6 +36,7 @@ import com.intellij.util.textCompletion.TextFieldWithCompletion;
 import com.intellij.util.textCompletion.ValuesCompletionProvider.ValuesCompletionProviderDumbAware;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
+import com.intellij.vcs.log.VcsLogBundle;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,7 +48,6 @@ import java.util.List;
 
 class MultilinePopupBuilder {
   static final char[] SEPARATORS = {'|', '\n'};
-  private static final String COMPLETION_ADVERTISEMENT = "Select one or more values separated with | or new lines";
 
   @NotNull private final EditorTextField myTextField;
 
@@ -82,7 +83,8 @@ class MultilinePopupBuilder {
     ComponentPopupBuilder builder = JBPopupFactory.getInstance().createComponentPopupBuilder(panel, myTextField)
       .setCancelOnClickOutside(true)
       .setAdText(
-        COMPLETION_ADVERTISEMENT + ", use " + KeymapUtil.getShortcutsText(CommonShortcuts.CTRL_ENTER.getShortcuts()) + " to finish")
+        VcsLogBundle.message("vcs.log.filter.popup.advertisement.with.key.text",
+                             KeymapUtil.getShortcutsText(CommonShortcuts.CTRL_ENTER.getShortcuts())))
       .setRequestFocus(true)
       .setResizable(true)
       .setMayBeParent(true);
@@ -97,6 +99,7 @@ class MultilinePopupBuilder {
       }
     };
     okAction.registerCustomShortcutSet(CommonShortcuts.CTRL_ENTER, popup.getContent());
+    AutoPopupSupportingListener.installOn(popup);
     return popup;
   }
 
@@ -123,14 +126,16 @@ class MultilinePopupBuilder {
     @Nullable
     @Override
     public String getPrefix(@NotNull String text, int offset) {
-      if (myCompletionPrefixProvider != null) return myCompletionPrefixProvider.getPrefix(text, offset);
-      else return super.getPrefix(text, offset);
+      if (myCompletionPrefixProvider != null) {
+        return myCompletionPrefixProvider.getPrefix(text, offset);
+      }
+      return super.getPrefix(text, offset);
     }
 
     @Nullable
     @Override
     public String getAdvertisement() {
-      return COMPLETION_ADVERTISEMENT;
+      return VcsLogBundle.message("vcs.log.filter.popup.advertisement.text");
     }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.importing;
 
 import com.intellij.codeInspection.ex.InspectionProfileImpl;
@@ -23,7 +23,6 @@ import com.intellij.openapi.externalSystem.service.project.settings.FacetConfigu
 import com.intellij.openapi.externalSystem.service.project.settings.RunConfigurationImporter;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.roots.ModifiableRootModel;
 import com.intellij.openapi.roots.SourceFolder;
 import com.intellij.openapi.util.Ref;
@@ -33,10 +32,8 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManager;
 import com.intellij.openapi.vfs.encoding.EncodingProjectManagerImpl;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
-import com.intellij.psi.codeStyle.CodeStyleScheme;
-import com.intellij.psi.codeStyle.CodeStyleSchemes;
-import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.testFramework.ExtensionTestUtil;
+import com.intellij.testFramework.PlatformTestUtil;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.gradle.settings.GradleProjectSettings;
@@ -69,29 +66,6 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
 
     final InspectionProfileImpl profile = InspectionProfileManager.getInstance(myProject).getCurrentProfile();
     assertEquals("Gradle Imported", profile.getName());
-  }
-
-  @Test
-  public void testCodeStyleSettingsImport() throws Exception {
-    importProject(
-      withGradleIdeaExtPlugin(
-        "import org.jetbrains.gradle.ext.*\n" +
-        "idea {\n" +
-        "  project.settings {\n" +
-        "    codeStyle {\n" +
-        "      hardWrapAt = 200\n" +
-        "    }\n" +
-        "  }\n" +
-        "}")
-    );
-
-    final CodeStyleScheme scheme = CodeStyleSchemes.getInstance().getCurrentScheme();
-    final CodeStyleSettings settings = scheme.getCodeStyleSettings();
-
-    assertEquals("Gradle Imported", scheme.getName());
-    assertFalse(scheme.isDefault());
-
-    assertEquals(200, settings.getDefaultRightMargin());
   }
 
   @Test
@@ -559,7 +533,7 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
     importProject(new GradleBuildScriptBuilder().generate());
     Application application = ApplicationManager.getApplication();
     Ref<Project> projectRef = new Ref<>();
-    application.invokeAndWait(() -> projectRef.set(ProjectUtil.openOrImport(myProjectRoot.getPath(), null, false)));
+    application.invokeAndWait(() -> projectRef.set(ProjectUtil.openOrImport(myProjectRoot.toNioPath())));
     Project project = projectRef.get();
     SourceFolderManagerImpl sourceFolderManager = (SourceFolderManagerImpl)SourceFolderManager.getInstance(project);
     try {
@@ -567,7 +541,7 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
       assertFalse(sourceFolderManager.isDisposed());
     }
     finally {
-      application.invokeAndWait(() -> ProjectManagerEx.getInstanceEx().forceCloseProject(project, true));
+      PlatformTestUtil.forceCloseProjectWithoutSaving(project);
     }
     assertTrue(project.isDisposed());
     assertTrue(sourceFolderManager.isDisposed());
@@ -580,7 +554,7 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
       new GradleBuildScriptBuilderEx()
         .withGradleIdeaExtPlugin(IDEA_EXT_PLUGIN_VERSION)
         .withJavaPlugin()
-        .withKotlinPlugin("1.3.0")
+        .withKotlinPlugin("1.3.50")
         .addPostfix("idea {")
         .addPostfix("  module {")
         .addPostfix("    settings {")
@@ -608,7 +582,7 @@ public class GradleSettingsImportingTest extends GradleSettingsImportingTestCase
       new GradleBuildScriptBuilderEx()
         .withGradleIdeaExtPlugin(IDEA_EXT_PLUGIN_VERSION)
         .withJavaPlugin()
-        .withKotlinPlugin("1.3.0")
+        .withKotlinPlugin("1.3.50")
         .addPostfix("idea {")
         .addPostfix("  module {")
         .addPostfix("    settings {")

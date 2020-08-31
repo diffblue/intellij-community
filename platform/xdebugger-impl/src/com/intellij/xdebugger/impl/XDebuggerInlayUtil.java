@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl;
 
 import com.intellij.openapi.editor.Editor;
@@ -7,7 +7,6 @@ import com.intellij.openapi.editor.Inlay;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.FontPreferences;
 import com.intellij.openapi.editor.impl.ComplementaryFontsRegistry;
-import com.intellij.openapi.editor.impl.EditorImpl;
 import com.intellij.openapi.editor.impl.FontInfo;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileEditor;
@@ -20,6 +19,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.DocumentUtil;
+import com.intellij.util.MathUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XValueNodeImpl;
@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-public class XDebuggerInlayUtil {
+public final class XDebuggerInlayUtil {
   public static final Key<Helper> HELPER_KEY = Key.create("xdebug.inlay.helper");
 
   private static int getIdentifierEndOffset(@NotNull CharSequence text, int startOffset) {
@@ -96,7 +96,7 @@ public class XDebuggerInlayUtil {
     CharSequence text = editor.getDocument().getImmutableCharSequence();
     int identifierEndOffset = getIdentifierEndOffset(text, offset);
     inlay.getRenderer().addValue(offset, identifierEndOffset, inlayText);
-    inlay.updateSize();
+    inlay.update();
   }
 
   public static void clearBlockInlays(@NotNull Editor editor) {
@@ -145,8 +145,8 @@ public class XDebuggerInlayUtil {
         int xEnd = editor.offsetToXY(value.refEndOffset, false, true).x;
         int width = g.getFontMetrics().stringWidth(value.value);
         curX = Math.max(curX, (xStart + xEnd - width) / 2);
-        g.drawString(value.value, curX, targetRegion.y + ((EditorImpl)editor).getAscent());
-        g.drawLine(Math.min(xEnd, Math.max(xStart, curX + width / 2)), targetRegion.y, curX + width / 2, targetRegion.y + 2);
+        g.drawString(value.value, curX, targetRegion.y + editor.getAscent());
+        g.drawLine(MathUtil.clamp(curX + width / 2, xStart, xEnd), targetRegion.y, curX + width / 2, targetRegion.y + 2);
         g.drawLine(curX, targetRegion.y + 2, curX + width, targetRegion.y + 2);
         curX += width;
       }

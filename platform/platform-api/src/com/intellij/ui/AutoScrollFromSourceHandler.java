@@ -1,21 +1,8 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ui;
 
+import com.intellij.codeWithMe.ClientId;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -28,35 +15,27 @@ import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.util.Alarm;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
 /**
  * @author Konstantin Bulenkov
  */
-public abstract class AutoScrollFromSourceHandler implements Disposable {
+public abstract class AutoScrollFromSourceHandler {
   protected final Project myProject;
   protected final Alarm myAlarm;
+  private final Disposable myParentDisposable;
   private final JComponent myComponent;
 
-  public AutoScrollFromSourceHandler(@NotNull Project project, @NotNull JComponent view) {
-    this(project, view, null);
-  }
-
-  public AutoScrollFromSourceHandler(@NotNull Project project, @NotNull JComponent view, @Nullable Disposable parentDisposable) {
+  public AutoScrollFromSourceHandler(@NotNull Project project, @NotNull JComponent view, @NotNull Disposable parentDisposable) {
     myProject = project;
-
-    if (parentDisposable != null) {
-      Disposer.register(parentDisposable, this);
-    }
     myComponent = view;
-    myAlarm = new Alarm(this);
+    myAlarm = new Alarm(parentDisposable);
+    myParentDisposable = parentDisposable;
   }
 
   protected String getActionName() {
@@ -82,7 +61,7 @@ public abstract class AutoScrollFromSourceHandler implements Disposable {
   }
 
   public void install() {
-    final MessageBusConnection connection = myProject.getMessageBus().connect(myProject);
+    final MessageBusConnection connection = myProject.getMessageBus().connect(myParentDisposable);
     connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
       @Override
       public void selectionChanged(@NotNull FileEditorManagerEvent event) {
@@ -93,6 +72,9 @@ public abstract class AutoScrollFromSourceHandler implements Disposable {
   }
 
   private void selectInAlarm(final FileEditor editor) {
+    // Code WithMe: do not process changes from remote (client) editor switching
+    if (!ClientId.isCurrentlyUnderLocalId()) return;
+
     if (editor != null && myComponent.isShowing() && isAutoScrollEnabled()) {
       myAlarm.cancelAllRequests();
       myAlarm.addRequest(() -> selectElementFromEditor(editor), getAlarmDelay(), getModalityState());
@@ -103,13 +85,6 @@ public abstract class AutoScrollFromSourceHandler implements Disposable {
     FileEditor selectedEditor = FileEditorManager.getInstance(myProject).getSelectedEditor();
     if (selectedEditor != null) {
       ApplicationManager.getApplication().invokeLater(() -> selectInAlarm(selectedEditor), ModalityState.NON_MODAL, myProject.getDisposed());
-    }
-  }
-
-  @Override
-  public void dispose() {
-    if (!myAlarm.isDisposed()) {
-      myAlarm.cancelAllRequests();
     }
   }
 

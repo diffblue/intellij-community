@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Supports renaming for magic literals.
- * <strong>Install it</strong> as {@link com.intellij.refactoring.rename.RenamePsiElementProcessor#EP_NAME}
+ * <strong>Install it</strong> as {@link RenamePsiElementProcessor#EP_NAME}
  * @author Ilya.Kazakevich
  */
 class PyMagicLiteralRenameProcessor extends RenamePsiElementProcessor {
@@ -26,7 +26,7 @@ class PyMagicLiteralRenameProcessor extends RenamePsiElementProcessor {
   @Override
   public void renameElement(@NotNull final PsiElement element,
                             @NotNull final String newName,
-                            @NotNull final UsageInfo[] usages,
+                            final UsageInfo @NotNull [] usages,
                             @Nullable final RefactoringElementListener listener) {
     Preconditions.checkArgument(canProcessElement(element), "Element can't be renamed, call #canProcessElement first " + element);
     element.replace(PyElementGenerator.getInstance(element.getProject()).createStringLiteral((PyStringLiteralExpression)element, newName));

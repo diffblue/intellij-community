@@ -9,11 +9,11 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.psi.*;
 import com.intellij.psi.util.MethodSignatureBackedByPsiMethod;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.containers.ContainerUtil;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -95,7 +95,7 @@ public class JavaLangInvokeHandleReference extends PsiReferenceBase<PsiLiteralEx
         if (definitionCall != null) {
           final PsiExpression[] arguments = definitionCall.getArgumentList().getExpressions();
           if (arguments.length > 2) {
-            final PsiExpression typeExpression = ParenthesesUtils.stripParentheses(arguments[2]);
+            final PsiExpression typeExpression = PsiUtil.skipParenthesizedExprDown(arguments[2]);
             final ReflectiveSignature expectedSignature = composeMethodSignature(typeExpression);
             if (expectedSignature != null) {
               return ContainerUtil.find(methods, method -> expectedSignature.equals(getMethodSignature(method)));
@@ -107,9 +107,8 @@ public class JavaLangInvokeHandleReference extends PsiReferenceBase<PsiLiteralEx
     return methods.length != 0 ? methods[0] : null;
   }
 
-  @NotNull
   @Override
-  public Object[] getVariants() {
+  public Object @NotNull [] getVariants() {
     final Object value = myElement.getValue();
     if (value instanceof String) {
       final String type = getMemberType(myElement);
@@ -158,7 +157,7 @@ public class JavaLangInvokeHandleReference extends PsiReferenceBase<PsiLiteralEx
     return Arrays.stream(ownerClass.getPsiClass().getAllFields())
       .filter(field -> field != null &&
                        (field.getContainingClass() == ownerClass.getPsiClass() || !field.hasModifierProperty(PsiModifier.PRIVATE)) &&
-                       field.getName() != null && uniqueNames.add(field.getName()))
+                       uniqueNames.add(field.getName()))
       .filter(filter)
       .sorted(Comparator.comparing((PsiField field) -> isPublic(field) ? 0 : 1).thenComparing(PsiField::getName))
       .map(field -> withPriority(JavaLookupElementBuilder.forField(field).withInsertHandler(this), isPublic(field)))
@@ -198,9 +197,8 @@ public class JavaLangInvokeHandleReference extends PsiReferenceBase<PsiLiteralEx
   }
 
   static class JavaLangInvokeHandleReferenceProvider extends PsiReferenceProvider {
-    @NotNull
     @Override
-    public PsiReference[] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
+    public PsiReference @NotNull [] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
       if (element instanceof PsiLiteralExpression) {
         final PsiLiteralExpression literal = (PsiLiteralExpression)element;
         if (literal.getValue() instanceof String) {

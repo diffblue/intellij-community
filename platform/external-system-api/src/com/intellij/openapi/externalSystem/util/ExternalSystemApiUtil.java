@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.util;
 
 import com.intellij.execution.rmi.RemoteUtil;
@@ -21,7 +21,6 @@ import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
 import com.intellij.openapi.externalSystem.settings.ExternalSystemSettingsListener;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ExternalProjectSystemRegistry;
 import com.intellij.openapi.roots.OrderRootType;
@@ -35,7 +34,10 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.util.*;
+import com.intellij.util.BooleanFunction;
+import com.intellij.util.NullableFunction;
+import com.intellij.util.PathsList;
+import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
@@ -51,13 +53,10 @@ import java.io.StringWriter;
 import java.util.*;
 import java.util.function.Consumer;
 
-import static com.intellij.util.PlatformUtils.getPlatformPrefix;
-import static com.intellij.util.PlatformUtils.isIntelliJ;
-
 /**
  * @author Denis Zhdanov
  */
-public class ExternalSystemApiUtil {
+public final class ExternalSystemApiUtil {
 
   @NotNull public static final String PATH_SEPARATOR = "/";
 
@@ -148,7 +147,7 @@ public class ExternalSystemApiUtil {
   }
 
   public static void orderAwareSort(@NotNull List<?> data) {
-    Collections.sort(data, ORDER_AWARE_COMPARATOR);
+    data.sort(ORDER_AWARE_COMPARATOR);
   }
 
   /**
@@ -159,7 +158,7 @@ public class ExternalSystemApiUtil {
   public static String toCanonicalPath(@NotNull String path) {
     String p = normalizePath(new File(path).getAbsolutePath());
     assert p != null;
-    return PathUtil.getCanonicalPath(p);
+    return FileUtil.toCanonicalPath(p);
   }
 
   @NotNull
@@ -175,12 +174,7 @@ public class ExternalSystemApiUtil {
 
   @Nullable
   public static ExternalSystemManager<?, ?, ?, ?, ?> getManager(@NotNull ProjectSystemId externalSystemId) {
-    for (ExternalSystemManager manager : ExternalSystemManager.EP_NAME.getIterable()) {
-      if (externalSystemId.equals(manager.getSystemId())) {
-        return manager;
-      }
-    }
-    return null;
+    return ExternalSystemManager.EP_NAME.findFirstSafe(manager -> externalSystemId.equals(manager.getSystemId()));
   }
 
   @NotNull
@@ -443,10 +437,11 @@ public class ExternalSystemApiUtil {
    *
    * @param ideProject  target ide project
    * @param projectData target external project
+   * @param modules     the list of modules to check (during import this contains uncommitted modules from the modifiable model)
    * @return {@code true} if given ide project has 1-1 mapping to the given external project;
    * {@code false} otherwise
    */
-  public static boolean isOneToOneMapping(@NotNull Project ideProject, @NotNull ProjectData projectData) {
+  public static boolean isOneToOneMapping(@NotNull Project ideProject, @NotNull ProjectData projectData, Module[] modules) {
     String linkedExternalProjectPath = null;
     for (ExternalSystemManager<?, ?, ?, ?, ?> manager : ExternalSystemManager.EP_NAME.getIterable()) {
       ProjectSystemId externalSystemId = manager.getSystemId();
@@ -473,7 +468,7 @@ public class ExternalSystemApiUtil {
       return false;
     }
 
-    for (Module module : ModuleManager.getInstance(ideProject).getModules()) {
+    for (Module module : modules) {
       if (!isExternalSystemAwareModule(projectData.getOwner(), module)) {
         return false;
       }
@@ -539,13 +534,9 @@ public class ExternalSystemApiUtil {
    * @param e exception to process
    * @return error message for the given exception
    */
-  @SuppressWarnings({"IOResourceOpenedButNotSafelyClosed"})
   @NotNull
   public static String buildErrorMessage(@NotNull Throwable e) {
     Throwable unwrapped = RemoteUtil.unwrap(e);
-    if (ApplicationManager.getApplication().isUnitTestMode()) {
-      return stacktraceAsString(unwrapped);
-    }
     String reason = unwrapped.getLocalizedMessage();
     if (!StringUtil.isEmpty(reason)) {
       return reason;
@@ -712,7 +703,7 @@ public class ExternalSystemApiUtil {
     DataNode<ProjectData> projectStructure = projectInfo.getExternalProjectStructure();
     if (projectStructure == null) return Collections.emptyList();
 
-    List<TaskData> tasks = ContainerUtil.newSmartList();
+    List<TaskData> tasks = new SmartList<>();
 
     DataNode<ModuleData> moduleDataNode = findAll(projectStructure, ProjectKeys.MODULE).stream()
       .filter(moduleNode -> FileUtil.pathsEqual(projectPath, moduleNode.getData().getLinkedExternalProjectPath()))
@@ -743,17 +734,5 @@ public class ExternalSystemApiUtil {
     if (linkedProjectSettings == null) return null;
     String rootProjectPath = linkedProjectSettings.getExternalProjectPath();
     return ProjectDataManager.getInstance().getExternalProjectData(project, systemId, rootProjectPath);
-  }
-
-  /**
-   * DO NOT USE THIS METHOD.
-   * The method should be removed when the 'java' subsystem features will be extracted from External System API [IDEA-187832]
-   *
-   * @return check if the current IDE is compatible with the 'java' IntelliJ subsystem
-   */
-  @ApiStatus.Experimental
-  @Deprecated
-  public static boolean isJavaCompatibleIde() {
-    return isIntelliJ() || "AndroidStudio".equals(getPlatformPrefix());
   }
 }

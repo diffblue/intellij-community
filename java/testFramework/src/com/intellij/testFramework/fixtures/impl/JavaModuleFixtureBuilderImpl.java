@@ -2,13 +2,14 @@
 
 package com.intellij.testFramework.fixtures.impl;
 
-import com.intellij.compiler.CompilerConfigurationImpl;
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.module.StdModuleTypes;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.JavaSdk;
+import com.intellij.openapi.projectRoots.ProjectJdkTable;
 import com.intellij.openapi.projectRoots.Sdk;
-import com.intellij.openapi.projectRoots.impl.MockJdkWrapper;
 import com.intellij.openapi.projectRoots.impl.ProjectJdkImpl;
 import com.intellij.openapi.roots.*;
 import com.intellij.openapi.roots.libraries.Library;
@@ -36,16 +37,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-/**
- * @author mike
- */
 public abstract class JavaModuleFixtureBuilderImpl<T extends ModuleFixture> extends ModuleFixtureBuilderImpl<T> implements JavaModuleFixtureBuilder<T> {
   private final List<Lib> myLibraries = new ArrayList<>();
   private String myJdk;
   private MockJdkLevel myMockJdkLevel = MockJdkLevel.jdk14;
   private LanguageLevel myLanguageLevel;
 
-  public JavaModuleFixtureBuilderImpl(final TestFixtureBuilder<? extends IdeaProjectTestFixture> fixtureBuilder) {
+  public JavaModuleFixtureBuilderImpl(@NotNull TestFixtureBuilder<? extends IdeaProjectTestFixture> fixtureBuilder) {
     super(StdModuleTypes.JAVA, fixtureBuilder);
   }
 
@@ -62,7 +60,7 @@ public abstract class JavaModuleFixtureBuilderImpl<T extends ModuleFixture> exte
 
   @NotNull
   @Override
-  public JavaModuleFixtureBuilder addLibrary(String libraryName, @NotNull String... classPath) {
+  public JavaModuleFixtureBuilder addLibrary(String libraryName, String @NotNull ... classPath) {
     for (String path : classPath) {
       if (!new File(path).exists()) {
         System.out.println(path + " does not exist");
@@ -82,7 +80,7 @@ public abstract class JavaModuleFixtureBuilderImpl<T extends ModuleFixture> exte
 
   @NotNull
   @Override
-  public JavaModuleFixtureBuilder addLibraryJars(String libraryName, @NotNull String basePath, @NotNull String... jars) {
+  public JavaModuleFixtureBuilder addLibraryJars(String libraryName, @NotNull String basePath, String @NotNull ... jars) {
     if (!basePath.endsWith("/")) {
       basePath += "/";
     }
@@ -150,7 +148,9 @@ public abstract class JavaModuleFixtureBuilderImpl<T extends ModuleFixture> exte
       else {
         jdk = IdeaTestUtil.getMockJdk17();
       }
-      model.setSdk(new MockJdkWrapper(CompilerConfigurationImpl.getTestsExternalCompilerHome(), jdk));
+
+      registerJdk(jdk, module.getProject());
+      model.setSdk(jdk);
 
       if (myLanguageLevel != null) {
         model.getModuleExtension(LanguageLevelModuleExtension.class).setLanguageLevel(myLanguageLevel);
@@ -166,6 +166,21 @@ public abstract class JavaModuleFixtureBuilderImpl<T extends ModuleFixture> exte
         libraryCreated(library, module);
       }
     }
+  }
+
+  private static void registerJdk(Sdk jdk, Project project) {
+    ProjectJdkTable jdkTable = ProjectJdkTable.getInstance();
+
+    // Remove all JDK named as jdk.getName()
+    // There may be several of them as findJdk just searches a list
+    while (true) {
+      Sdk byName = jdkTable.findJdk(jdk.getName());
+      if (byName == null) break;
+
+      jdkTable.removeJdk(byName);
+    }
+
+    WriteAction.runAndWait(()-> jdkTable.addJdk(jdk, project));
   }
 
   @Override

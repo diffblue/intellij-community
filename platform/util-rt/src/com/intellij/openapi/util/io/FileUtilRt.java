@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.io;
 
 import com.intellij.ReviseWhenPortedToJDK;
@@ -6,13 +6,18 @@ import com.intellij.openapi.diagnostic.LoggerRt;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.ArrayUtilRt;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.io.*;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
 import java.util.*;
@@ -70,7 +75,8 @@ public class FileUtilRt {
   }
 
   protected interface SymlinkResolver {
-    @NotNull String resolveSymlinksAndCanonicalize(@NotNull String path, char separatorChar, boolean removeLastSlash);
+    @NotNull
+    String resolveSymlinksAndCanonicalize(@NotNull String path, char separatorChar, boolean removeLastSlash);
     boolean isSymlink(@NotNull CharSequence path);
   }
 
@@ -100,8 +106,8 @@ public class FileUtilRt {
     private static Method ourPathToFileMethod;
     private static Method ourAttributesIsOtherMethod;
     private static Object ourDeletionVisitor;
-    private static Class ourNoSuchFileExceptionClass;
-    private static Class ourAccessDeniedExceptionClass;
+    private static Class<?> ourNoSuchFileExceptionClass;
+    private static Class<?> ourAccessDeniedExceptionClass;
 
     static {
       boolean initSuccess = false;
@@ -124,12 +130,17 @@ public class FileUtilRt {
         ourDeletionVisitor = Proxy.newProxyInstance(FileUtilRt.class.getClassLoader(), new Class[]{visitorClass}, new InvocationHandler() {
           public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if (args.length == 2) {
-              final Object second = args[1];
+              String methodName = method.getName();
+              Object second = args[1];
               if (second instanceof Throwable) {
-                throw (Throwable)second;
+                if (SystemInfoRt.isWindows && "visitFileFailed".equals(methodName) && ourNoSuchFileExceptionClass.isInstance(second)) {
+                  performDelete(args[0]);  // could be an aimless junction
+                }
+                else {
+                  throw (Throwable)second;
+                }
               }
-              final String methodName = method.getName();
-              if ("visitFile".equals(methodName) || "postVisitDirectory".equals(methodName)) {
+              else if ("visitFile".equals(methodName) || "postVisitDirectory".equals(methodName)) {
                 performDelete(args[0]);
               }
               else if (SystemInfoRt.isWindows && "preVisitDirectory".equals(methodName)) {
@@ -212,16 +223,16 @@ public class FileUtilRt {
    * what {@link File#getCanonicalPath()} will return), so if the path may contain symlinks,
    * consider using {@link com.intellij.openapi.util.io.FileUtil#toCanonicalPath(String, boolean)} instead.
    */
-  @Contract("null, _, _ -> null")
+  @Contract("null, _, _ -> null; !null,_,_->!null")
   public static String toCanonicalPath(@Nullable String path, char separatorChar, boolean removeLastSlash) {
     return toCanonicalPath(path, separatorChar, removeLastSlash, null);
   }
 
-  @Contract("null, _, _, _ -> null")
+  @Contract("null, _, _, _ -> null; !null,_,_,_->!null")
   protected static String toCanonicalPath(@Nullable String path,
                                           final char separatorChar,
                                           final boolean removeLastSlash,
-                                          final @Nullable SymlinkResolver resolver) {
+                                          @Nullable SymlinkResolver resolver) {
     if (path == null || path.length() == 0) {
       return path;
     }
@@ -306,6 +317,7 @@ public class FileUtilRt {
     return result.toString();
   }
 
+  @SuppressWarnings("DuplicatedCode")
   private static int processRoot(@NotNull String path, @NotNull Appendable result) {
     try {
       if (SystemInfoRt.isWindows && path.length() > 1 && path.charAt(0) == '/' && path.charAt(1) == '/') {
@@ -487,6 +499,7 @@ public class FileUtilRt {
     return relativePath.toString();
   }
 
+  @NotNull
   private static String ensureEnds(@NotNull String s, final char endsWith) {
     return StringUtilRt.endsWithChar(s, endsWith) ? s : s + endsWith;
   }
@@ -537,6 +550,7 @@ public class FileUtilRt {
   private static class FilesToDeleteHolder {
     private static final Queue<String> ourFilesToDelete = createFilesToDelete();
 
+    @NotNull
     private static Queue<String> createFilesToDelete() {
       final ConcurrentLinkedQueue<String> queue = new ConcurrentLinkedQueue<String>();
       Runtime.getRuntime().addShutdownHook(new Thread("FileUtil deleteOnExit") {
@@ -564,17 +578,17 @@ public class FileUtilRt {
   }
 
   @NotNull
-  public static File createTempFile(File dir, @NotNull String prefix, @Nullable String suffix) throws IOException {
+  public static File createTempFile(@NotNull File dir, @NotNull String prefix, @Nullable String suffix) throws IOException {
     return createTempFile(dir, prefix, suffix, true, true);
   }
 
   @NotNull
-  public static File createTempFile(File dir, @NotNull String prefix, @Nullable String suffix, boolean create) throws IOException {
+  public static File createTempFile(@NotNull File dir, @NotNull String prefix, @Nullable String suffix, boolean create) throws IOException {
     return createTempFile(dir, prefix, suffix, create, true);
   }
 
   @NotNull
-  public static File createTempFile(File dir, @NotNull String prefix, @Nullable String suffix, boolean create, boolean deleteOnExit) throws IOException {
+  public static File createTempFile(@NotNull File dir, @NotNull String prefix, @Nullable String suffix, boolean create, boolean deleteOnExit) throws IOException {
     File file = doCreateTempFile(dir, prefix, suffix, false);
     if (deleteOnExit) {
       //noinspection SSBasedInspection
@@ -682,7 +696,7 @@ public class FileUtilRt {
   }
 
   @TestOnly
-  static void resetCanonicalTempPathCache(final String tempPath) {
+  static void resetCanonicalTempPathCache(@NotNull String tempPath) {
     ourCanonicalTempPathCache = tempPath;
   }
 
@@ -702,7 +716,6 @@ public class FileUtilRt {
 
   /** @deprecated not needed in 'util-rt'; use {@link com.intellij.openapi.util.io.FileUtil} or {@link File} methods; for removal in IDEA 2020 */
   @Deprecated
-  @SuppressWarnings("ALL")
   public static void setExecutableAttribute(@NotNull String path, boolean executableFlag) throws IOException {
     try {
       File file = new File(path);
@@ -743,7 +756,7 @@ public class FileUtilRt {
   @NotNull
   public static char[] loadFileText(@NotNull File file, @Nullable String encoding) throws IOException {
     InputStream stream = new FileInputStream(file);
-    @SuppressWarnings("ImplicitDefaultCharsetUsage") Reader reader = encoding == null ? new InputStreamReader(stream) : new InputStreamReader(stream, encoding);
+    Reader reader = encoding == null ? new InputStreamReader(stream) : new InputStreamReader(stream, encoding);
     try {
       return loadText(reader, (int)file.length());
     }
@@ -801,7 +814,7 @@ public class FileUtilRt {
   public static List<String> loadLines(@NotNull String path, @Nullable String encoding) throws IOException {
     InputStream stream = new FileInputStream(path);
     try {
-      @SuppressWarnings("ImplicitDefaultCharsetUsage") BufferedReader reader =
+      BufferedReader reader =
         new BufferedReader(encoding == null ? new InputStreamReader(stream) : new InputStreamReader(stream, encoding));
       try {
         return loadLines(reader);
@@ -1092,7 +1105,25 @@ public class FileUtilRt {
     boolean charsEqual(char ch1, char ch2);
   }
 
+  @NotNull
   private static LoggerRt logger() {
     return LoggerRt.getInstance("#com.intellij.openapi.util.io.FileUtilRt");
+  }
+
+  /**
+   * Energy-efficient variant of {@link File#toURI()}. Unlike the latter, doesn't check whether a given file is a directory,
+   * so URIs never have a trailing slash (but are nevertheless compatible with {@link File#File(URI)}).
+   */
+  public static @NotNull URI fileToUri(@NotNull File file) {
+    String path = file.getAbsolutePath();
+    if (File.separatorChar != '/') path = path.replace(File.separatorChar, '/');
+    if (!path.startsWith("/")) path = '/' + path;
+    if (path.startsWith("//")) path = "//" + path;
+    try {
+      return new URI("file", null, path, null);
+    }
+    catch (URISyntaxException e) {
+      throw new IllegalArgumentException(path, e);  // unlikely, as `File#toURI()` doesn't declare any exceptions
+    }
   }
 }

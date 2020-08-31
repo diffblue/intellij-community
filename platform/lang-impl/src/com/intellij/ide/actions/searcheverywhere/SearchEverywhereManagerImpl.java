@@ -1,21 +1,30 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions.searcheverywhere;
 
-import com.intellij.ide.actions.GotoActionBase;
+import com.intellij.codeWithMe.ClientId;
+import com.intellij.ide.actions.BigPopupUI;
+import com.intellij.ide.actions.searcheverywhere.mixed.SearchEverywhereUIMixedResults;
+import com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.actionSystem.PlatformDataKeys;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.Experiments;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
-import com.intellij.openapi.util.DimensionService;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.UserDataHolder;
+import com.intellij.openapi.util.WindowStateService;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.SearchTextField;
 import com.intellij.ui.awt.RelativePoint;
+import com.intellij.util.SystemProperties;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -25,20 +34,24 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Collector;
 
 import static com.intellij.ide.actions.SearchEverywhereAction.SEARCH_EVERYWHERE_POPUP;
+import static com.intellij.ide.actions.searcheverywhere.statistics.SearchEverywhereUsageTriggerCollector.DIALOG_CLOSED;
 
 public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
 
   public static final String ALL_CONTRIBUTORS_GROUP_ID = "SearchEverywhereContributor.All";
   private static final String LOCATION_SETTINGS_KEY = "search.everywhere.popup";
 
+  private final Map<String, String> myTabsShortcutsMap;
+
   private final Project myProject;
 
   private JBPopup myBalloon;
-  private SearchEverywhereUI mySearchEverywhereUI;
+  private SearchEverywhereUIBase mySearchEverywhereUI;
   private Dimension myBalloonFullSize;
 
   private final SearchHistoryList myHistoryList = new SearchHistoryList();
@@ -46,36 +59,33 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
   private HistoryIterator myHistoryIterator;
   private boolean myEverywhere;
 
+  public SearchEverywhereManagerImpl() {
+    myProject = null;
+    myTabsShortcutsMap = Collections.emptyMap();
+  }
+
   public SearchEverywhereManagerImpl(Project project) {
     myProject = project;
+    myTabsShortcutsMap = createShortcutsMap();
   }
 
   @Override
   public void show(@NotNull String contributorID, @Nullable String searchText, @NotNull AnActionEvent initEvent) {
     if (isShown()) {
-      throw new IllegalStateException("Method should cannot be called whe popup is shown");
+      throw new IllegalStateException("Method should cannot be called when popup is shown");
     }
 
     Project project = initEvent.getProject();
     Component contextComponent = initEvent.getData(PlatformDataKeys.CONTEXT_COMPONENT);
-    List<SearchEverywhereContributor<?>> serviceContributors = Arrays.asList(
-      new TopHitSEContributor(project, contextComponent, s ->
-        mySearchEverywhereUI.getSearchField().setText(s)),
-      new RecentFilesSEContributor(project, GotoActionBase.getPsiContext(initEvent)),
-      new RunConfigurationsSEContributor(project, contextComponent, () -> mySearchEverywhereUI.getSearchField().getText())
-    );
-    List<SearchEverywhereContributor<?>> contributors = new ArrayList<>(serviceContributors);
-    for (SearchEverywhereContributorFactory<?> factory : SearchEverywhereContributor.EP_NAME.getExtensionList()) {
-      contributors.add(factory.createContributor(initEvent));
-    }
-    Collections.sort(contributors, Comparator.comparingInt(SearchEverywhereContributor::getSortWeight));
 
+    List<SearchEverywhereContributor<?>> contributors = createContributors(initEvent, project, contextComponent);
     mySearchEverywhereUI = createView(myProject, contributors);
+    contributors.forEach(c -> Disposer.register(mySearchEverywhereUI, c));
     mySearchEverywhereUI.switchToContributor(contributorID);
 
     myHistoryIterator = myHistoryList.getIterator(contributorID);
     //history could be suppressed by user for some reasons (creating promo video, conference demo etc.)
-    boolean suppressHistory = "true".equals(System.getProperty("idea.searchEverywhere.noHistory", "false"));
+    boolean suppressHistory = SystemProperties.getBooleanProperty("idea.searchEverywhere.noHistory", false);
     //or could be suppressed just for All tab in registry
     suppressHistory = suppressHistory ||
                       (ALL_CONTRIBUTORS_GROUP_ID.equals(contributorID) &&
@@ -83,11 +93,6 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
 
     if (searchText == null && !suppressHistory) {
       searchText = myHistoryIterator.prev();
-    }
-
-    if (searchText != null && !searchText.isEmpty()) {
-      mySearchEverywhereUI.getSearchField().setText(searchText);
-      mySearchEverywhereUI.getSearchField().selectAll();
     }
 
     myBalloon = JBPopupFactory.getInstance().createComponentPopupBuilder(mySearchEverywhereUI, mySearchEverywhereUI.getSearchField())
@@ -98,6 +103,7 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
       .setCancelKeyEnabled(false)
       .setCancelCallback(() -> {
         saveSearchText();
+        SearchEverywhereUsageTriggerCollector.trigger(myProject, DIALOG_CLOSED);
         return true;
       })
       .addUserData("SIMPLE_WINDOW")
@@ -115,28 +121,67 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
     JBInsets.addTo(size, myBalloon.getContent().getInsets());
     myBalloon.setMinimumSize(size);
 
-    myProject.putUserData(SEARCH_EVERYWHERE_POPUP, myBalloon);
+    UserDataHolder dataHolder = myProject != null ? project : ApplicationManager.getApplication();
+    ConcurrentHashMap<ClientId, JBPopup> map = dataHolder.getUserData(SEARCH_EVERYWHERE_POPUP);
+    if (map == null) {
+      map = new ConcurrentHashMap<>();
+      dataHolder.putUserData(SEARCH_EVERYWHERE_POPUP, map);
+    }
+    map.put(ClientId.getCurrent(), myBalloon);
+
+    if (searchText != null && !searchText.isEmpty()) {
+      mySearchEverywhereUI.getSearchField().setText(searchText);
+      mySearchEverywhereUI.getSearchField().selectAll();
+    }
+
     Disposer.register(myBalloon, () -> {
       saveSize();
-      myProject.putUserData(SEARCH_EVERYWHERE_POPUP, null);
+      Objects.requireNonNull(dataHolder.getUserData(SEARCH_EVERYWHERE_POPUP)).remove(ClientId.getCurrent());
       mySearchEverywhereUI = null;
       myBalloon = null;
       myBalloonFullSize = null;
     });
 
-    if (mySearchEverywhereUI.getViewType() == SearchEverywhereUI.ViewType.SHORT) {
-      myBalloonFullSize = DimensionService.getInstance().getSize(LOCATION_SETTINGS_KEY, project);
+    myBalloonFullSize = getStateService().getSize(LOCATION_SETTINGS_KEY);
+    if (mySearchEverywhereUI.getViewType() == BigPopupUI.ViewType.SHORT) {
       Dimension prefSize = mySearchEverywhereUI.getPreferredSize();
       myBalloon.setSize(prefSize);
     }
     calcPositionAndShow(project, myBalloon);
   }
 
+  private WindowStateService getStateService() {
+    return myProject != null ? WindowStateService.getInstance(myProject) : WindowStateService.getInstance();
+  }
+
+  private List<SearchEverywhereContributor<?>> createContributors(@NotNull AnActionEvent initEvent, Project project, Component contextComponent) {
+    if (project == null) {
+      ActionSearchEverywhereContributor.Factory factory = new ActionSearchEverywhereContributor.Factory();
+      return Collections.singletonList(factory.createContributor(initEvent));
+    }
+
+    List<SearchEverywhereContributor<?>> serviceContributors = Arrays.asList(
+      new TopHitSEContributor(project, contextComponent, s ->
+        mySearchEverywhereUI.getSearchField().setText(s)),
+      new RecentFilesSEContributor(initEvent),
+      new RunConfigurationsSEContributor(project, contextComponent, () -> mySearchEverywhereUI.getSearchField().getText())
+    );
+
+    List<SearchEverywhereContributor<?>> contributors = new ArrayList<>(serviceContributors);
+    for (SearchEverywhereContributorFactory<?> factory : SearchEverywhereContributor.EP_NAME.getExtensionList()) {
+      SearchEverywhereContributor<?> contributor = factory.createContributor(initEvent);
+      contributors.add(contributor);
+    }
+    contributors.sort(Comparator.comparingInt(SearchEverywhereContributor::getSortWeight));
+
+    return contributors;
+  }
+
   private void calcPositionAndShow(Project project, JBPopup balloon) {
-    Point savedLocation = DimensionService.getInstance().getLocation(LOCATION_SETTINGS_KEY, project);
+    Point savedLocation = getStateService().getLocation(LOCATION_SETTINGS_KEY);
 
     //for first show and short mode popup should be shifted to the top screen half
-    if (savedLocation == null && mySearchEverywhereUI.getViewType() == SearchEverywhereUI.ViewType.SHORT) {
+    if (savedLocation == null && mySearchEverywhereUI.getViewType() == BigPopupUI.ViewType.SHORT) {
       Window window = project != null
                       ? WindowManager.getInstance().suggestParentWindow(project)
                       : KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
@@ -206,9 +251,11 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
     myEverywhere = everywhere;
   }
 
-  private SearchEverywhereUI createView(Project project,
+  private SearchEverywhereUIBase createView(Project project,
                                         List<? extends SearchEverywhereContributor<?>> contributors) {
-    SearchEverywhereUI view = new SearchEverywhereUI(project, contributors);
+    SearchEverywhereUIBase view = Experiments.getInstance().isFeatureEnabled("search.everywhere.mixed.results")
+                                  ? new SearchEverywhereUIMixedResults(project, contributors, myTabsShortcutsMap::get)
+                                  : new SearchEverywhereUI(project, contributors, myTabsShortcutsMap::get);
 
     view.setSearchFinishedHandler(() -> {
       if (isShown()) {
@@ -228,7 +275,7 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
         JBInsets.addTo(minSize, myBalloon.getContent().getInsets());
         myBalloon.setMinimumSize(minSize);
 
-        if (viewType == SearchEverywhereUI.ViewType.SHORT) {
+        if (viewType == BigPopupUI.ViewType.SHORT) {
           myBalloonFullSize = myBalloon.getSize();
           JBInsets.removeFrom(myBalloonFullSize, myBalloon.getContent().getInsets());
           myBalloon.pack(false, true);
@@ -274,13 +321,13 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
   }
 
   @Nullable
-  Object getPrevSelection(String contributorID) {
+  public Object getPrevSelection(String contributorID) {
     return myPrevSelections.remove(contributorID);
   }
 
   private void saveSize() {
-    if (mySearchEverywhereUI.getViewType() == SearchEverywhereUI.ViewType.SHORT) {
-      DimensionService.getInstance().setSize(LOCATION_SETTINGS_KEY, myBalloonFullSize, myProject);
+    if (mySearchEverywhereUI.getViewType() == BigPopupUI.ViewType.SHORT) {
+      getStateService().putSize(LOCATION_SETTINGS_KEY, myBalloonFullSize);
     }
   }
 
@@ -304,6 +351,23 @@ public class SearchEverywhereManagerImpl implements SearchEverywhereManager {
     if (myHistoryIterator == null || !myHistoryIterator.getContributorID().equals(selectedContributorID)) {
       myHistoryIterator = myHistoryList.getIterator(selectedContributorID);
     }
+  }
+
+  private static Map<String, String> createShortcutsMap() {
+    Map<String, String> res = new HashMap<>();
+
+    res.put(ALL_CONTRIBUTORS_GROUP_ID, "Double Shift");
+    addShortcut(res, "ClassSearchEverywhereContributor", "GotoClass");
+    addShortcut(res, "FileSearchEverywhereContributor", "GotoFile");
+    addShortcut(res, "SymbolSearchEverywhereContributor", "GotoSymbol");
+    addShortcut(res, "ActionSearchEverywhereContributor", "GotoAction");
+
+    return res;
+  }
+
+  private static void addShortcut(Map<String, String> map, String contributorID, String actionID) {
+    KeyboardShortcut shortcut = ActionManager.getInstance().getKeyboardShortcut(actionID);
+    if (shortcut != null) map.put(contributorID, KeymapUtil.getShortcutText(shortcut));
   }
 
   private static class SearchHistoryList {

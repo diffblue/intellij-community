@@ -11,11 +11,11 @@ import com.intellij.execution.configurations.RunConfigurationOptions
 import com.intellij.openapi.components.BaseState
 import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.util.ReflectionUtil
-import gnu.trove.THashMap
-import org.snakeyaml.engine.v1.nodes.MappingNode
-import org.snakeyaml.engine.v1.nodes.Node
-import org.snakeyaml.engine.v1.nodes.ScalarNode
-import org.snakeyaml.engine.v1.nodes.SequenceNode
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
+import org.snakeyaml.engine.v2.nodes.MappingNode
+import org.snakeyaml.engine.v2.nodes.Node
+import org.snakeyaml.engine.v2.nodes.ScalarNode
+import org.snakeyaml.engine.v2.nodes.SequenceNode
 
 internal class RunConfigurationListReader(private val processor: (factory: ConfigurationFactory, state: Any) -> Unit) {
   // rc grouped by type
@@ -37,7 +37,7 @@ internal class RunConfigurationListReader(private val processor: (factory: Confi
 
       // compute keyToType only if need
       if (keyToType == null) {
-        keyToType = THashMap<String, ConfigurationType>()
+        keyToType = Object2ObjectOpenHashMap<String, ConfigurationType>()
         processConfigurationTypes { configurationType, propertyName, _ ->
           keyToType.put(propertyName.toString(), configurationType)
         }
@@ -116,6 +116,6 @@ internal class RunConfigurationListReader(private val processor: (factory: Confi
       // very important - set BEFORE read to ensure that user can set any value for isAllowRunningInParallel and it will be not overridden by us later
       instance.isAllowRunningInParallel = factory.singletonPolicy.isAllowRunningInParallel
     }
-    processor(factory, readIntoObject(instance, node))
+    processor(factory, readIntoObject(instance, node.value))
   }
 }

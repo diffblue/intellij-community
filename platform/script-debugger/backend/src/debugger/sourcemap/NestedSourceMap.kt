@@ -1,9 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.debugger.sourcemap
 
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.Url
-import gnu.trove.THashMap
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
 
 class NestedSourceMap(private val childMap: SourceMap, private val parentMap: SourceMap) : SourceMap {
   override val sourceResolver: SourceResolver
@@ -14,7 +14,7 @@ class NestedSourceMap(private val childMap: SourceMap, private val parentMap: So
 
   private val sourceIndexToSourceMappings = arrayOfNulls<Mappings>(parentMap.sources.size)
 
-  private val childMappingToTransformed = THashMap<MappingEntry, MappingEntry>()
+  private val childMappingToTransformed = Object2ObjectOpenHashMap<MappingEntry, MappingEntry>()
 
   override val outFile: String?
     get() = childMap.outFile
@@ -55,6 +55,12 @@ class NestedSourceMap(private val childMap: SourceMap, private val parentMap: So
       // todo not clear - should we resolve next child entry by current child index or by provided parent nextEntry?
     }
   }
+
+  override fun getRawSource(entry: MappingEntry): String? = parentMap.getRawSource(entry)
+
+  override fun getSourceContent(entry: MappingEntry): String? = parentMap.getSourceContent(entry)
+
+  override fun getSourceContent(sourceIndex: Int): String? = parentMap.getSourceContent(sourceIndex)
 }
 
 private class NestedMappings(private val child: Mappings, private val parent: Mappings, private val isSourceMappings: Boolean) : Mappings {
@@ -96,6 +102,6 @@ private data class NestedMappingEntry(private val child: MappingEntry, private v
   override val name: String?
     get() = parent.name
 
-  override val nextGenerated: MappingEntry
+  override val nextGenerated: MappingEntry?
     get() = child.nextGenerated
 }

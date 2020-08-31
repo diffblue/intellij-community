@@ -2,33 +2,45 @@
 package org.jetbrains.intellij.build.images
 
 import com.intellij.openapi.application.PathManager
-import org.jetbrains.jps.model.serialization.JpsSerializationManager
+import org.jetbrains.intellij.build.images.sync.jpsProject
+import org.jetbrains.jps.model.module.JpsModule
 import java.io.File
 
-fun main(args: Array<String>) = generateIconsClasses()
+fun main() = generateIconsClasses()
 
-internal fun generateIconsClasses() {
-  val homePath = PathManager.getHomePath()
-  val home = File(homePath)
-  val project = JpsSerializationManager.getInstance().loadModel(homePath, null).project
+internal abstract class IconsClasses {
+  open val homePath: String get() = PathManager.getHomePath()
+  open val modules: List<JpsModule> get() = jpsProject(homePath).modules
+  open fun generator(home: File, modules: List<JpsModule>) = IconsClassGenerator(home, modules)
+}
 
-  val generator = IconsClassGenerator(home, project.modules)
-  project.modules.parallelStream().forEach(generator::processModule)
+private class IntellijIconsClasses : IconsClasses() {
+  override val modules: List<JpsModule>
+    get() = super.modules.filterNot {
+      // TODO: use icon-robots.txt
+      it.name.startsWith("fleet")
+    }
+}
+
+internal fun generateIconsClasses(config: IconsClasses = IntellijIconsClasses()) {
+  val home = File(config.homePath)
+
+  val modules = config.modules
+
+  val generator = config.generator(home, modules)
+  modules.parallelStream().forEach(generator::processModule)
   generator.printStats()
 
   val optimizer = ImageSizeOptimizer(home)
-  project.modules.parallelStream().forEach(optimizer::optimizeIcons)
+  modules.parallelStream().forEach(optimizer::optimizeIcons)
   optimizer.printStats()
 
   val preCompiler = ImageSvgPreCompiler()
-  preCompiler.preCompileIcons(project.modules)
+  preCompiler.preCompileIcons(modules)
   preCompiler.printStats()
 
   val checker = ImageSanityChecker(home)
-  project.modules.forEach { module ->
-    checker.check(module)
-  }
-//  checker.printInfo()
+  modules.forEach(checker::check)
   checker.printWarnings()
 
   println()

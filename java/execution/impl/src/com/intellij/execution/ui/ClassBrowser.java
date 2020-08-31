@@ -1,8 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.ui;
 
 import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.configuration.BrowseModuleValueActionListener;
+import com.intellij.execution.configurations.JavaRunConfigurationModule;
 import com.intellij.ide.util.ClassFilter;
 import com.intellij.ide.util.TreeClassChooser;
 import com.intellij.ide.util.TreeClassChooserFactory;
@@ -10,6 +11,7 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ex.MessagesEx;
+import com.intellij.openapi.util.Computable;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -56,14 +58,13 @@ public abstract class ClassBrowser<T extends JComponent> extends BrowseModuleVal
     return factory.createWithInnerClassesScopeChooser(myTitle, classFilter.getScope(), classFilter, null);
   }
 
-  @SuppressWarnings("deprecation")
   protected void onClassChosen(@NotNull PsiClass psiClass) {
     onClassChoosen(psiClass);
   }
 
-  /** Override {@link #onClassChosen(PsiClass)} instead. */
+  /** @deprecated override {@link #onClassChosen(PsiClass)} instead. */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
   @SuppressWarnings({"DeprecatedIsStillUsed", "SpellCheckingInspection", "unused"})
   protected void onClassChoosen(PsiClass psiClass) { }
 
@@ -77,29 +78,36 @@ public abstract class ClassBrowser<T extends JComponent> extends BrowseModuleVal
 
   protected abstract PsiClass findClass(String className);
 
-  /** Use {@link AppClassBrowser#AppClassBrowser(Project, ConfigurationModuleSelector)} instead. */
+  /** @deprecated use {@link AppClassBrowser#AppClassBrowser(Project, ConfigurationModuleSelector)} instead. */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2021")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
+  @SuppressWarnings("rawtypes")
   public static ClassBrowser createApplicationClassBrowser(@NotNull Project project, @NotNull ConfigurationModuleSelector moduleSelector) {
     return new AppClassBrowser(project, moduleSelector);
   }
 
   public abstract static class MainClassBrowser<T extends JComponent> extends ClassBrowser<T> {
-    private final ConfigurationModuleSelector myModuleSelector;
+    private final Computable<? extends Module> myModuleSelector;
 
     public MainClassBrowser(@NotNull Project project, @NotNull ConfigurationModuleSelector moduleSelector, String title) {
+      this(project, () -> moduleSelector.getModule(), title);
+    }
+
+    public MainClassBrowser(@NotNull Project project, @NotNull Computable<? extends Module> moduleSelector, String title) {
       super(project, title);
       myModuleSelector = moduleSelector;
     }
 
     @Override
     protected PsiClass findClass(String className) {
-      return myModuleSelector.findClass(className);
+      final JavaRunConfigurationModule configurationModule = new JavaRunConfigurationModule(getProject(), false);
+      configurationModule.setModule(myModuleSelector.get());
+      return configurationModule.findClass(className);
     }
 
     @Override
     protected ClassFilter.ClassFilterWithScope getFilter() {
-      Module module = myModuleSelector.getModule();
+      Module module = myModuleSelector.get();
       GlobalSearchScope scope =
         module != null ? GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(module) : GlobalSearchScope.allScope(getProject());
       ClassFilter filter = createFilter(module);
@@ -127,6 +135,11 @@ public abstract class ClassBrowser<T extends JComponent> extends BrowseModuleVal
       aClass -> PsiMethodUtil.MAIN_CLASS.value(aClass) && ReadAction.compute(() -> PsiMethodUtil.findMainMethod(aClass)) != null;
 
     public AppClassBrowser(@NotNull Project project, @NotNull ConfigurationModuleSelector moduleSelector) {
+      super(project, moduleSelector, ExecutionBundle.message("choose.main.class.dialog.title"));
+    }
+
+    public AppClassBrowser(@NotNull Project project,
+                           @NotNull Computable<? extends Module> moduleSelector) {
       super(project, moduleSelector, ExecutionBundle.message("choose.main.class.dialog.title"));
     }
 

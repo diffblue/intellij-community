@@ -1,18 +1,16 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.test
 
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.Clock
 import com.intellij.testFramework.RunAll
 import com.intellij.testFramework.VfsTestUtil
 import com.intellij.util.ThrowableRunnable
 import com.intellij.util.text.DateFormatUtil
 import git4idea.test.GitPlatformTest
-import org.jetbrains.plugins.github.api.GHRepositoryPath
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutor
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager
-import org.jetbrains.plugins.github.api.GithubApiRequests
+import org.jetbrains.plugins.github.api.*
 import org.jetbrains.plugins.github.api.data.GithubRepo
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount
@@ -49,11 +47,10 @@ abstract class GithubTest : GitPlatformTest() {
   override fun setUp() {
     super.setUp()
 
-    val host = System.getenv("idea.test.github.host")
+    val host = GithubServerPath.from(System.getenv("idea.test.github.host"))
     val token1 = System.getenv("idea.test.github.token1")
     val token2 = System.getenv("idea.test.github.token2")
 
-    assertNotNull(host)
     assertNotNull(token1)
     assertNotNull(token2)
 
@@ -66,7 +63,7 @@ abstract class GithubTest : GitPlatformTest() {
     setCurrentAccount(mainAccount)
   }
 
-  private fun createAccountData(host: String, token: String): AccountData {
+  private fun createAccountData(host: GithubServerPath, token: String): AccountData {
     val executorManager = service<GithubApiRequestExecutorManager>()
     val account = authenticationManager.registerAccount("token", host, token)
     val executor = executorManager.getExecutor(account)
@@ -81,7 +78,7 @@ abstract class GithubTest : GitPlatformTest() {
       .append(ThrowableRunnable { deleteRepos(secondaryAccount, secondaryRepos) })
       .append(ThrowableRunnable { deleteRepos(mainAccount, mainRepos) })
       .append(ThrowableRunnable { setCurrentAccount(null) })
-      .append(ThrowableRunnable { if (wasInit { authenticationManager }) authenticationManager.clearAccounts() })
+      .append(ThrowableRunnable { if (::authenticationManager.isInitialized) authenticationManager.clearAccounts() })
       .append(ThrowableRunnable { super.tearDown() })
       .run()
   }
@@ -181,4 +178,20 @@ abstract class GithubTest : GitPlatformTest() {
                                    val username: String,
                                    val executor: GithubApiRequestExecutor)
 
+  companion object {
+    private const val RETRIES = 3
+
+    internal fun retry(LOG: Logger, action: () -> Unit) {
+      for (i in 1..RETRIES) {
+        try {
+          LOG.debug("Attempt #$i")
+          return action()
+        }
+        catch (e: Throwable) {
+          if (i == RETRIES) throw e
+          Thread.sleep(1000L)
+        }
+      }
+    }
+  }
 }

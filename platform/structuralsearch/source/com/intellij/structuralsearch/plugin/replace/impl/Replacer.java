@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.plugin.replace.impl;
 
 import com.intellij.codeInsight.template.Template;
@@ -55,12 +55,12 @@ public class Replacer {
   }
 
   public static int insertSubstitution(StringBuilder result, int offset, final ParameterInfo info, String image) {
-   if (!image.isEmpty()) {
-     result.insert(offset + info.getStartIndex(), image);
-     offset += image.length();
-   }
-   return offset;
- }
+    if (!image.isEmpty()) {
+      result.insert(offset + info.getStartIndex(), image);
+      offset += image.length();
+    }
+    return offset;
+  }
 
   public static String testReplace(String in, String what, String by, ReplaceOptions options, Project project)  {
     return testReplace(in, what, by, options, project, false);
@@ -82,15 +82,14 @@ public class Replacer {
     checkReplacementPattern(project, replaceOptions);
 
     final Replacer replacer = new Replacer(project, replaceOptions);
-    final Matcher matcher = new Matcher(project);
+    final Matcher matcher = new Matcher(project, matchOptions);
     try {
       final PsiElement firstElement, lastElement, parent;
-
       if (matchOptions.getScope() == null) {
         final PsiElement[] elements = MatcherImplUtil.createTreeFromText(
           in,
-          sourceIsFile ? PatternTreeContext.File : PatternTreeContext.Block,
-          sourceFileType, sourceDialect, null,
+          new PatternContextInfo(sourceIsFile ? PatternTreeContext.File : PatternTreeContext.Block),
+          sourceFileType, sourceDialect,
           project,
           createPhysicalFile
         );
@@ -107,34 +106,32 @@ public class Replacer {
       }
 
       final CollectingMatchResultSink sink = new CollectingMatchResultSink();
-      matcher.testFindMatches(sink, matchOptions);
+      matcher.testFindMatches(sink);
 
-      final List<ReplacementInfo> resultPtrList = new SmartList<>();
+      final List<ReplacementInfo> replacements = new SmartList<>();
       for (final MatchResult result : sink.getMatches()) {
-        resultPtrList.add(replacer.buildReplacement(result));
+        replacements.add(replacer.buildReplacement(result));
       }
 
       int startOffset = firstElement.getTextRange().getStartOffset();
-      int endOffset = sourceIsFile ? 0 : parent.getTextLength() - lastElement.getTextRange().getEndOffset();
+      int endOffset = sourceIsFile ? 0 : (parent.getTextLength() - lastElement.getTextRange().getEndOffset());
 
       // get nodes from text may contain
       final PsiElement prevSibling = firstElement.getPrevSibling();
       if (prevSibling instanceof PsiWhiteSpace) {
-        startOffset -= prevSibling.getTextLength() - 1;
+        startOffset -= prevSibling.getTextLength();
       }
 
       final PsiElement nextSibling = lastElement.getNextSibling();
       if (nextSibling instanceof PsiWhiteSpace) {
-        endOffset -= nextSibling.getTextLength() - 1;
+        endOffset -= nextSibling.getTextLength();
       }
-
-      replacer.replaceAll(resultPtrList);
-
-      String result = parent.getText();
-      result = result.substring(startOffset);
-      result = result.substring(0,result.length() - endOffset);
-
-      return result;
+      replacer.replaceAll(replacements);
+      if (firstElement == lastElement && firstElement instanceof PsiFile) {
+        return firstElement.getText();
+      }
+      final String result = parent.getText();
+      return result.substring(startOffset, result.length() - endOffset);
     }
     catch (RuntimeException e) {
       throw e;
@@ -238,8 +235,7 @@ public class Replacer {
     final PsiElement lastChild = el.getLastChild();
     if (lastChild instanceof PsiComment &&
         replacementInfo.getVariableName(lastChild) == null &&
-        !(replacement.getLastChild() instanceof PsiComment)
-      ) {
+        !(replacement.getLastChild() instanceof PsiComment)) {
       PsiElement firstElementAfterStatementEnd = lastChild;
       for(PsiElement curElement=firstElementAfterStatementEnd.getPrevSibling();curElement!=null;curElement = curElement.getPrevSibling()) {
         if (!(curElement instanceof PsiWhiteSpace) && !(curElement instanceof PsiComment)) break;
@@ -251,8 +247,7 @@ public class Replacer {
     final PsiElement firstChild = el.getFirstChild();
     if (firstChild instanceof PsiComment &&
         !(firstChild instanceof PsiDocCommentBase) &&
-        replacementInfo.getVariableName(firstChild) == null
-        ) {
+        replacementInfo.getVariableName(firstChild) == null) {
       PsiElement lastElementBeforeStatementStart = firstChild;
 
       for(PsiElement curElement=lastElementBeforeStatementStart.getNextSibling();curElement!=null;curElement = curElement.getNextSibling()) {

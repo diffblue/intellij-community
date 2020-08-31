@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
 import com.intellij.util.containers.MultiMap;
@@ -9,14 +9,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 /**
- * @deprecated use {@link com.intellij.util.containers.MultiMap} directly.
+ * @deprecated use {@link MultiMap} directly.
  * <p></p>On migration please note that MultiMap has few differences:<ul>
- * <li>{@link MultiMap#get(java.lang.Object)} method returns non-null value. In case there is no value for the key - empty collection is returned.</li>
+ * <li>{@link MultiMap#get(Object)} method returns non-null value. In case there is no value for the key - empty collection is returned.</li>
  * <li>{@link MultiMap#values} method returns a real values collection, not a copy. Be careful with modifications.</li>
  * <li>Default implementations of {@link MultiMap} may not permit null keys and/or null values</li>
  * </ul></p>
  */
-@Debug.Renderer(text = "\"size = \" + myBaseMap.size()", hasChildren = "!isEmpty()", childrenArray = "entrySet().toArray()")
+@Debug.Renderer(text = "\"size = \" + myDelegate.size()", hasChildren = "!isEmpty()", childrenArray = "entrySet().toArray()")
 @Deprecated
 public class MultiValuesMap<K, V>{
   private final MultiMap<K, V> myDelegate;
@@ -39,18 +39,6 @@ public class MultiValuesMap<K, V>{
       myDelegate = new MultiMap<K, V>() {
         @NotNull
         @Override
-        protected Map<K, Collection<V>> createMap() {
-          return new HashMap<>();
-        }
-
-        @NotNull
-        @Override
-        protected Map<K, Collection<V>> createMap(int initialCapacity, float loadFactor) {
-          return new HashMap<>(initialCapacity, loadFactor);
-        }
-
-        @NotNull
-        @Override
         protected Collection<V> createCollection() {
           return new HashSet<>();
         }
@@ -70,7 +58,7 @@ public class MultiValuesMap<K, V>{
     }
   }
 
-  public void putAll(K key, @NotNull V... values) {
+  public void putAll(K key, V @NotNull ... values) {
     for (V value : values) {
       put(key, value);
     }

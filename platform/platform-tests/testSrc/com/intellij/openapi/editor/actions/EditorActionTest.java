@@ -266,4 +266,72 @@ public class EditorActionTest extends AbstractEditorTest {
     executeAction(IdeActions.ACTION_EDITOR_DELETE_TO_WORD_START);
     checkResultByText("class Foo { String s = \"\\\"<caret>\"; }");
   }
+
+  public void testSortLinesNoSelection() {
+    initText("foo\nba<caret>r\nbaz");
+    executeAction(IdeActions.ACTION_EDITOR_SORT_LINES);
+    checkResultByText("ba<caret>r\nbaz\nfoo");
+  }
+
+  public void testSortLinesWithSelection() {
+    initText("<selection>foo\nbar\n<caret></selection>baz");
+    executeAction(IdeActions.ACTION_EDITOR_SORT_LINES);
+    checkResultByText("<selection>bar\nfoo\n<caret></selection>baz");
+  }
+
+  public void testLastEmptyLineIsNotTouchedBySort() {
+    initText("foo\nba<caret>r\nbaz\n");
+    executeAction(IdeActions.ACTION_EDITOR_SORT_LINES);
+    checkResultByText("ba<caret>r\nbaz\nfoo\n");
+  }
+
+  public void testReverseLinesNoSelection() {
+    initText("foo\nbar\nba<caret>z");
+    executeAction(IdeActions.ACTION_EDITOR_REVERSE_LINES);
+    checkResultByText("ba<caret>z\nbar\nfoo");
+  }
+
+  public void testReverseLinesWithSelection() {
+    initText("<selection>foo\nbar\n<caret></selection>baz");
+    executeAction(IdeActions.ACTION_EDITOR_REVERSE_LINES);
+    checkResultByText("<selection>bar\nfoo\n<caret></selection>baz");
+  }
+
+  public void testLineStartForASpecificFoldingCase() {
+    initText("\nabc<caret>");
+    addCollapsedFoldRegion(0, 4, "...");
+    executeAction(IdeActions.ACTION_EDITOR_MOVE_LINE_START);
+    checkResultByText("<caret>\nabc");
+  }
+
+  public void testPageUpWithInlay() {
+    initText("line1\nline2\nline3\nline4\nline5<caret>\n");
+    addBlockInlay(getEditor().getDocument().getText().indexOf("line5"), true, 0, getEditor().getLineHeight() * 5);
+    setEditorVisibleSize(100, 3);
+    getEditor().getScrollingModel().scrollVertically(getEditor().visualLineToY(getEditor().getCaretModel().getVisualPosition().line) -
+                                                     getEditor().getLineHeight());
+    executeAction(IdeActions.ACTION_EDITOR_MOVE_CARET_PAGE_UP);
+    checkResultByText("line1\nline2\nline3\nline4<caret>\nline5\n");
+  }
+
+  public void testPageDownWithInlay() {
+    initText("line1<caret>\nline2\nline3\nline4\nline5\n");
+    addBlockInlay(0, false, 0, getEditor().getLineHeight() * 5);
+    setEditorVisibleSize(100, 3);
+    getEditor().getScrollingModel().scrollVertically(0);
+    executeAction(IdeActions.ACTION_EDITOR_MOVE_CARET_PAGE_DOWN);
+    checkResultByText("line1\nline2<caret>\nline3\nline4\nline5\n");
+  }
+
+  public void testAddCaretPerSelectedLine() {
+    initText("<selection>line1\nline2\nline3<caret></selection>");
+    executeAction(IdeActions.ACTION_EDITOR_ADD_CARET_PER_SELECTED_LINE);
+    checkResultByText("line1<caret>\nline2<caret>\nline3<caret>");
+  }
+
+  public void testAddCaretPerSelectedLineWholeLinesSelection() {
+    initText("<selection>line1\nline2\n<caret></selection>line3");
+    executeAction(IdeActions.ACTION_EDITOR_ADD_CARET_PER_SELECTED_LINE);
+    checkResultByText("line1<caret>\nline2<caret>\nline3");
+  }
 }

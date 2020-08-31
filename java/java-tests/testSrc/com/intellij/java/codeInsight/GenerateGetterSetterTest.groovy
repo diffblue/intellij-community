@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight
 
 import com.intellij.codeInsight.generation.ClassMember
@@ -22,6 +8,7 @@ import com.intellij.codeInsight.generation.SetterTemplatesManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.codeStyle.JavaCodeStyleSettings
+import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.util.ui.UIUtil
 import com.siyeh.ig.style.UnqualifiedFieldAccessInspection
@@ -110,7 +97,7 @@ class X<T extends String> {
 }
 '''
     try {
-      SetterTemplatesManager.instance.state.defaultTempalteName = "Builder"
+      SetterTemplatesManager.instance.state.defaultTemplateName = "Builder"
       generateSetter()
       myFixture.checkResult '''
 class X<T extends String> {
@@ -124,7 +111,7 @@ class X<T extends String> {
 '''
     }
     finally {
-      SetterTemplatesManager.instance.state.defaultTempalteName = null
+      SetterTemplatesManager.instance.state.defaultTemplateName = null
     }
   }
 
@@ -210,7 +197,7 @@ class Foo {
         boolean allowEmptySelection,
         boolean copyJavadocCheckbox,
         Project project,
-        @Nullable @Nullable Editor editor) {
+        @Nullable Editor editor) {
         return members
       }
     }.invoke(project, myFixture.editor, myFixture.file)
@@ -265,6 +252,28 @@ class Foo {
   void foo() {}
 }'''
   }
+  
+  void "test record accessor"() {
+    myFixture.configureByText('a.java', '''
+record Point(int x, int y) {
+  <caret>
+}
+''')
+    generateGetter()
+    myFixture.checkResult('''
+record Point(int x, int y) {
+    @Override
+    public int x() {
+        return x;
+    }
+
+    @Override
+    public int y() {
+        return y;
+    }
+}
+''')
+  }
 
   private void generateSetter() {
     new GenerateSetterHandler() {
@@ -274,10 +283,15 @@ class Foo {
         boolean allowEmptySelection,
         boolean copyJavadocCheckbox,
         Project project,
-        @Nullable @Nullable Editor editor) {
+        @Nullable Editor editor) {
         return members
       }
     }.invoke(project, myFixture.editor, myFixture.file)
     UIUtil.dispatchAllInvocationEvents()
+  }
+
+  @Override
+  protected LightProjectDescriptor getProjectDescriptor() {
+    return JAVA_15
   }
 }

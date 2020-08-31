@@ -6,6 +6,7 @@ package com.intellij.openapi.editor.impl.view;
 import com.intellij.diagnostic.Dumpable;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.FoldRegion;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.VisualPosition;
@@ -15,7 +16,10 @@ import com.intellij.openapi.editor.event.VisibleAreaListener;
 import com.intellij.openapi.editor.ex.DocumentEx;
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
-import com.intellij.openapi.editor.impl.*;
+import com.intellij.openapi.editor.impl.DocumentImpl;
+import com.intellij.openapi.editor.impl.EditorImpl;
+import com.intellij.openapi.editor.impl.FontInfo;
+import com.intellij.openapi.editor.impl.TextDrawingCallback;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
@@ -30,6 +34,7 @@ import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
 import java.awt.font.FontRenderContext;
 import java.awt.font.LineMetrics;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.text.Bidi;
 
@@ -40,6 +45,7 @@ import java.text.Bidi;
  * Also contains a cache of several font-related quantities (line height, space width, etc).
  */
 public class EditorView implements TextDrawingCallback, Disposable, Dumpable, HierarchyListener, VisibleAreaListener {
+  private static final Logger LOG = Logger.getInstance(EditorView.class);
   private static final Key<LineLayout> FOLD_REGION_TEXT_LAYOUT = Key.create("text.layout");
 
   private final EditorImpl myEditor;
@@ -63,6 +69,7 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   private int myDescent; // guarded by myLock
   private int myCharHeight; // guarded by myLock
   private float myMaxCharWidth; // guarded by myLock
+  private int myCapHeight; // guarded by myLock
   private int myTabSize; // guarded by myLock
   private int myTopOverhang; //guarded by myLock
   private int myBottomOverhang; //guarded by myLock
@@ -105,10 +112,6 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   
   TextLayoutCache getTextLayoutCache() {
     return myTextLayoutCache;
-  }
-  
-  EditorPainter getPainter() {
-    return myPainter;
   }
   
   TabFragment getTabFragment() {
@@ -472,6 +475,13 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
     }
   }
 
+  int getCapHeight() {
+    synchronized (myLock) {
+      initMetricsIfNeeded();
+      return myCapHeight;
+    }
+  }
+
   public int getTopOverhang() {
     synchronized (myLock) {
       initMetricsIfNeeded();
@@ -539,6 +549,8 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
     // assuming that bold italic 'W' gives a good approximation of font's widest character
     FontMetrics fmBI = FontInfo.getFontMetrics(myEditor.getColorsScheme().getFont(EditorFontType.BOLD_ITALIC), myFontRenderContext);
     myMaxCharWidth = FontLayoutService.getInstance().charWidth2D(fmBI, 'W');
+
+    myCapHeight = (int)font.createGlyphVector(myFontRenderContext, "H").getVisualBounds().getHeight();
   }
   
   public int getTabSize() {
@@ -554,7 +566,15 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   private boolean setFontRenderContext(FontRenderContext context) {
     FontRenderContext contextToSet = context == null ? FontInfo.getFontRenderContext(myEditor.getContentComponent()) : context;
     if (areEqualContexts(myFontRenderContext, contextToSet)) return false;
-    myFontRenderContext = contextToSet.getFractionalMetricsHint() == myEditor.myFractionalMetricsHintValue 
+
+    AffineTransform transform = contextToSet.getTransform();
+    if (transform.getDeterminant() == 0) {
+      LOG.error("Incorrect transform in FontRenderContext" + (context == null ? " obtained from component" : "") + ": " + transform);
+      contextToSet = new FontRenderContext(new AffineTransform(),
+                                           contextToSet.getAntiAliasingHint(), contextToSet.getFractionalMetricsHint());
+    }
+
+    myFontRenderContext = contextToSet.getFractionalMetricsHint() == myEditor.myFractionalMetricsHintValue
                           ? contextToSet
                           : new FontRenderContext(contextToSet.getTransform(), 
                                                   contextToSet.getAntiAliasingHint(), 
@@ -646,6 +666,15 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   }
 
   float getCodePointWidth(int codePoint, @JdkConstants.FontStyle int fontStyle) {
+    if (myEditor.getSettings().isShowingSpecialChars()) {
+      // This is a simplification - we don't account for special characters not rendered in certain circumstances (based on surrounding
+      // characters), so a premature wrapping can occur sometimes (as the representation using Unicode name is most certainly wider than the
+      // original character).
+      SpecialCharacterFragment specialCharacterFragment = SpecialCharacterFragment.create(this, codePoint, null, 0);
+      if (specialCharacterFragment != null) {
+        return specialCharacterFragment.visualColumnToX(0, 1);
+      }
+    }
     return myCharWidthCache.getCodePointWidth(codePoint, fontStyle);
   }
 
@@ -666,7 +695,7 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   }
 
   @Override
-  public void drawChars(@NotNull Graphics g, @NotNull char[] data, int start, int end, int x, int y, Color color, FontInfo fontInfo) {
+  public void drawChars(@NotNull Graphics g, char @NotNull [] data, int start, int end, int x, int y, Color color, FontInfo fontInfo) {
     myPainter.drawChars(g, data, start, end, x, y, color, fontInfo);
   }
 
@@ -697,7 +726,14 @@ public class EditorView implements TextDrawingCallback, Disposable, Dumpable, Hi
   }
 
   private void assertNotInBulkMode() {
-    if (myDocument instanceof DocumentImpl) ((DocumentImpl)myDocument).assertNotInBulkUpdate();
-    else if (myDocument.isInBulkUpdate()) throw new IllegalStateException("Current operation is not available in bulk mode");
+    if (myDocument instanceof DocumentImpl) {
+      ((DocumentImpl)myDocument).assertNotInBulkUpdate();
+    }
+    else if (myDocument.isInBulkUpdate()) {
+      throw new IllegalStateException("Current operation is not permitted in bulk mode");
+    }
+    if (myEditor.getInlayModel().isInBatchMode()) {
+      throw new IllegalStateException("Current operation is not permitted during batch inlay update");
+    }
   }
 }

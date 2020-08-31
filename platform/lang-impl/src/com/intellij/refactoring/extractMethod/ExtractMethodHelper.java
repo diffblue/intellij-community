@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.extractMethod;
 
 import com.intellij.codeInsight.highlighting.HighlightManager;
@@ -11,9 +11,7 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -33,7 +31,7 @@ import java.util.*;
 /**
  * @author Dennis.Ushakov
  */
-public class ExtractMethodHelper {
+public final class ExtractMethodHelper {
   public static void processDuplicates(@NotNull final PsiElement callElement,
                                        @NotNull final PsiElement generatedMethod,
                                        @NotNull final List<PsiElement> scope,
@@ -106,8 +104,9 @@ public class ExtractMethodHelper {
         .message("0.has.detected.1.code.fragments.in.this.file.that.can.be.replaced.with.a.call.to.extracted.method",
                  ApplicationNamesInfo.getInstance().getProductName(), duplicates.size());
       final boolean isUnittest = ApplicationManager.getApplication().isUnitTestMode();
+      boolean isPerformanceScript = System.getProperty("testscript.filename") != null;
       final Project project = callElement.getProject();
-      final int exitCode = !isUnittest ? Messages.showYesNoDialog(project, message,
+      final int exitCode = !isUnittest && !isPerformanceScript ? Messages.showYesNoDialog(project, message,
                                                                   RefactoringBundle.message("refactoring.extract.method.dialog.title"),
                                                                   Messages.getInformationIcon()) :
                            Messages.YES;
@@ -121,7 +120,7 @@ public class ExtractMethodHelper {
             highlightInEditor(project, match, editor, highlighterMap);
 
             int promptResult = FindManager.PromptResult.ALL;
-            if (!isUnittest) {
+            if (!isUnittest && !isPerformanceScript) {
               ReplacePromptDialog promptDialog =
                 new ReplacePromptDialog(false, RefactoringBundle.message("replace.fragment"), project);
               promptDialog.show();
@@ -153,7 +152,8 @@ public class ExtractMethodHelper {
 
   private static void replaceDuplicate(final Project project, final Consumer<? super Pair<SimpleMatch, PsiElement>> replacer,
                                        final Pair<SimpleMatch, PsiElement> replacement) {
-    CommandProcessor.getInstance().executeCommand(project, () -> ApplicationManager.getApplication().runWriteAction(() -> replacer.consume(replacement)), "Replace duplicate", null);
+    CommandProcessor.getInstance().executeCommand(project, () -> ApplicationManager.getApplication().runWriteAction(() -> replacer.consume(replacement)),
+                                                  RefactoringBundle.message("extract.method.replace.duplicate.command.name"), null);
   }
 
 
@@ -161,11 +161,9 @@ public class ExtractMethodHelper {
                                  @NotNull final Editor editor, Map<SimpleMatch, RangeHighlighter> highlighterMap) {
     final List<RangeHighlighter> highlighters = new ArrayList<>();
     final HighlightManager highlightManager = HighlightManager.getInstance(project);
-    final EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-    final TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     final int startOffset = match.getStartElement().getTextRange().getStartOffset();
     final int endOffset = match.getEndElement().getTextRange().getEndOffset();
-    highlightManager.addRangeHighlight(editor, startOffset, endOffset, attributes, true, highlighters);
+    highlightManager.addRangeHighlight(editor, startOffset, endOffset, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, highlighters);
     highlighterMap.put(match, highlighters.get(0));
     final LogicalPosition logicalPosition = editor.offsetToLogicalPosition(startOffset);
     editor.getScrollingModel().scrollTo(logicalPosition, ScrollType.MAKE_VISIBLE);

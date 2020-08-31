@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.incremental;
 
 import com.intellij.openapi.util.io.FileUtil;
@@ -43,7 +29,7 @@ import java.util.*;
 /**
  * @author Eugene Zhuravlev
  */
-public class BuildOperations {
+public final class BuildOperations {
   private BuildOperations() { }
 
   public static void ensureFSStateInitialized(CompileContext context, BuildTarget<?> target, boolean readOnly) throws IOException {
@@ -57,19 +43,25 @@ public class BuildOperations {
         configuration.save(context);
       }
     }
-    else if (context.getScope().isBuildForced(target) || configuration.isTargetDirty(context) || configuration.outputRootWasDeleted(context)) {
-      initTargetFSState(context, target, true);
-      if (!readOnly) {
-        if (!context.getScope().isBuildForced(target)) {
-          // case when target build is forced, is handled separately
-          IncProjectBuilder.clearOutputFiles(context, target);
+    else {
+      boolean isTargetDirty = false;
+      if (context.getScope().isBuildForced(target) || (isTargetDirty = configuration.isTargetDirty(context.getProjectDescriptor())) || configuration.outputRootWasDeleted(context)) {
+        if (isTargetDirty) {
+          configuration.logDiagnostics(context);
         }
-        pd.dataManager.cleanTargetStorages(target);
-        configuration.save(context);
+        initTargetFSState(context, target, true);
+        if (!readOnly) {
+          if (!context.getScope().isBuildForced(target)) {
+            // case when target build is forced, is handled separately
+            IncProjectBuilder.clearOutputFiles(context, target);
+          }
+          pd.dataManager.cleanTargetStorages(target);
+          configuration.save(context);
+        }
       }
-    }
-    else if (!pd.fsState.isInitialScanPerformed(target)) {
-      initTargetFSState(context, target, false);
+      else if (!pd.fsState.isInitialScanPerformed(target)) {
+        initTargetFSState(context, target, false);
+      }
     }
   }
 

@@ -18,6 +18,7 @@ import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiField
 import com.intellij.psi.PsiMethod
+import com.intellij.testFramework.NeedsIndex
 import com.intellij.ui.JBColor
 
 class NormalCompletionOrderingTest extends CompletionSortingTestCase {
@@ -43,6 +44,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems 0, 'element'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferAnnotationMethods() throws Throwable {
     checkPreferredItems(0, "name", "value", "String", "Foo", "Anno")
   }
@@ -51,10 +53,12 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "foo", "bar")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testSubstringVsSubSequence() throws Throwable {
     checkPreferredItems(0, "substring", "substring", "subSequence")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testReturnF() throws Throwable {
     checkPreferredItems(0, "false", "float", "finalize")
   }
@@ -63,15 +67,16 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "getName", "getNameIdentifier")
   }
 
+  @NeedsIndex.SmartMode(reason = "Smart completion in dumb mode is not supported for html")
   void testShorterPrefixesGoFirst() throws Throwable {
-    final LookupImpl lookup = invokeCompletion(getTestName(false) + ".html")
+    invokeCompletion(getTestName(false) + ".html")
     assertPreferredItems(0, "p", "param", "pre")
-    incUseCount(lookup, 2)
+    incUseCount(2)
     assertPreferredItems(0, "p", "pre", "param")
   }
 
   void testUppercaseMatters2() throws Throwable {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.ALL
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.ALL)
     checkPreferredItems(0, "classLoader", "classLoader2")
   }
 
@@ -83,6 +88,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "getService", "getService", "class")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testGenericityDoesNotMatterWhenNoTypeIsExpected() {
     checkPreferredItems 0, "generic", "nonGeneric", "clone", "equals"
   }
@@ -91,6 +97,12 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "booleanMethod", "voidMethod", "AN_OBJECT", "BOOLEAN", "class")
   }
 
+  @NeedsIndex.ForStandardLibrary
+  void testPreferClassLiteralWhenClassIsExpected() {
+    checkPreferredItems(0, "class")
+  }
+
+  @NeedsIndex.ForStandardLibrary
   void testJComponentInstanceMembers() throws Throwable {
     checkPreferredItems(0, "getAccessibleContext", "getUI", "getUIClassID")
   }
@@ -106,6 +118,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "aabbb", "aaa")
   }
 
+  @NeedsIndex.Full
   void testDispreferImpls() throws Throwable {
     myFixture.addClass("package foo; public class Xxx {}")
     configureSecondCompletion()
@@ -116,6 +129,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "YyyXxx", "YyyZzz")
   }
 
+  @NeedsIndex.Full
   void testPreferTopLevelClasses() throws Throwable {
     configureSecondCompletion()
     assertPreferredItems(0, "XxxYyy", "XxzYyy")
@@ -126,12 +140,19 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     myFixture.complete(CompletionType.BASIC, 2)
   }
 
+  @NeedsIndex.Full
   void testImplsAfterNew() {
     myFixture.addClass("package foo; public interface Xxx {}")
     configureSecondCompletion()
     assertPreferredItems(0, "XxxImpl", "Xxx")
   }
 
+  @NeedsIndex.ForStandardLibrary
+  void testAfterThrowNew() {
+    checkPreferredItems(0, "Exception", "RuntimeException")
+  }
+
+  @NeedsIndex.Full
   void testPreferLessHumps() throws Throwable {
     myFixture.addClass("package foo; public interface XaYa {}")
     myFixture.addClass("package foo; public interface XyYa {}")
@@ -147,16 +168,18 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     assertEquals(2, ((PsiMethod)items.get(2).getObject()).getParameterList().getParametersCount())
   }
 
+  @NeedsIndex.Full
   void testStatsForClassNameInExpression() throws Throwable {
     myFixture.addClass("package foo; public interface FooBar {}")
     myFixture.addClass("package foo; public interface FooBee {}")
 
     invokeCompletion(getTestName(false) + ".java")
     configureSecondCompletion()
-    incUseCount(getLookup(), 1)
+    incUseCount(1)
     assertPreferredItems(0, "FooBee", "FooBar")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testDispreferFinalize() throws Throwable {
     checkPreferredItems(0, "final", "finalize")
   }
@@ -169,12 +192,14 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     assertEquals("Foooo.Bar", presentation.getItemText());*/
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testDeclaredMembersGoFirst() throws Exception {
     invokeCompletion(getTestName(false) + ".java")
     assertStringItems("fromThis", "overridden", "fromSuper", "equals", "hashCode", "toString", "getClass", "notify", "notifyAll", "wait",
                       "wait", "wait")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testLocalVarsOverMethods() {
     checkPreferredItems(0, "value", "validate", "validateTree")
   }
@@ -183,6 +208,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "XcodeProjectTemplate", "XcodeConfigurable")
   }
 
+  @NeedsIndex.Full
   void testFqnStats() {
     myFixture.addClass("public interface Baaaaaaar {}")
     myFixture.addClass("package boo; public interface Baaaaaaar {}")
@@ -190,26 +216,28 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
 
     configureSecondCompletion()
 
-    final LookupImpl lookup = getLookup()
     assertEquals("Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[0]).qualifiedName)
     assertEquals("boo.Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[1]).qualifiedName)
     assertEquals("zoo.Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[2]).qualifiedName)
-    incUseCount(lookup, 2)
+    incUseCount(2)
 
     assertEquals("Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[0]).qualifiedName) // same package
     assertEquals("zoo.Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[1]).qualifiedName)
     assertEquals("boo.Baaaaaaar", ((JavaPsiClassReferenceElement) lookup.items[2]).qualifiedName)
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testSkipLifted() {
     checkPreferredItems(0, "hashCodeMine", "hashCode")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testDispreferInnerClasses() {
     checkPreferredItems(0) //no chosen items
     assertFalse(getLookup().getItems().get(0).getObject() instanceof PsiClass)
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferSameNamedMethods() {
     checkPreferredItems(0, "foo", "boo", "doo", "hashCode")
   }
@@ -245,10 +273,12 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "return", "retainAll")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferReturnInSingleStatementPlace() {
     checkPreferredItems 0, "return", "registerKeyboardAction"
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferContinueInsideLoops() {
     checkPreferredItems 0, "continue", "color", "computeVisibleRect"
   }
@@ -261,6 +291,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "MyEnum.bar", "MyEnum", "MyEnum.foo")
   }
 
+  @NeedsIndex.Full
   void testPreferExpectedEnumConstantsDespiteStats() {
     checkPreferredItems 0, "const1", "const2", "constx1", "constx2"
     myFixture.lookup.currentItem = myFixture.lookupElements[2]
@@ -268,6 +299,12 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     myFixture.type('\n);\nmethodX(cons')
     myFixture.completeBasic()
     assertPreferredItems 0, 'constx1', 'constx2', 'const1', 'const2'
+  }
+
+  void testPreferExpectedEnumConstantsInComparison() {
+    checkPreferredItems 0, 'MyEnum.const1', 'MyEnum', 'MyEnum.const2'
+    incUseCount(myFixture.lookupElementStrings.indexOf('String')) // select some unrelated class
+    assertPreferredItems 0, 'MyEnum.const1', 'MyEnum', 'MyEnum.const2'
   }
 
   void testPreferElse() {
@@ -289,6 +326,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems(0, "Bar9", "Bar1", "Bar2", "Bar3", "Bar4")
   }
 
+  @NeedsIndex.Full
   void testPreselectMostRelevantInTheMiddleAlpha() {
     UISettings.getInstance().setSortLookupElementsLexicographically(true)
 
@@ -308,6 +346,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     assert myFixture.lookupElementStrings.sort() == myFixture.lookupElementStrings
   }
 
+  @NeedsIndex.Full
   void testAlphaSortPackages() {
     UISettings.getInstance().setSortLookupElementsLexicographically(true)
 
@@ -326,6 +365,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems 0, 'xxbar', 'xxfoo', 'xxgoo', 'barxx', 'fooxx', 'gooxx'
   }
 
+  @NeedsIndex.Full
   void testSortSameNamedVariantsByProximity() {
     myFixture.addClass("public class Bar {}")
     for (int i = 0; i < 10; i++) {
@@ -342,10 +382,11 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
   }
 
   void testCaseInsensitivePrefixMatch() {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.NONE)
     checkPreferredItems(1, "Foo", "foo1", "foo2")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferKeywordsToVoidMethodsInExpectedTypeContext() {
     checkPreferredItems 0, 'noo', 'new', 'null', 'noo2', 'notify', 'notifyAll'
   }
@@ -354,6 +395,7 @@ class NormalCompletionOrderingTest extends CompletionSortingTestCase {
     checkPreferredItems 0, 'serial', 'superExpressionInIllegalContext'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferApplicableAnnotations() throws Throwable {
     myFixture.addClass '''
 import java.lang.annotation.ElementType;
@@ -367,6 +409,7 @@ import java.lang.annotation.Target;
     checkPreferredItems 0, 'TMetaAnno', 'Target', 'TabLayoutPolicy', 'TabPlacement'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferApplicableAnnotationsMethod() throws Throwable {
     myFixture.addClass '''
 import java.lang.annotation.ElementType;
@@ -383,10 +426,11 @@ interface TxANotAnno {}
     assert !('TxANotAnno' in myFixture.lookupElementStrings)
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testJComponentAddNewWithStats() throws Throwable {
-    final LookupImpl lookup = invokeCompletion("/../smartTypeSorting/JComponentAddNew.java")
+    invokeCompletion("/../smartTypeSorting/JComponentAddNew.java")
     assertPreferredItems(0, "FooBean3", "JComponent", "Component")
-    incUseCount(lookup, 2) //Component
+    incUseCount(2) //Component
     assertPreferredItems(0, "Component", "FooBean3", "JComponent")
   }
 
@@ -402,23 +446,30 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'reaction', 'rezet', 'return'
   }
 
+  void testDispreferReturnAsLoopBody() {
+    checkPreferredItems 0, 'returnMethod', 'return'
+  }
+
+  @NeedsIndex.ForStandardLibrary
   void testDispreferReturnInVoidLambda() {
     checkPreferredItems 0, 'reaction', 'rezet', 'return'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testDoNotPreferGetClass() {
     checkPreferredItems 0, 'get', 'getClass'
-    incUseCount(lookup, 1)
+    incUseCount(1)
     assertPreferredItems 0, 'getClass', 'get'
-    incUseCount(lookup, 1)
+    incUseCount(1)
     assertPreferredItems 0, 'get', 'getClass'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testEqualsStats() {
     checkPreferredItems 0, 'equals', 'equalsIgnoreCase'
-    incUseCount(lookup, 1)
+    incUseCount(1)
     assertPreferredItems 0, 'equalsIgnoreCase', 'equals'
-    incUseCount(lookup, 1)
+    incUseCount(1)
     checkPreferredItems 0, 'equals', 'equalsIgnoreCase'
   }
 
@@ -426,6 +477,7 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'MyCalendar.FIELD_COUNT', 'MyCalendar', 'MyCalendar.AM'
   }
 
+  @NeedsIndex.Full
   void testPreferLocalsToStaticsInSecondCompletion() {
     myFixture.addClass('public class FooZoo { public static void fooBar() {}  }')
     myFixture.addClass('public class fooAClass {}')
@@ -443,7 +495,7 @@ interface TxANotAnno {}
   }
 
   void testUnderscoresDontMakeMatchMiddle() {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.NONE)
     checkPreferredItems(0, 'fooBar', '_fooBar', 'FooBar')
   }
 
@@ -468,13 +520,14 @@ interface TxANotAnno {}
     assert lookup.items[1].object instanceof PsiMethod
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreselectLastChosen() {
     checkPreferredItems(0, 'add', 'addAll')
     for (i in 0..10) {
-      incUseCount(lookup, 1)
+      incUseCount(1)
     }
     assertPreferredItems 0, 'addAll', 'add'
-    incUseCount(lookup, 1)
+    incUseCount(1)
     assertPreferredItems 0, 'add', 'addAll'
   }
 
@@ -524,7 +577,7 @@ interface TxANotAnno {}
   }
 
   void testCommonPrefixMoreImportantThanKind() {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.NONE)
     checkPreferredItems(0, 'PsiElement', 'psiElement')
   }
 
@@ -533,9 +586,9 @@ interface TxANotAnno {}
   }
 
   void testLocalVarsOverStats() {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.NONE)
     checkPreferredItems 0, 'psiElement', 'PsiElement'
-    incUseCount lookup, 1
+    incUseCount 1
     assertPreferredItems 0, 'psiElement', 'PsiElement'
   }
 
@@ -564,6 +617,7 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'MyEnum.BAR', 'MyEnum', 'MyEnum.FOO'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferClassesOfExpectedClassType() {
     myFixture.addClass "class XException extends Exception {}"
     checkPreferredItems 0, 'XException', 'XClass', 'XIntf'
@@ -577,31 +631,37 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'fact'
   }
 
+  @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for 'Override/Implement methods...')")
   void testPreferAnnotationsToInterfaceKeyword() {
-    checkPreferredItems 0, 'Deprecated', 'Override'
+    checkPreferredItems 0, 'Override/Implement methods...', 'Override', 'Deprecated'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferThrownExceptionsInCatch() {
     checkPreferredItems 0, 'final', 'FileNotFoundException', 'File'
   }
 
   void testHonorFirstLetterCase() {
-    CodeInsightSettings.getInstance().COMPLETION_CASE_SENSITIVE = CodeInsightSettings.NONE
+    CodeInsightSettings.getInstance().setCompletionCaseSensitive(CodeInsightSettings.NONE)
     checkPreferredItems 0, 'posIdMap', 'PImageDecoder', 'PNGImageDecoder'
   }
 
+  @NeedsIndex.Full
   void testGlobalStaticMemberStats() {
     configureNoCompletion(getTestName(false) + ".java")
     myFixture.complete(CompletionType.BASIC, 2)
     assertPreferredItems 0, 'newLinkedSet0', 'newLinkedSet1', 'newLinkedSet2'
-    incUseCount lookup, 1
+    imitateItemSelection(lookup, 1)
+    myFixture.complete(CompletionType.BASIC, 2)
     assertPreferredItems 0, 'newLinkedSet1', 'newLinkedSet0', 'newLinkedSet2'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testStaticMemberTypes() {
     checkPreferredItems 0, 'newMap', 'newList'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testNoStatsInSuperInvocation() {
     checkPreferredItems 0, 'put', 'putAll'
 
@@ -620,6 +680,7 @@ interface TxANotAnno {}
     assert lookup.items.find { it.lookupString == 'ritar'} != null
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferLocalToExpectedTypedMethod() {
     checkPreferredItems 0, 'event', 'equals'
   }
@@ -635,12 +696,14 @@ interface TxANotAnno {}
     assert LookupElementPresentation.renderElement(items.find { it.lookupString == 'BAR' }).itemTextForeground == JBColor.RED
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferValueTypesReturnedFromMethod() {
     checkPreferredItems 0, 'StringBuffer', 'String', 'Serializable', 'SomeInterface', 'SomeInterface', 'SomeOtherClass'
     assert 'SomeInterface<String>' == LookupElementPresentation.renderElement(myFixture.lookupElements[3]).itemText
     assert 'SomeInterface' == LookupElementPresentation.renderElement(myFixture.lookupElements[4]).itemText
   }
 
+  @NeedsIndex.Full
   void testPreferCastTypesHavingSpecifiedMethod() {
     checkPreferredItems 0, 'MainClass1', 'MainClass2', 'Maa'
   }
@@ -649,14 +712,17 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'fun1', 'fun2', 'fun10'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferVarsHavingReferencedMember() {
     checkPreferredItems 0, 'xzMap', 'xaString'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferCollectionsStaticOfExpectedType() {
     checkPreferredItems 0, 'unmodifiableList', 'unmodifiableCollection'
   }
 
+  @NeedsIndex.Full
   void testDispreferDeprecatedMethodWithUnresolvedQualifier() {
     myFixture.addClass("package foo; public class Assert { public static void assertTrue() {} }")
     myFixture.addClass("package bar; @Deprecated public class Assert { public static void assertTrue() {}; public static void assertTrue2() {} }")
@@ -683,6 +749,7 @@ interface TxANotAnno {}
     checkPreferredItems 0, 'false', 'factory'
   }
 
+  @NeedsIndex.Full
   void testPreferExplicitlyImportedStaticMembers() {
     myFixture.addClass("""
 class ContainerUtilRt {
@@ -702,6 +769,7 @@ class ContainerUtil extends ContainerUtilRt {
     checkPreferredItems 0, 'catch', 'finally'
   }
 
+  @NeedsIndex.Full
   void testPreselectClosestExactPrefixItem() {
     UISettings.instance.setSortLookupElementsLexicographically(true)
     myFixture.addClass 'package pack1; public class SameNamed {}'
@@ -711,6 +779,7 @@ class ContainerUtil extends ContainerUtilRt {
     assert LookupElementPresentation.renderElement(myFixture.lookupElements[1]).tailText.contains('pack2')
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferExpectedMethodTypeArg() {
     checkPreferredItems 0, 'String', 'Usage'
 
@@ -732,6 +801,7 @@ class ContainerUtil extends ContainerUtilRt {
     myFixture.assertPreferredCompletionItems 0, 'String', "Usage"
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testMethodStatisticsPerQualifierType() {
     checkPreferredItems 0, 'charAt'
     myFixture.type('eq\n);\n')
@@ -742,6 +812,7 @@ class ContainerUtil extends ContainerUtilRt {
     assertPreferredItems 0, 'someMethod'
   }
 
+  @NeedsIndex.Full
   void testPreferImportedClassesAmongstSameNamed() {
     myFixture.addClass('package foo; public class String {}')
 
@@ -768,12 +839,14 @@ class ContainerUtil extends ContainerUtilRt {
     assertPreferredItems 0, 'ContainerUtil', 'ConflictsUtil'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferListAddWithoutIndex() {
     checkPreferredItems 0, 'add', 'add', 'addAll', 'addAll'
     assert LookupElementPresentation.renderElement(myFixture.lookupElements[1]).tailText.contains('int index')
     assert LookupElementPresentation.renderElement(myFixture.lookupElements[3]).tailText.contains('int index')
   }
 
+  @NeedsIndex.Full
   void testPreferExpectedTypeConstantOverSameNamedClass() {
     myFixture.addClass("package another; public class JSON {}")
     checkPreferredItems 0, 'Point.JSON', 'JSON'
@@ -782,7 +855,7 @@ class ContainerUtil extends ContainerUtilRt {
   void testPreferExpectedEnumConstantInAnnotationAttribute() {
     checkPreferredItems 0, 'MyEnum.bar', 'MyEnum', 'MyEnum.foo'
     def unrelatedItem = myFixture.lookupElementStrings.findIndexOf { it.contains('Throwable') }
-    incUseCount(lookup, unrelatedItem)
+    incUseCount(unrelatedItem)
     //nothing should change
     assertPreferredItems 0, 'MyEnum.bar', 'MyEnum', 'MyEnum.foo'
   }
@@ -817,6 +890,7 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'a', 'b', 'a, b'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test selecting static field after static method"() {
     myFixture.configureByText 'a.java', 'class Foo { { System.<caret> } }'
     myFixture.completeBasic()
@@ -832,14 +906,17 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'out', 'exit'    
   }
 
+  @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for getters)")
   void testPreferTypeToGeneratedMethod() {
     checkPreferredItems 0, 'SomeClass', 'public SomeClass getZoo'
   }
 
+  @NeedsIndex.SmartMode(reason = "JavaGenerateMemberCompletionContributor.fillCompletionVariants works in smart mode only (for getters and equals())")
   void testPreferPrimitiveTypeToGeneratedMethod() {
     checkPreferredItems 0, 'boolean', 'public boolean isZoo', 'public boolean equals'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferExceptionsInCatch() {
     myFixture.configureByText 'a.java', 'class Foo { { Enu<caret> } }'
     myFixture.completeBasic()
@@ -849,14 +926,17 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'Exception', 'Error' 
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferExceptionsInThrowsList() {
     checkPreferredItems 0, 'IllegalStateException', 'IllegalAccessException', 'IllegalArgumentException'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferExceptionsInJavadocThrows() {
     checkPreferredItems 0, 'IllegalArgumentException', 'IllegalAccessException', 'IllegalStateException'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferExpectedTypeArguments() {
     checkPreferredItems 0, 'BlaOperation'
   }
@@ -865,6 +945,7 @@ class Foo {
     checkPreferredItems 0, 'final', 'find1'
   }
 
+  @NeedsIndex.SmartMode(reason = "AbstractExpectedTypeSkipper works in smart mode only")
   void testDispreferMultiMethodInterfaceAfterNew() {
     checkPreferredItems 1, 'Intf', 'IntfImpl'
   }
@@ -877,6 +958,7 @@ class Foo {
     checkPreferredItems 0, 'AbstractListener', 'Listener'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferPrintln() {
     myFixture.configureByText 'a.java', 'class Foo { { System.out.pri<caret>x } }'
     myFixture.completeBasic()
@@ -885,4 +967,7 @@ class Foo {
     myFixture.checkResult 'class Foo { { System.out.println(<caret>); } }'
   }
 
+  void testPreferLocalArrayVariableToItsChains() {
+    checkPreferredItems 0, 'arrayVariable'
+  }
 }

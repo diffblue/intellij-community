@@ -1,7 +1,6 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter;
 
-import org.gradle.internal.impldep.aQute.lib.collections.SortedList;
 import org.gradle.tooling.model.DomainObjectSet;
 import org.gradle.tooling.model.HierarchicalElement;
 import org.gradle.tooling.model.idea.IdeaCompilerOutput;
@@ -9,12 +8,13 @@ import org.gradle.tooling.model.idea.IdeaModule;
 import org.gradle.tooling.model.internal.ImmutableDomainObjectSet;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
 import static org.jetbrains.plugins.gradle.tooling.serialization.internal.adapter.AdapterUtils.wrap;
-import static org.jetbrains.plugins.gradle.tooling.util.ContainerUtil.emptyDomainObjectSet;
+import static org.jetbrains.plugins.gradle.tooling.util.GradleContainerUtil.emptyDomainObjectSet;
 
 public class InternalIdeaModule implements IdeaModule {
   private String name;
@@ -79,7 +79,7 @@ public class InternalIdeaModule implements IdeaModule {
 
   @Override
   public DomainObjectSet<? extends HierarchicalElement> getChildren() {
-    return ImmutableDomainObjectSet.of(SortedList.<HierarchicalElement>empty());
+    return ImmutableDomainObjectSet.of(Collections.<HierarchicalElement>emptySet());
   }
 
   @Override

@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.mvc.util;
 
 import com.intellij.codeInsight.TailType;
+import com.intellij.codeInsight.lookup.EqTailType;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.codeInsight.lookup.TailTypeDecorator;
@@ -27,7 +28,7 @@ import java.util.*;
 /**
  * @author Sergey Evdokimov
  */
-public class MvcTargetDialogCompletionUtils {
+public final class MvcTargetDialogCompletionUtils {
 
   private static final String[] SYSTEM_PROPERTIES = {
     // System properties from ivy
@@ -175,7 +176,7 @@ public class MvcTargetDialogCompletionUtils {
     );
   }
 
-  public static class MyTailTypeEQ extends TailType.TailTypeEQ {
+  public static class MyTailTypeEQ extends EqTailType {
     public static final MyTailTypeEQ INSTANCE = new MyTailTypeEQ();
 
     @Override
@@ -187,5 +188,4 @@ public class MvcTargetDialogCompletionUtils {
       return "MvcTargetDialogCompletionUtils.TailTypeEQ";
     }
   }
-
 }

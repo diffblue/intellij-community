@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.projectView
 
 import com.intellij.openapi.module.ModuleManager
@@ -6,10 +6,8 @@ import com.intellij.openapi.ui.Queryable
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.util.io.directoryContent
 import com.intellij.util.io.generateInVirtualTempDir
+import java.nio.file.Path
 
-/**
- * @author nik
- */
 class ModulesInProjectViewTest : BaseProjectViewTestCase() {
   init {
     myPrintInfo = Queryable.PrintInfo()
@@ -175,6 +173,13 @@ class ModulesInProjectViewTest : BaseProjectViewTestCase() {
           |
           """.trimMargin())
   }
+
+  override fun getProjectDirOrFile(): Path {
+    //use directory-based project to ensure that .iws/.ipr file won't break the test (they may be created if workspace model is used)
+    return getProjectDirOrFile(true)
+  }
+
+
 
   override fun getTestPath() = null
 }

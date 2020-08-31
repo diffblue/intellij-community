@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.model.serialization.java.compiler;
 
 import com.intellij.openapi.util.io.FileUtil;
@@ -24,10 +10,7 @@ import org.jetbrains.jps.model.java.compiler.ProcessorConfigProfile;
 import java.io.File;
 import java.util.*;
 
-/**
- * @author nik
- */
-public class AnnotationProcessorProfileSerializer {
+public final class AnnotationProcessorProfileSerializer {
   private static final Comparator<String> ALPHA_COMPARATOR = (o1, o2) -> o1.compareToIgnoreCase(o2);
   private static final String ENTRY = "entry";
   private static final String NAME = "name";
@@ -35,6 +18,8 @@ public class AnnotationProcessorProfileSerializer {
   private static final String ENABLED = "enabled";
   private static final String OPTION = "option";
   private static final String MODULE = "module";
+  private static final String USE_CLASSPATH = "useClasspath";
+  private static final String USE_PROC_MODULE_PATH = "useProcessorModulePath";
 
   public static void readExternal(ProcessorConfigProfile profile, Element element) {
     profile.setName(element.getAttributeValue(NAME, ""));
@@ -73,7 +58,8 @@ public class AnnotationProcessorProfileSerializer {
 
     final Element pathElement = element.getChild("processorPath");
     if (pathElement != null) {
-      profile.setObtainProcessorsFromClasspath(Boolean.parseBoolean(pathElement.getAttributeValue("useClasspath", "true")));
+      profile.setObtainProcessorsFromClasspath(Boolean.parseBoolean(pathElement.getAttributeValue(USE_CLASSPATH, "true")));
+      profile.setUseProcessorModulePath(Boolean.parseBoolean(pathElement.getAttributeValue(USE_PROC_MODULE_PATH, "false")));
       final StringBuilder pathBuilder = new StringBuilder();
       for (Object entry : pathElement.getChildren(ENTRY)) {
         final String path = ((Element)entry).getAttributeValue(NAME);
@@ -136,13 +122,19 @@ public class AnnotationProcessorProfileSerializer {
     Element pathElement = null;
     if (!profile.isObtainProcessorsFromClasspath()) {
       pathElement = addChild(element, "processorPath");
-      pathElement.setAttribute("useClasspath", Boolean.toString(profile.isObtainProcessorsFromClasspath()));
+      pathElement.setAttribute(USE_CLASSPATH, Boolean.toString(profile.isObtainProcessorsFromClasspath()));
+      if (profile.isUseProcessorModulePath()) {
+        pathElement.setAttribute(USE_PROC_MODULE_PATH, Boolean.toString(profile.isUseProcessorModulePath()));
+      }
     }
 
     final String path = profile.getProcessorPath();
     if (!StringUtil.isEmpty(path)) {
       if (pathElement == null) {
         pathElement = addChild(element, "processorPath");
+        if (profile.isUseProcessorModulePath()) {
+          pathElement.setAttribute(USE_PROC_MODULE_PATH, Boolean.toString(profile.isUseProcessorModulePath()));
+        }
       }
       final StringTokenizer tokenizer = new StringTokenizer(path, File.pathSeparator, false);
       while (tokenizer.hasMoreTokens()) {

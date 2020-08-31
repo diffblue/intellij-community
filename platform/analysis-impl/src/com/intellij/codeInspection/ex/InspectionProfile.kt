@@ -1,9 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ex
 
 import com.intellij.codeInspection.InspectionProfile
 import com.intellij.codeInspection.ex.InspectionProfileImpl.INIT_INSPECTIONS
 import com.intellij.configurationStore.SerializableScheme
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PathMacroManager
 import com.intellij.openapi.options.SchemeState
@@ -16,6 +17,7 @@ import com.intellij.util.xmlb.annotations.Transient
 import org.jdom.Element
 
 const val DEFAULT_PROFILE_NAME: String = "Default"
+
 val BASE_PROFILE: InspectionProfileImpl by lazy { InspectionProfileImpl(DEFAULT_PROFILE_NAME) }
 
 abstract class NewInspectionProfile(name: String, private var profileManager: BaseInspectionProfileManager) : ProfileEx(name), InspectionProfile, SerializableScheme {
@@ -60,6 +62,12 @@ abstract class NewInspectionProfile(name: String, private var profileManager: Ba
   override fun toString(): String = name
 
   override fun equals(other: Any?): Boolean = super.equals(other) && (other as NewInspectionProfile).profileManager === profileManager
+
+  override fun hashCode(): Int {
+    var result = super.hashCode()
+    result = 31 * result + profileManager.hashCode()
+    return result
+  }
 
   /**
    * If you need to enable multiple tools, please use [.modifyProfile]
@@ -117,12 +125,11 @@ abstract class NewInspectionProfile(name: String, private var profileManager: Ba
     }
     readExternal(element)
   }
-
   abstract fun readExternal(element: Element)
 }
 
 fun createSimple(name: String, project: Project, toolWrappers: List<InspectionToolWrapper<*, *>>): InspectionProfileImpl {
-  val profile = InspectionProfileImpl(name, { toolWrappers }, InspectionProfileManager.getInstance() as BaseInspectionProfileManager)
+  val profile = InspectionProfileImpl(name, InspectionToolsSupplier.Simple(toolWrappers), InspectionProfileManager.getInstance() as BaseInspectionProfileManager)
   for (toolWrapper in toolWrappers) {
     profile.enableTool(toolWrapper.shortName, project)
   }

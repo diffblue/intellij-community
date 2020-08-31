@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.configurationStore.schemeManager.createDir
@@ -11,12 +11,11 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.LineSeparator
 import com.intellij.util.SmartList
-import com.intellij.util.containers.SmartHashSet
 import com.intellij.util.io.systemIndependentPath
 import com.intellij.util.isEmpty
-import gnu.trove.THashMap
-import gnu.trove.THashSet
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import org.jdom.Element
+import org.jetbrains.annotations.ApiStatus
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.file.Path
@@ -31,7 +30,7 @@ abstract class DirectoryBasedStorageBase(@Suppress("DEPRECATION") protected val 
 
   override fun createSaveSessionProducer(): SaveSessionProducer? = null
 
-  override fun analyzeExternalChangesAndUpdateIfNeeded(componentNames: MutableSet<in String>) {
+  override fun analyzeExternalChangesAndUpdateIfNeeded(componentNames: MutableSet<String>) {
     // todo reload only changed file, compute diff
     val newData = loadData()
     storageDataRef.set(newData)
@@ -72,6 +71,11 @@ abstract class DirectoryBasedStorageBase(@Suppress("DEPRECATION") protected val 
   override fun hasState(storageData: StateMap, componentName: String): Boolean = storageData.hasStates()
 }
 
+@ApiStatus.Internal
+interface DirectoryBasedSaveSessionProducer : SaveSessionProducer {
+  fun setFileState(fileName: String, componentName: String, element: Element?)
+}
+
 open class DirectoryBasedStorage(private val dir: Path,
                                  @Suppress("DEPRECATION") splitter: com.intellij.openapi.components.StateSplitter,
                                  pathMacroSubstitutor: PathMacroSubstitutor? = null) : DirectoryBasedStorageBase(splitter, pathMacroSubstitutor) {
@@ -97,10 +101,10 @@ open class DirectoryBasedStorage(private val dir: Path,
 
   override fun createSaveSessionProducer(): SaveSessionProducer? = if (checkIsSavingDisabled()) null else MySaveSession(this, getStorageData())
 
-  private class MySaveSession(private val storage: DirectoryBasedStorage, private val originalStates: StateMap) : SaveSessionBase(), SaveSession {
+  private class MySaveSession(private val storage: DirectoryBasedStorage, private val originalStates: StateMap) : SaveSessionBase(), SaveSession, DirectoryBasedSaveSessionProducer {
     private var copiedStorageData: MutableMap<String, Any>? = null
 
-    private val dirtyFileNames = SmartHashSet<String>()
+    private val dirtyFileNames = HashSet<String>()
     private var isSomeFileRemoved = false
 
     override fun setSerializedState(componentName: String, element: Element?) {
@@ -112,12 +116,12 @@ open class DirectoryBasedStorage(private val dir: Path,
           copiedStorageData!!.clear()
         }
         else if (!originalStates.isEmpty()) {
-          copiedStorageData = THashMap()
+          copiedStorageData = HashMap()
         }
         return
       }
 
-      val existingFiles = THashSet<String>(stateAndFileNameList.size)
+      val existingFiles = ObjectOpenHashSet<String>(stateAndFileNameList.size)
       for (pair in stateAndFileNameList) {
         doSetState(pair.second, pair.first)
         existingFiles.add(pair.second)
@@ -127,13 +131,26 @@ open class DirectoryBasedStorage(private val dir: Path,
         if (existingFiles.contains(key)) {
           continue
         }
-
-        if (copiedStorageData == null) {
-          copiedStorageData = originalStates.toMutableMap()
-        }
-        isSomeFileRemoved = true
-        copiedStorageData!!.remove(key)
+        removeFileData(key)
       }
+    }
+
+    override fun setFileState(fileName: String, componentName: String, element: Element?) {
+      storage.componentName = componentName
+      if (element != null) {
+        doSetState(fileName, element)
+      }
+      else {
+        removeFileData(fileName)
+      }
+    }
+
+    private fun removeFileData(fileName: String) {
+      if (copiedStorageData == null) {
+        copiedStorageData = originalStates.toMutableMap()
+      }
+      isSomeFileRemoved = true
+      copiedStorageData!!.remove(fileName)
     }
 
     private fun doSetState(fileName: String, subState: Element) {
@@ -162,7 +179,7 @@ open class DirectoryBasedStorage(private val dir: Path,
         return
       }
 
-      if (!dirtyFileNames.isEmpty) {
+      if (dirtyFileNames.isNotEmpty()) {
         saveStates(stateMap)
       }
       if (isSomeFileRemoved) {

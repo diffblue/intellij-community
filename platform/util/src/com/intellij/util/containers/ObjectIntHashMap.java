@@ -13,12 +13,12 @@ public class ObjectIntHashMap<K> extends TObjectIntHashMap<K> {
     super(initialCapacity);
   }
 
-  public ObjectIntHashMap(@NotNull TObjectHashingStrategy<K> strategy) {
-    super(strategy);
+  public ObjectIntHashMap(@NotNull TObjectHashingStrategy<? super K> strategy) {
+    super((TObjectHashingStrategy<K>)strategy);
   }
 
-  public ObjectIntHashMap(int initialCapacity, @NotNull TObjectHashingStrategy<K> strategy) {
-    super(initialCapacity, strategy);
+  public ObjectIntHashMap(int initialCapacity, @NotNull TObjectHashingStrategy<? super K> strategy) {
+    super(initialCapacity, (TObjectHashingStrategy<K>)strategy);
   }
 
   public ObjectIntHashMap() {
@@ -33,5 +33,11 @@ public class ObjectIntHashMap<K> extends TObjectIntHashMap<K> {
   public final int get(K key, int defaultValue) {
     int index = index(key);
     return index < 0 ? defaultValue : _values[index];
+  }
+
+  public int put(K key, int value, int defaultValue) {
+    int index = index(key);
+    int prev = super.put(key, value);
+    return index >= 0 ? prev : defaultValue;
   }
 }

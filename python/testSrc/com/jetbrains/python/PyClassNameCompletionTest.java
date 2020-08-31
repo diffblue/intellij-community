@@ -10,6 +10,7 @@ import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings;
 import com.jetbrains.python.fixtures.PyTestCase;
+import com.jetbrains.python.formatter.PyCodeStyleSettings;
 import com.jetbrains.python.psi.PyQualifiedNameOwner;
 import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
 import one.util.streamex.StreamEx;
@@ -41,11 +42,11 @@ public class PyClassNameCompletionTest extends PyTestCase {
   }
 
   public void testModule() {
-    doTest();
+    runWithAdditionalFileInLibDir("collections.py", "", (__) -> doTest());
   }
 
   public void testVariable() {
-    doTest();
+    runWithAdditionalFileInLibDir("datetime.py", "MAXYEAR = 10", (__) -> doTest());
   }
 
   public void testSubmodule() {  // PY-7887
@@ -96,6 +97,11 @@ public class PyClassNameCompletionTest extends PyTestCase {
     doTest();
   }
 
+  // PY-23475
+  public void testImportAddedAfterModuleLevelDunder() {
+    doTest();
+  }
+
   // PY-20976
   public void testOrderingLexicographicalBaseline() {
     doTestCompletionOrder("a.foo", "b.foo");
@@ -103,7 +109,11 @@ public class PyClassNameCompletionTest extends PyTestCase {
 
   // PY-20976
   public void testOrderingLocalBeforeStdlib() {
-    doTestCompletionOrder("local_pkg.path", "local_pkg.local_module.path", "sys.path");
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "path = 10",
+      (__) -> doTestCompletionOrder("local_pkg.path", "local_pkg.local_module.path", "sys.path")
+    );
   }
 
   // PY-20976
@@ -133,7 +143,11 @@ public class PyClassNameCompletionTest extends PyTestCase {
 
   // PY-20976
   public void testCombinedOrdering() {
-    doTestCompletionOrder("main.path", "first.foo.path", "sys.path", "_second.bar.path");
+    runWithAdditionalFileInLibDir(
+      "sys.py",
+      "path = 10",
+      (__) -> doTestCompletionOrder("main.path", "first.foo.path", "sys.path", "_second.bar.path")
+    );
   }
 
   // PY-20976
@@ -152,7 +166,7 @@ public class PyClassNameCompletionTest extends PyTestCase {
     myFixture.checkResultByFile(path + "/" + getTestName(true) + ".after.py", true);
   }
 
-  private void doTestCompletionOrder(@NotNull String... expected) {
+  private void doTestCompletionOrder(String @NotNull ... expected) {
     myFixture.copyDirectoryToProject("/completion/className/" + getTestName(true), "");
     myFixture.configureByFile("main.py");
     myFixture.complete(CompletionType.BASIC, 2);
@@ -176,5 +190,10 @@ public class PyClassNameCompletionTest extends PyTestCase {
 
       return Objects.toString(QualifiedNameFinder.findShortestImportableQName(item));
     }
+  }
+
+  @NotNull
+  private PyCodeStyleSettings getPythonCodeStyleSettings() {
+    return getCodeStyleSettings().getCustomSettings(PyCodeStyleSettings.class);
   }
 }

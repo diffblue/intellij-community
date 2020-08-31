@@ -15,6 +15,7 @@
  */
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
+import com.intellij.codeInsight.daemon.QuickFixBundle;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement;
 import com.intellij.openapi.editor.Editor;
@@ -43,14 +44,14 @@ public class AddAnnotationAttributeNameFix extends LocalQuickFixAndIntentionActi
   @NotNull
   @Override
   public String getText() {
-    return "Add '" + myName + "='";
+    return QuickFixBundle.message("add.annotation.attribute.name", myName);
   }
 
   @Nls
   @NotNull
   @Override
   public String getFamilyName() {
-    return "Add annotation attribute name";
+    return QuickFixBundle.message("add.annotation.attribute.name.family.name");
   }
 
   @Override
@@ -145,16 +146,7 @@ public class AddAnnotationAttributeNameFix extends LocalQuickFixAndIntentionActi
 
   @Nullable
   private static PsiClass getAnnotationClass(@NotNull PsiAnnotationParameterList parameterList) {
-    final PsiElement parent = parameterList.getParent();
-    if (parent instanceof PsiAnnotation) {
-      final PsiJavaCodeReferenceElement reference = ((PsiAnnotation)parent).getNameReferenceElement();
-      if (reference != null) {
-        final PsiElement resolved = reference.resolve();
-        if (resolved instanceof PsiClass && ((PsiClass)resolved).isAnnotationType()) {
-          return (PsiClass)resolved;
-        }
-      }
-    }
-    return null;
+    PsiElement parent = parameterList.getParent();
+    return parent instanceof PsiAnnotation ? ((PsiAnnotation)parent).resolveAnnotationType() : null;
   }
 }

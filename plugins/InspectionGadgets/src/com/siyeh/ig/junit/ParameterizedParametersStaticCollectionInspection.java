@@ -27,10 +27,10 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.changeSignature.ChangeSignatureProcessor;
 import com.intellij.refactoring.changeSignature.ParameterInfoImpl;
+import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -70,13 +70,13 @@ public class ParameterizedParametersStaticCollectionInspection extends BaseInspe
       @Override
       @NotNull
       public String getName() {
-        return infos.length > 0 ? (String)infos[0] : "Create @Parameterized.Parameters data provider";
+        return infos.length > 0 ? (String)infos[0] : InspectionGadgetsBundle.message("fix.data.provider.signature.text");
       }
 
       @NotNull
       @Override
       public String getFamilyName() {
-        return "Fix data provider signature";
+        return InspectionGadgetsBundle.message("fix.data.provider.signature.family.name");
       }
     };
   }
@@ -110,8 +110,8 @@ public class ParameterizedParametersStaticCollectionInspection extends BaseInspe
                     JavaPsiFacade.getInstance(project).findClass(Collection.class.getName(), GlobalSearchScope.allScope(project));
                   if (AnnotationUtil.isAnnotated(method, PARAMETERS_FQN, 0)) {
                     final PsiModifierList modifierList = method.getModifierList();
-                    String fixMessage = "Make method \'" + method.getName() + "\' ";
-                    String errorString = "Method \'#ref()\' should";
+                    String fixMessage = "Make method '" + method.getName() + "' ";
+                    String errorString = "Method '#ref()' should";
                     String signatureDescription = "";
                     if (!modifierList.hasModifierProperty(PsiModifier.PUBLIC)) {
                       signatureDescription += PsiModifier.PUBLIC;
@@ -157,13 +157,6 @@ public class ParameterizedParametersStaticCollectionInspection extends BaseInspe
         }
       }
     };
-  }
-
-  @Override
-  @Nls
-  @NotNull
-  public String getDisplayName() {
-    return "@RunWith(Parameterized.class) without data provider";
   }
 
   private static class MethodCandidate {

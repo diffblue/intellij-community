@@ -1,7 +1,7 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.ui.tree.render;
 
-import com.intellij.debugger.DebuggerBundle;
+import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebugProcess;
 import com.intellij.debugger.engine.DebuggerUtils;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
@@ -18,7 +18,7 @@ import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
-public class LabelRenderer extends TypeRenderer implements ValueLabelRenderer, OnDemandRenderer {
+public class LabelRenderer extends ReferenceRenderer implements ValueLabelRenderer, OnDemandRenderer {
   public static final @NonNls String UNIQUE_ID = "LabelRenderer";
   public boolean ON_DEMAND;
 
@@ -65,7 +65,7 @@ public class LabelRenderer extends TypeRenderer implements ValueLabelRenderer, O
         result = DebuggerUtils.getValueAsString(thisEvaluationContext, labelValue);
       }
       catch (final EvaluateException ex) {
-        throw new EvaluateException(DebuggerBundle.message("error.unable.to.evaluate.expression") + " " + ex.getMessage(), ex);
+        throw new EvaluateException(JavaDebuggerBundle.message("error.unable.to.evaluate.expression") + " " + ex.getMessage(), ex);
       }
     }
     else {

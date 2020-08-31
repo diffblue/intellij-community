@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ex;
 
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
@@ -8,6 +8,7 @@ import com.intellij.codeInspection.LocalInspectionTool;
 import com.intellij.codeInspection.dataFlow.DataFlowInspection;
 import com.intellij.codeInspection.deadCode.UnusedDeclarationInspectionBase;
 import com.intellij.codeInspection.unusedSymbol.UnusedSymbolLocalInspectionBase;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.profile.codeInspection.BaseInspectionProfileManager;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
@@ -32,7 +33,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.intellij.testFramework.assertions.Assertions.assertThat;
@@ -105,6 +105,16 @@ public class InspectionProfileTest extends LightIdeaTestCase {
 
   private static InspectionProfileImpl createProfile(@NotNull InspectionProfileImpl base) {
     return new InspectionProfileImpl(PROFILE, InspectionToolRegistrar.getInstance(), base);
+  }
+
+  public void testModificationWithoutModification() {
+    InspectionProfileImpl profile = createProfile();
+    profile.getAllTools();
+    assertTrue(profile.wasInitialized());
+    assertNotEmpty(profile.myTools.keySet());
+    profile.modifyProfile(m -> {});
+    assertTrue(profile.wasInitialized());
+    assertNotEmpty(profile.myTools.keySet());
   }
 
   public void testSameNameSharedProfile() {
@@ -260,7 +270,7 @@ public class InspectionProfileTest extends LightIdeaTestCase {
     profile = createProfile(new InspectionProfileImpl("foo"));
     profile.readExternal(unusedProfile);
     profile.modifyProfile(it -> {
-      InspectionToolWrapper toolWrapper = it.getInspectionTool("unused", getProject());
+      InspectionToolWrapper<?, ?> toolWrapper = it.getInspectionTool("unused", getProject());
       UnusedDeclarationInspectionBase tool = (UnusedDeclarationInspectionBase)toolWrapper.getTool();
       tool.ADD_NONJAVA_TO_ENTRIES = true;
       UnusedSymbolLocalInspectionBase inspectionTool = tool.getSharedLocalInspectionTool();
@@ -591,8 +601,20 @@ public class InspectionProfileTest extends LightIdeaTestCase {
       inspectionTool.CLASS = false;
     });
     String mergedText = "<profile version=\"1.0\">\n" +
-                        "  <option name=\"myName\" value=\"ToConvert\" />\n" +
-                        "</profile>";
+                            "  <option name=\"myName\" value=\"ToConvert\" />\n" +
+                            "  <inspection_tool class=\"unused\" enabled=\"true\" level=\"WARNING\" enabled_by_default=\"true\">\n" +
+                            "    <option name=\"LOCAL_VARIABLE\" value=\"true\" />\n" +
+                            "    <option name=\"FIELD\" value=\"true\" />\n" +
+                            "    <option name=\"METHOD\" value=\"true\" />\n" +
+                            "    <option name=\"CLASS\" value=\"false\" />\n" +
+                            "    <option name=\"PARAMETER\" value=\"true\" />\n" +
+                            "    <option name=\"REPORT_PARAMETER_FOR_PUBLIC_METHODS\" value=\"true\" />\n" +
+                            "    <option name=\"ADD_MAINS_TO_ENTRIES\" value=\"true\" />\n" +
+                            "    <option name=\"ADD_APPLET_TO_ENTRIES\" value=\"true\" />\n" +
+                            "    <option name=\"ADD_SERVLET_TO_ENTRIES\" value=\"true\" />\n" +
+                            "    <option name=\"ADD_NONJAVA_TO_ENTRIES\" value=\"false\" />\n" +
+                            "  </inspection_tool>\n" +
+                            "</profile>";
     assertEquals(mergedText, serialize(profile));
   }
 
@@ -771,10 +793,11 @@ public class InspectionProfileTest extends LightIdeaTestCase {
   }
 
   public void testLockProfile() {
-    final List<InspectionToolWrapper> list = new ArrayList<>();
+    List<InspectionToolWrapper<?, ?>> list = new ArrayList<>();
     list.add(createTool("foo", true));
 
-    Supplier<List<InspectionToolWrapper>> toolSupplier = () -> list;
+    InspectionToolsSupplier.Simple toolSupplier = new InspectionToolsSupplier.Simple(list);
+    Disposer.register(getTestRootDisposable(), toolSupplier);
     InspectionProfileImpl profile = createProfile(toolSupplier);
 
     List<ScopeToolState> tools = profile.getAllTools();
@@ -823,7 +846,7 @@ public class InspectionProfileTest extends LightIdeaTestCase {
     return JDOMUtil.writeElement(profile.writeScheme());
   }
 
-  private static InspectionProfileImpl createProfile(@NotNull Supplier<List<InspectionToolWrapper>> toolSupplier) {
+  private static InspectionProfileImpl createProfile(@NotNull InspectionToolsSupplier toolSupplier) {
     InspectionProfileImpl base = new InspectionProfileImpl("Base", toolSupplier, (InspectionProfileImpl)null);
     return new InspectionProfileImpl("Foo", toolSupplier, base);
   }
@@ -865,15 +888,15 @@ public class InspectionProfileTest extends LightIdeaTestCase {
   public void testDoNotInstantiateOnSave() {
     InspectionProfileImpl profile = new InspectionProfileImpl("profile", InspectionToolRegistrar.getInstance(), InspectionProfileKt.getBASE_PROFILE());
     assertEquals(0, countInitializedTools(profile));
-    InspectionToolWrapper[] toolWrappers = profile.getInspectionTools(null);
-    assertTrue(toolWrappers.length > 0);
-    InspectionToolWrapper toolWrapper = profile.getInspectionTool(new DataFlowInspection().getShortName(), getProject());
+    List<InspectionToolWrapper<?, ?>> toolWrappers = profile.getInspectionTools(null);
+    assertTrue(toolWrappers.size() > 0);
+    InspectionToolWrapper<?, ?> toolWrapper = profile.getInspectionTool(new DataFlowInspection().getShortName(), getProject());
     assertNotNull(toolWrapper);
     String id = toolWrapper.getShortName();
     profile.setToolEnabled(id, !profile.isToolEnabled(HighlightDisplayKey.findById(id)));
     assertThat(countInitializedTools(profile)).isEqualTo(0);
     profile.writeScheme();
-    List<InspectionToolWrapper> initializedTools = getInitializedTools(profile);
+    List<InspectionToolWrapper<?, ?>> initializedTools = getInitializedTools(profile);
     assertEmpty(initializedTools.stream().map(InspectionToolWrapper::getShortName).collect(Collectors.joining(", ")), initializedTools);
   }
 
@@ -895,8 +918,8 @@ public class InspectionProfileTest extends LightIdeaTestCase {
   }
 
   @NotNull
-  public static List<InspectionToolWrapper> getInitializedTools(@NotNull InspectionProfileImpl foo) {
-    List<InspectionToolWrapper> initialized = null;
+  public static List<InspectionToolWrapper<?, ?>> getInitializedTools(@NotNull InspectionProfileImpl foo) {
+    List<InspectionToolWrapper<?, ?>> initialized = null;
     List<ScopeToolState> tools = foo.getAllTools();
     for (ScopeToolState tool : tools) {
       InspectionToolWrapper toolWrapper = tool.getTool();

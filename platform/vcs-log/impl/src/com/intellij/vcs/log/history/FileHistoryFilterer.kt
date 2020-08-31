@@ -1,7 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.history
 
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.UnorderedPair
 import com.intellij.openapi.vcs.AbstractVcs
 import com.intellij.openapi.vcs.FilePath
@@ -45,17 +45,13 @@ internal class FileHistoryFilterer(logData: VcsLogData) : VcsLogFilterer {
                       sortType: PermanentGraph.SortType,
                       filters: VcsLogFilterCollection,
                       commitCount: CommitCountStage): Pair<VisiblePack, CommitCountStage> {
-    val filePath = getFilePath(filters)
-    if (filePath == null || filePath.isDirectory) {
-      return vcsLogFilterer.filter(dataPack, oldVisiblePack, sortType, filters, commitCount)
-    }
+    val filePath = getFilePath(filters) ?: return vcsLogFilterer.filter(dataPack, oldVisiblePack, sortType, filters, commitCount)
+    LOG.assertTrue(!filePath.isDirectory)
     val root = VcsLogUtil.getActualRoot(project, filePath)!!
     return MyWorker(root, filePath, getHash(filters)).filter(dataPack, oldVisiblePack, sortType, filters, commitCount)
   }
 
-  override fun canFilterEmptyPack(filters: VcsLogFilterCollection): Boolean {
-    return getFilePath(filters)?.run { !isDirectory } ?: false
-  }
+  override fun canFilterEmptyPack(filters: VcsLogFilterCollection): Boolean = true
 
   private inner class MyWorker constructor(private val root: VirtualFile,
                                            private val filePath: FilePath,
@@ -216,7 +212,7 @@ internal class FileHistoryFilterer(logData: VcsLogData) : VcsLogFilterer {
       LOG.debug("Found ${renames.size} renames for ${fileHistory.unmatchedAdditionsDeletions.size} addition-deletions in " +
                 StopWatch.formatTime(System.currentTimeMillis() - start))
 
-      val result = MultiMap.createSmart<UnorderedPair<Int>, Rename>()
+      val result = MultiMap<UnorderedPair<Int>, Rename>()
       renames.forEach { result.putValue(it.commits, it) }
       return result
     }
@@ -235,9 +231,9 @@ internal class FileHistoryFilterer(logData: VcsLogData) : VcsLogFilterer {
     val revisionFilter = filters.get(VcsLogFilterCollection.REVISION_FILTER)
     return revisionFilter?.heads?.singleOrNull()?.hash
   }
-  
+
   companion object {
-    private val LOG = Logger.getInstance(FileHistoryFilterer::class.java)
+    private val LOG = logger<FileHistoryFilterer>()
 
     private fun getStructureFilter(filters: VcsLogFilterCollection) = filters.detailsFilters.singleOrNull() as? VcsLogStructureFilter
 
@@ -264,10 +260,15 @@ internal class FileHistoryFilterer(logData: VcsLogData) : VcsLogFilterer {
 }
 
 private fun <K : Any?, V : Any?> MultiMap<K, V>.union(map: MultiMap<K, V>): MultiMap<K, V> {
-  if (isEmpty) return map
-  if (map.isEmpty) return this
-  return MultiMap.createSmart<K, V>().also {
-    it.putAllValues(this)
-    it.putAllValues(map)
+  if (isEmpty) {
+    return map
   }
+  if (map.isEmpty) {
+    return this
+  }
+
+  val result = MultiMap<K, V>()
+  result.putAllValues(this)
+  result.putAllValues(map)
+  return result
 }

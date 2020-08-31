@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.ui;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
@@ -14,21 +13,17 @@ import com.intellij.codeInspection.reference.RefElement;
 import com.intellij.codeInspection.reference.RefEntity;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.Interner;
-import com.intellij.util.containers.WeakStringInterner;
+import com.intellij.xml.util.XmlStringUtil;
 import gnu.trove.TObjectIntHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.IntSupplier;
 
-/**
- * @author max
- */
 public class ProblemDescriptionNode extends SuppressableInspectionTreeNode {
   private final CommonProblemDescriptor myDescriptor;
   private final HighlightDisplayLevel myLevel;
@@ -87,7 +82,11 @@ public class ProblemDescriptionNode extends SuppressableInspectionTreeNode {
     CommonProblemDescriptor descriptor = getDescriptor();
     if (descriptor == null) return null;
     PsiElement element = descriptor instanceof ProblemDescriptor ? ((ProblemDescriptor)descriptor).getPsiElement() : null;
-    return ProblemDescriptorUtil.renderDescriptionMessage(descriptor, element, false);
+    String message = ProblemDescriptorUtil.renderDescriptionMessage(descriptor, element, false);
+    if (XmlStringUtil.isWrappedInHtml(message)) {
+      return message;
+    }
+    return XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(message));
   }
 
   @Override
@@ -105,7 +104,7 @@ public class ProblemDescriptionNode extends SuppressableInspectionTreeNode {
   }
 
   @NotNull
-  public InspectionToolWrapper getToolWrapper() {
+  public InspectionToolWrapper<?, ?> getToolWrapper() {
     return getPresentation().getToolWrapper();
   }
 
@@ -160,7 +159,7 @@ public class ProblemDescriptionNode extends SuppressableInspectionTreeNode {
     return descriptor != null && getPresentation().isExcluded(descriptor);
   }
 
-  private static final Interner<String> NAME_INTERNER = new WeakStringInterner();
+  private static final Interner<String> NAME_INTERNER = Interner.createWeakInterner();
 
   @NotNull
   @Override
@@ -168,7 +167,7 @@ public class ProblemDescriptionNode extends SuppressableInspectionTreeNode {
     CommonProblemDescriptor descriptor = getDescriptor();
     if (descriptor == null) return "";
     PsiElement element = descriptor instanceof ProblemDescriptor ? ((ProblemDescriptor)descriptor).getPsiElement() : null;
-    String name = StringUtil.removeHtmlTags(ProblemDescriptorUtil.renderDescriptionMessage(descriptor, element, ProblemDescriptorUtil.TRIM_AT_TREE_END), true);
+    String name = ProblemDescriptorUtil.renderDescriptionMessage(descriptor, element, ProblemDescriptorUtil.TRIM_AT_TREE_END);
     return NAME_INTERNER.intern(name);
   }
 

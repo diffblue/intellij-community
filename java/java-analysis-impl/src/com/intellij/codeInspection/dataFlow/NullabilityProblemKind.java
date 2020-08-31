@@ -3,6 +3,7 @@ package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInsight.Nullability;
 import com.intellij.codeInspection.InspectionsBundle;
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTypesUtil;
@@ -22,7 +23,9 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static com.intellij.codeInspection.InspectionsBundle.BUNDLE;
+import static com.intellij.java.analysis.JavaAnalysisBundle.BUNDLE;
+import static com.intellij.psi.CommonClassNames.JAVA_LANG_NULL_POINTER_EXCEPTION;
+import static com.intellij.psi.CommonClassNames.JAVA_LANG_RUNTIME_EXCEPTION;
 import static com.intellij.util.ObjectUtils.tryCast;
 
 /**
@@ -30,9 +33,9 @@ import static com.intellij.util.ObjectUtils.tryCast;
  * @param <T> a type of anchor element which could be associated with given nullability problem kind
  */
 public class NullabilityProblemKind<T extends PsiElement> {
-  private static final String NPE = CommonClassNames.JAVA_LANG_NULL_POINTER_EXCEPTION;
-  private static final String RE = CommonClassNames.JAVA_LANG_RUNTIME_EXCEPTION;
-  
+  private static final String NPE = JAVA_LANG_NULL_POINTER_EXCEPTION;
+  private static final String RE = JAVA_LANG_RUNTIME_EXCEPTION;
+
   private final String myName;
   private final String myAlwaysNullMessage;
   private final String myNormalMessage;
@@ -55,8 +58,8 @@ public class NullabilityProblemKind<T extends PsiElement> {
                                  @NotNull @PropertyKey(resourceBundle = BUNDLE) String normalMessage) {
     myException = exception;
     myName = name;
-    myAlwaysNullMessage = InspectionsBundle.message(alwaysNullMessage);
-    myNormalMessage = InspectionsBundle.message(normalMessage);
+    myAlwaysNullMessage = JavaAnalysisBundle.message(alwaysNullMessage);
+    myNormalMessage = JavaAnalysisBundle.message(normalMessage);
   }
 
   public static final NullabilityProblemKind<PsiMethodCallExpression> callNPE =
@@ -160,6 +163,10 @@ public class NullabilityProblemKind<T extends PsiElement> {
     }
     PsiElement parent = context.getParent();
     if (parent instanceof PsiReferenceExpression) {
+      PsiElement resolved = ((PsiReferenceExpression)parent).resolve();
+      if (resolved instanceof PsiMember && ((PsiMember)resolved).hasModifierProperty(PsiModifier.STATIC)) {
+        return null;
+      }
       PsiElement grandParent = parent.getParent();
       if (grandParent instanceof PsiMethodCallExpression) {
         return callNPE.problem((PsiMethodCallExpression)grandParent, expression);
@@ -198,10 +205,16 @@ public class NullabilityProblemKind<T extends PsiElement> {
     if (parent instanceof PsiArrayInitializerExpression) {
       return getArrayInitializerProblem((PsiArrayInitializerExpression)parent, expression, context);
     }
-    if (parent instanceof PsiIfStatement || parent instanceof PsiWhileStatement || parent instanceof PsiDoWhileStatement ||
-        parent instanceof PsiUnaryExpression || parent instanceof PsiConditionalExpression || parent instanceof PsiTypeCastExpression ||
-        (parent instanceof PsiForStatement && ((PsiForStatement)parent).getCondition() == context) ||
-        (parent instanceof PsiAssertStatement && ((PsiAssertStatement)parent).getAssertCondition() == context)) {
+    if (parent instanceof PsiTypeCastExpression) {
+      if (TypeConversionUtil.isAssignableFromPrimitiveWrapper(context.getType())) {
+        // Only casts to primitives are here; casts to objects were already traversed by findTopExpression
+        return unboxingNullable.problem(context, expression);
+      }
+    }
+    else if (parent instanceof PsiIfStatement || parent instanceof PsiWhileStatement || parent instanceof PsiDoWhileStatement ||
+             parent instanceof PsiUnaryExpression || parent instanceof PsiConditionalExpression ||
+             (parent instanceof PsiForStatement && ((PsiForStatement)parent).getCondition() == context) ||
+             (parent instanceof PsiAssertStatement && ((PsiAssertStatement)parent).getAssertCondition() == context)) {
       return createUnboxingProblem(context, expression);
     }
     if (parent instanceof PsiSwitchBlock) {
@@ -243,11 +256,11 @@ public class NullabilityProblemKind<T extends PsiElement> {
       return fieldAccessNPE.problem(context, expression);
     }
     PsiParameter parameter = MethodCallUtils.getParameterForArgument(context);
+    PsiElement grandParent = expressionList.getParent();
     if (parameter != null) {
       if (parameter.getType() instanceof PsiPrimitiveType) {
         return createUnboxingProblem(context, expression);
       }
-      PsiElement grandParent = expressionList.getParent();
       if (grandParent instanceof PsiAnonymousClass) {
         grandParent = grandParent.getParent();
       }
@@ -260,6 +273,12 @@ public class NullabilityProblemKind<T extends PsiElement> {
         if (nullability == Nullability.UNKNOWN) {
           return passingToNonAnnotatedParameter.problem(context, expression);
         }
+      }
+    }
+    else if (grandParent instanceof PsiCall && MethodCallUtils.isVarArgCall((PsiCall)grandParent)) {
+      Nullability nullability = DfaPsiUtil.getVarArgComponentNullability(((PsiCall)grandParent).resolveMethod());
+      if (nullability == Nullability.NOT_NULL) {
+        return passingToNotNullParameter.problem(context, expression);
       }
     }
     return null;
@@ -491,13 +510,13 @@ public class NullabilityProblemKind<T extends PsiElement> {
     }
     
     @NotNull
-    public String getMessage(Map<PsiExpression, DataFlowInstructionVisitor.ConstantResult> expressions) {
+    public String getMessage(Map<PsiExpression, DataFlowInspectionBase.ConstantResult> expressions) {
       if (myKind.myAlwaysNullMessage == null || myKind.myNormalMessage == null) {
         throw new IllegalStateException("This problem kind has no message associated: " + myKind);
       }
       PsiExpression expression = PsiUtil.skipParenthesizedExprDown(getDereferencedExpression());
       if (expression != null) {
-        if (ExpressionUtils.isNullLiteral(expression) || expressions.get(expression) == DataFlowInstructionVisitor.ConstantResult.NULL) {
+        if (ExpressionUtils.isNullLiteral(expression) || expressions.get(expression) == DataFlowInspectionBase.ConstantResult.NULL) {
           return myKind.myAlwaysNullMessage;
         }
       }

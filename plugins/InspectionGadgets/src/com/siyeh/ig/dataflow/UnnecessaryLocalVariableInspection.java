@@ -21,13 +21,13 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.fixes.InlineVariableFix;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
@@ -54,12 +54,6 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
   public void writeSettings(@NotNull Element node) throws WriteExternalException {
     defaultWriteSettings(node, "m_ignoreAnnotatedVariablesNew");
     writeBooleanOption(node, "m_ignoreAnnotatedVariablesNew", true);
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("redundant.local.variable.display.name");
   }
 
   @Override
@@ -142,7 +136,7 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
         return false;
       }
       final PsiReturnStatement returnStatement = (PsiReturnStatement)nextStatement;
-      final PsiExpression returnValue = ParenthesesUtils.stripParentheses(returnStatement.getReturnValue());
+      final PsiExpression returnValue = PsiUtil.skipParenthesizedExprDown(returnStatement.getReturnValue());
       if (!(returnValue instanceof PsiReferenceExpression)) {
         return false;
       }
@@ -162,7 +156,7 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
       PsiYieldStatement yieldStatement =
         tryCast(PsiTreeUtil.getNextSiblingOfType(declarationStatement, PsiStatement.class), PsiYieldStatement.class);
       if (yieldStatement == null) return false;
-      PsiExpression returnValue = ParenthesesUtils.stripParentheses(yieldStatement.getExpression());
+      PsiExpression returnValue = PsiUtil.skipParenthesizedExprDown(yieldStatement.getExpression());
       return returnValue instanceof PsiReferenceExpression &&
              ExpressionUtils.isReferenceTo(returnValue, variable) &&
              !isVariableUsedInFollowingDeclarations(variable, declarationStatement);
@@ -183,7 +177,7 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
         return false;
       }
       final PsiThrowStatement throwStatement = (PsiThrowStatement)nextStatement;
-      final PsiExpression returnValue = ParenthesesUtils.stripParentheses(throwStatement.getException());
+      final PsiExpression returnValue = PsiUtil.skipParenthesizedExprDown(throwStatement.getException());
       if (!(returnValue instanceof PsiReferenceExpression)) {
         return false;
       }
@@ -218,7 +212,7 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
       if (tokenType != JavaTokenType.EQ) {
         return false;
       }
-      final PsiExpression rhs = ParenthesesUtils.stripParentheses(assignmentExpression.getRExpression());
+      final PsiExpression rhs = PsiUtil.skipParenthesizedExprDown(assignmentExpression.getRExpression());
       if (!(rhs instanceof PsiReferenceExpression)) {
         return false;
       }
@@ -263,7 +257,7 @@ public class UnnecessaryLocalVariableInspection extends BaseInspection {
             continue;
           }
           final PsiVariable nextVariable = (PsiVariable)declaration;
-          final PsiExpression initializer = ParenthesesUtils.stripParentheses(nextVariable.getInitializer());
+          final PsiExpression initializer = PsiUtil.skipParenthesizedExprDown(nextVariable.getInitializer());
           if (!referenceFound && initializer instanceof PsiReferenceExpression) {
             final PsiReferenceExpression referenceExpression = (PsiReferenceExpression)initializer;
             final PsiElement referent = referenceExpression.resolve();

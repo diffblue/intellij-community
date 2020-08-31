@@ -1,12 +1,12 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.impl
 
 import com.intellij.diff.util.Range
 import com.intellij.openapi.components.*
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vcs.changes.ChangeListManager
-import com.intellij.openapi.vcs.changes.InvokeAfterUpdateMode
 import com.intellij.openapi.vcs.ex.ChangelistsLocalLineStatusTracker
 import com.intellij.openapi.vcs.ex.ChangelistsLocalLineStatusTracker.RangeState
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -16,11 +16,9 @@ import org.jdom.Element
 private typealias TrackerState = ChangelistsLocalLineStatusTracker.State
 private typealias FullTrackerState = ChangelistsLocalLineStatusTracker.FullState
 
+@Service
 @State(name = "LineStatusTrackerManager", storages = [(Storage(value = StoragePathMacros.WORKSPACE_FILE))])
-class PartialLineStatusTrackerManagerState(
-  private val project: Project,
-  private val lineStatusTracker: LineStatusTrackerManager
-) : ProjectComponent, PersistentStateComponent<Element> {
+class PartialLineStatusTrackerManagerState(private val project: Project) : PersistentStateComponent<Element> {
   private val NODE_PARTIAL_FILE = "file"
   private val ATT_PATH = "path"
 
@@ -36,30 +34,34 @@ class PartialLineStatusTrackerManagerState(
   private val ATT_END_2 = "end2"
   private val ATT_CHANGELIST_ID = "changelist"
 
+  private var storedFileStates: List<TrackerState> = listOf()
+  private var wasLoaded: Boolean = false
 
   override fun getState(): Element {
     val element = Element("state")
-    val fileStates = lineStatusTracker.collectPartiallyChangedFilesStates()
+    val fileStates = (LineStatusTrackerManager.getInstance(project) as LineStatusTrackerManager).collectPartiallyChangedFilesStates()
     for (state in fileStates) {
       element.addContent(writePartialFileState(state))
     }
-
     return element
   }
 
   override fun loadState(element: Element) {
+    if (wasLoaded) return
+
     val fileStates = mutableListOf<TrackerState>()
     for (node in element.getChildren(NODE_PARTIAL_FILE)) {
       val state = readPartialFileState(node)
       if (state != null) fileStates.add(state)
     }
+    storedFileStates = fileStates
+  }
 
-    if (fileStates.isNotEmpty()) {
-      ChangeListManager.getInstance(project).invokeAfterUpdate(
-        {
-          lineStatusTracker.restoreTrackersForPartiallyChangedFiles(fileStates)
-        }, InvokeAfterUpdateMode.SILENT, null, null)
-    }
+  internal fun getStatesAndClear(): List<TrackerState> {
+    val result = storedFileStates
+    storedFileStates = emptyList()
+    wasLoaded = true
+    return result
   }
 
   private fun writePartialFileState(state: FullTrackerState): Element {

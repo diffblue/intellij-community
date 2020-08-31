@@ -100,11 +100,12 @@ public class DataPack extends DataPackBase {
 
   @Override
   public String toString() {
-    return "{DataPack. " + myPermanentGraph.getAllCommits().size() + " commits in " + myLogProviders.keySet().size() + " roots}";
+    return "{DataPack. " + myPermanentGraph.getAllCommits().size() + " commits in " + myLogProviders.keySet().size() + " roots}"; // NON-NLS
   }
 
   public static class ErrorDataPack extends DataPack {
     @NotNull private final Throwable myError;
+
     public ErrorDataPack(@NotNull Throwable error) {
       super(RefsModel.createEmptyInstance(VcsLogStorageImpl.EMPTY), EmptyPermanentGraph.getInstance(), Collections.emptyMap(), false);
       myError = error;

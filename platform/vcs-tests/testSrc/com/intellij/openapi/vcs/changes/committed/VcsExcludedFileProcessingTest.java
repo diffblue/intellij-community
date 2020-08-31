@@ -12,9 +12,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * @author nik
- */
 public class VcsExcludedFileProcessingTest extends HeavyPlatformTestCase {
   private ProjectLevelVcsManagerImpl myVcsManager;
   private MockAbstractVcs myVcs;
@@ -27,6 +24,7 @@ public class VcsExcludedFileProcessingTest extends HeavyPlatformTestCase {
     myVcs = new MockAbstractVcs(myProject);
     myVcsManager = (ProjectLevelVcsManagerImpl)ProjectLevelVcsManager.getInstance(myProject);
     myVcsManager.registerVcs(myVcs);
+    myVcsManager.waitForInitialized();
   }
 
   public void testFileUnderExcludedRoot() throws IOException {

@@ -1,7 +1,6 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.testing;
 
-import com.google.common.collect.Sets;
 import com.intellij.execution.Location;
 import com.intellij.execution.actions.ConfigurationContext;
 import com.intellij.execution.configurations.ConfigurationFactory;
@@ -218,7 +217,7 @@ abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPy
 
   protected boolean isTestFolder(@NotNull final VirtualFile virtualFile, @NotNull final Project project) {
     @NonNls final String name = virtualFile.getName();
-    final HashSet<VirtualFile> roots = Sets.newHashSet();
+    final HashSet<VirtualFile> roots = new HashSet<VirtualFile>();
     final Module[] modules = ModuleManager.getInstance(project).getModules();
     for (Module module : modules) {
       roots.addAll(PyUtil.getSourceRoots(module));
@@ -234,12 +233,12 @@ abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPy
   protected boolean isTestClass(@NotNull final PyClass pyClass,
                                 @Nullable final AbstractPythonLegacyTestRunConfiguration configuration,
                                 @Nullable final TypeEvalContext context) {
-    return PythonUnitTestUtil.isTestClass(pyClass, ThreeState.UNSURE, context);
+    return PythonUnitTestDetectorsBasedOnSettings.isTestClass(pyClass, ThreeState.UNSURE, context);
   }
 
   protected boolean isTestFunction(@NotNull final PyFunction pyFunction,
                                    @Nullable final AbstractPythonLegacyTestRunConfiguration configuration) {
-    return PythonUnitTestUtil.isTestFunction(pyFunction, ThreeState.UNSURE, null);
+    return PythonUnitTestDetectorsBasedOnSettings.isTestFunction(pyFunction, ThreeState.UNSURE, null);
   }
 
   protected boolean isTestFile(@NotNull final PyFile file) {
@@ -267,7 +266,7 @@ abstract public class PythonTestLegacyConfigurationProducer<T extends AbstractPy
   protected List<PyStatement> getTestCaseClassesFromFile(@NotNull final PyFile pyFile) {
     final TypeEvalContext context = TypeEvalContext.userInitiated(pyFile.getProject(), pyFile);
     return pyFile.getTopLevelClasses().stream()
-      .filter(o -> PythonUnitTestUtil.isTestClass(o, ThreeState.UNSURE, context))
+      .filter(o -> PythonUnitTestDetectorsBasedOnSettings.isTestClass(o, ThreeState.UNSURE, context))
       .collect(Collectors.toList());
   }
 }

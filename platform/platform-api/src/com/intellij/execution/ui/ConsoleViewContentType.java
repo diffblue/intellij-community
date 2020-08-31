@@ -23,8 +23,10 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.util.Key;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -100,6 +102,16 @@ public class ConsoleViewContentType {
       return EditorColorsManager.getInstance().getGlobalScheme().getAttributes(myTextAttributesKey);
     }
     return myTextAttributes;
+  }
+
+  @ApiStatus.Internal
+  public @Nullable TextAttributes getForcedAttributes() {
+    return myTextAttributes;
+  }
+
+  @Nullable
+  public TextAttributesKey getAttributesKey() {
+    return myTextAttributesKey;
   }
 
   @NotNull

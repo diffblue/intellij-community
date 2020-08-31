@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.Patches;
 import com.intellij.openapi.util.Pair;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.openapi.util.registry.Registry;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.ui.JBInsets;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -17,8 +18,8 @@ public final class ScreenUtil {
   public static final String DISPOSE_TEMPORARY = "dispose.temporary";
 
   @Nullable private static final Map<GraphicsConfiguration, Pair<Insets, Long>> ourInsetsCache =
-    Patches.isJdkBugId8004103() ? ContainerUtil.createWeakMap() : null;
-  private static final int ourInsetsTimeout = 5000;  // shouldn't be too long
+    Patches.isJdkBugId8004103() || Registry.is("ide.cache.screen.insets", false) ? CollectionFactory.createWeakMap() : null;
+  private static final int ourInsetsTimeout = Registry.intValue("ide.insets.cache.timeout", 5000);  // shouldn't be too long
 
   private ScreenUtil() { }
 
@@ -75,7 +76,7 @@ public final class ScreenUtil {
    *
    * @return the smallest rectangle that encloses a visible area of every screen
    */
-  public static Rectangle getAllScreensRectangle() {
+  public static @NotNull Rectangle getAllScreensRectangle() {
     GraphicsDevice[] devices = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
     if (devices.length == 0) {
       return new Rectangle();

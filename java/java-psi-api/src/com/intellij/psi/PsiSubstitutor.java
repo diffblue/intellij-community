@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2013 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi;
 
 import com.intellij.openapi.util.Key;
@@ -27,11 +13,9 @@ import java.util.Map;
  * Represents a mapping between type parameters and their values.
  *
  * @author ik, dsl
- * @see com.intellij.psi.JavaResolveResult#getSubstitutor()
+ * @see JavaResolveResult#getSubstitutor()
  */
 public interface PsiSubstitutor {
-  Key<PsiSubstitutor> KEY = KeyWithDefaultValue.create("SUBSTITUTOR", EmptySubstitutor.getInstance());
-
   /**
    * Empty, or natural, substitutor. For any type parameter {@code T},
    * substitutes type {@code T}.
@@ -40,6 +24,9 @@ public interface PsiSubstitutor {
    */
   @NotNull
   PsiSubstitutor EMPTY = EmptySubstitutor.getInstance();
+
+  Key<PsiSubstitutor> KEY = KeyWithDefaultValue.create("SUBSTITUTOR", EMPTY);
+
   @NotNull
   PsiSubstitutor UNKNOWN = EMPTY;
 
@@ -113,7 +100,7 @@ public interface PsiSubstitutor {
    */
   @NotNull
   @Contract(pure = true)
-  default PsiSubstitutor putAll(@NotNull Map<PsiTypeParameter, PsiType> map) {
+  default PsiSubstitutor putAll(@NotNull Map<? extends PsiTypeParameter, ? extends PsiType> map) {
     return putAll(createSubstitutor(map));
   }
 
@@ -132,7 +119,7 @@ public interface PsiSubstitutor {
    * @return a substitutor backed by the supplied map
    */
   @NotNull
-  static PsiSubstitutor createSubstitutor(@Nullable Map<PsiTypeParameter, PsiType> map) {
+  static PsiSubstitutor createSubstitutor(@Nullable Map<? extends PsiTypeParameter, ? extends PsiType> map) {
     if (map == null || map.isEmpty()) return EMPTY;
     return EMPTY.putAll(map);
   }

@@ -1,13 +1,15 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.typeMigration.ui;
 
+import com.intellij.CommonBundle;
 import com.intellij.find.FindSettings;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.ide.util.scopeChooser.ScopeChooserCombo;
+import com.intellij.java.refactoring.JavaRefactoringBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -55,7 +57,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
   private final ScopeChooserCombo myScopeChooserCombo;
 
   public TypeMigrationDialog(@NotNull Project project,
-                             @NotNull PsiElement[] roots,
+                             PsiElement @NotNull [] roots,
                              @Nullable TypeMigrationRules rules) {
     super(project, false);
     myRoots = roots;
@@ -75,7 +77,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
   @Override
   protected void doAction() {
     if (myScopeChooserCombo.getSelectedScope() == null) {
-      Messages.showErrorDialog("Scope is not chosen", "Error");
+      Messages.showErrorDialog(JavaRefactoringBundle.message("type.migration.no.scope.warning.message"), CommonBundle.getErrorTitle());
       return;
     }
     FindSettings.getInstance().setDefaultScopeName(myScopeChooserCombo.getSelectedScopeName());
@@ -101,7 +103,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
     appendMigrationTypeEditor(panel, gc);
     LabeledComponent<ScopeChooserCombo> scopeChooserComponent = new LabeledComponent<>();
     scopeChooserComponent.setComponent(myScopeChooserCombo);
-    scopeChooserComponent.setText("Choose scope where change signature may occur");
+    scopeChooserComponent.setText(JavaRefactoringBundle.message("type.migration.choose.scope.title"));
     panel.add(scopeChooserComponent, gc);
     return panel;
   }
@@ -120,7 +122,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
     private final Function<PsiElement, PsiType> myMigrationTypeFunction;
 
     public MultipleElements(@NotNull Project project,
-                            @NotNull PsiElement[] roots,
+                            PsiElement @NotNull [] roots,
                             @NotNull Function<PsiElement, PsiType> migrationTypeFunction,
                             @NotNull TypeMigrationRules rules) {
       super(project, roots, rules);
@@ -140,7 +142,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
     private final EditorComboBox myToTypeEditor;
 
     public SingleElement(@NotNull Project project,
-                         @NotNull PsiElement[] roots) {
+                         PsiElement @NotNull [] roots) {
       super(project, roots, null);
       LOG.assertTrue(roots.length > 0);
       final PsiType rootType = getRootType();
@@ -162,7 +164,7 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
       final PsiDocumentManager documentManager = PsiDocumentManager.getInstance(project);
       final Document document = documentManager.getDocument(myTypeCodeFragment);
       assert document != null;
-      myToTypeEditor = new EditorComboBox(document, project, StdFileTypes.JAVA);
+      myToTypeEditor = new EditorComboBox(document, project, JavaFileType.INSTANCE);
       final String[] types = getValidTypes(project, root);
       myToTypeEditor.setHistory(types != null ? types : new String[]{document.getText()});
       document.addDocumentListener(new DocumentListener() {
@@ -179,8 +181,8 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
     protected void canRun() throws ConfigurationException {
       super.canRun();
       if (!checkType(getMigrationType()))
-        throw new ConfigurationException("\'" + StringUtil.escapeXmlEntities(myTypeCodeFragment.getText()) + "\' is an invalid type");
-      if (isVoidVariableMigration()) throw new ConfigurationException("\'void\' is not applicable");
+        throw new ConfigurationException("'" + StringUtil.escapeXmlEntities(myTypeCodeFragment.getText()) + "' is an invalid type");
+      if (isVoidVariableMigration()) throw new ConfigurationException("'void' is not applicable");
     }
 
     @Override
@@ -192,12 +194,11 @@ public abstract class TypeMigrationDialog extends RefactoringDialog {
     protected void appendMigrationTypeEditor(JPanel panel, GridBagConstraints gc) {
       final PsiType type = getRootType();
       final String typeText = type != null ? type.getPresentableText() : "<unknown>";
-      panel.add(new JLabel("Migrate " + getElementPresentation(myRoots[0]) + " \"" + typeText + "\" to"), gc);
+      panel.add(new JLabel(JavaRefactoringBundle.message("type.migration.label", getElementPresentation(myRoots[0]), typeText)), gc);
       panel.add(myToTypeEditor, gc);
     }
 
-    @Nullable
-    private String[] getValidTypes(final Project project, final PsiElement root) {
+    private String @Nullable [] getValidTypes(final Project project, final PsiElement root) {
       if (root instanceof PsiField || root instanceof PsiMethod) {
         final PsiModifierList modifierList = ((PsiModifierListOwner)root).getModifierList();
         if (VisibilityUtil.compare(VisibilityUtil.getVisibilityModifier(modifierList), PsiModifier.PRIVATE) < 0) return null;

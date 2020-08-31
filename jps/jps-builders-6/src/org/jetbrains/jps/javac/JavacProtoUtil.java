@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.javac;
 
 import com.google.protobuf.ByteString;
@@ -16,8 +16,7 @@ import java.util.*;
 /**
  * @author Eugene Zhuravlev
  */
-public class JavacProtoUtil {
-
+public final class JavacProtoUtil {
   public static JavacRemoteProto.Message.Request createCancelRequest() {
     return JavacRemoteProto.Message.Request.newBuilder().setRequestType(JavacRemoteProto.Message.Request.Type.CANCEL).build();
   }
@@ -30,7 +29,7 @@ public class JavacProtoUtil {
                                                                           Collection<? extends File> files,
                                                                           Collection<? extends File> classpath,
                                                                           Collection<? extends File> platformCp,
-                                                                          Collection<? extends File> modulePath,
+                                                                          ModulePath modulePath,
                                                                           Collection<? extends File> upgradeModulePath,
                                                                           Collection<? extends File> sourcePath,
                                                                           Map<File, Set<File>> outs) {
@@ -46,8 +45,13 @@ public class JavacProtoUtil {
     for (File file : platformCp) {
       builder.addPlatformClasspath(FileUtilRt.toSystemIndependentName(file.getPath()));
     }
-    for (File file : modulePath) {
-      builder.addModulePath(FileUtilRt.toSystemIndependentName(file.getPath()));
+    for (File file : modulePath.getPath()) {
+      final String pathEntry = FileUtilRt.toSystemIndependentName(file.getPath());
+      builder.addModulePath(pathEntry);
+      final String moduleName = modulePath.getModuleName(file);
+      if (moduleName != null) {
+        builder.putModuleNames(pathEntry, moduleName);
+      }
     }
     for (File file : upgradeModulePath) {
       builder.addUpgradeModulePath(FileUtilRt.toSystemIndependentName(file.getPath()));

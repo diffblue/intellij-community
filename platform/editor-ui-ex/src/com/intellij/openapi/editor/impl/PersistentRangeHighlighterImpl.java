@@ -15,11 +15,11 @@
  */
 package com.intellij.openapi.editor.impl;
 
+import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.ex.DocumentEx;
 import com.intellij.openapi.editor.impl.event.DocumentEventImpl;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.util.DocumentUtil;
 import com.intellij.util.diff.FilesTooBigForDiffException;
 import org.jetbrains.annotations.NotNull;
@@ -31,15 +31,15 @@ import org.jetbrains.annotations.Nullable;
  */
 class PersistentRangeHighlighterImpl extends RangeHighlighterImpl {
   private int myLine; // for PersistentRangeHighlighterImpl only
-  static PersistentRangeHighlighterImpl create(@NotNull MarkupModelImpl model,
-                                               int offset,
-                                               int layer,
-                                               @NotNull HighlighterTargetArea target,
-                                               @Nullable TextAttributes textAttributes,
+  static @NotNull PersistentRangeHighlighterImpl create(@NotNull MarkupModelImpl model,
+                                                        int offset,
+                                                        int layer,
+                                                        @NotNull HighlighterTargetArea target,
+                                                        @Nullable TextAttributesKey textAttributesKey,
                                                boolean normalizeStartOffset) {
     int line = model.getDocument().getLineNumber(offset);
     int startOffset = normalizeStartOffset ? model.getDocument().getLineStartOffset(line) : offset;
-    return new PersistentRangeHighlighterImpl(model, startOffset, line, layer, target, textAttributes);
+    return new PersistentRangeHighlighterImpl(model, startOffset, line, layer, target, textAttributesKey);
   }
 
   private PersistentRangeHighlighterImpl(@NotNull MarkupModelImpl model,
@@ -47,10 +47,15 @@ class PersistentRangeHighlighterImpl extends RangeHighlighterImpl {
                                          int line,
                                          int layer,
                                          @NotNull HighlighterTargetArea target,
-                                         @Nullable TextAttributes textAttributes) {
-    super(model, startOffset, model.getDocument().getLineEndOffset(line), layer, target, textAttributes, false, false);
+                                         @Nullable TextAttributesKey textAttributesKey) {
+    super(model, startOffset, model.getDocument().getLineEndOffset(line), layer, target, textAttributesKey, false, false);
 
     myLine = line;
+  }
+
+  @Override
+  public boolean isPersistent() {
+    return true;
   }
 
   @Override
@@ -78,7 +83,7 @@ class PersistentRangeHighlighterImpl extends RangeHighlighterImpl {
     }
   }
 
-  private boolean translatedViaDiff(DocumentEvent e, DocumentEventImpl event) {
+  private boolean translatedViaDiff(@NotNull DocumentEvent e, @NotNull DocumentEventImpl event) {
     try {
       myLine = event.translateLineViaDiff(myLine);
     }

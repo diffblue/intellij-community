@@ -1,10 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.template.postfix.templates;
 
 import com.intellij.internal.statistic.eventLog.FeatureUsageData;
 import com.intellij.internal.statistic.eventLog.validator.ValidationResultType;
 import com.intellij.internal.statistic.eventLog.validator.rules.EventContext;
-import com.intellij.internal.statistic.eventLog.validator.rules.impl.CustomWhiteListRule;
+import com.intellij.internal.statistic.eventLog.validator.rules.impl.CustomValidationRule;
 import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger;
 import com.intellij.internal.statistic.utils.PluginInfo;
 import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
@@ -16,7 +16,7 @@ import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class PostfixTemplateLogger {
+public final class PostfixTemplateLogger {
   private static final String USAGE_GROUP = "completion.postfix";
   private static final String CUSTOM = "custom";
   private static final String NO_PROVIDER = "no.provider";
@@ -37,7 +37,7 @@ public class PostfixTemplateLogger {
     FUCounterUsageLogger.getInstance().logEvent(project, USAGE_GROUP, "expanded", data);
   }
 
-  public static class PostfixTemplateValidator extends CustomWhiteListRule {
+  public static class PostfixTemplateValidator extends CustomValidationRule {
 
     @Override
     public boolean acceptRuleId(@Nullable String ruleId) {

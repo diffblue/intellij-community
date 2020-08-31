@@ -18,7 +18,6 @@ import com.intellij.structuralsearch.StructuralSearchUtil;
 import com.intellij.ui.*;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.Function;
 import com.intellij.util.SmartList;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.TextTransferable;
@@ -92,7 +91,7 @@ public class ExistingTemplatesComponent {
               SSRBundle.message("template.in.use.message", configurationName, otherConfiguration.getName()),
               SSRBundle.message("template.in.use.title", configurationName),
               CommonBundle.message("button.remove"),
-              Messages.CANCEL_BUTTON,
+              Messages.getCancelButton(),
               AllIcons.General.WarningDialog
             )) {
               return;
@@ -124,7 +123,7 @@ public class ExistingTemplatesComponent {
     historyPanel.add(BorderLayout.CENTER, ScrollPaneFactory.createScrollPane(historyList));
     historyList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-    ListSpeedSearch<Configuration> speedSearch = new ListSpeedSearch<>(historyList, (Function<Configuration, String>)Configuration::getName);
+    ListSpeedSearch<Configuration> speedSearch = new ListSpeedSearch<>(historyList, Configuration::getName);
     historyList.setCellRenderer(new ExistingTemplatesListCellRenderer(speedSearch));
     configureSelectTemplateAction(historyList);
   }
@@ -197,7 +196,7 @@ public class ExistingTemplatesComponent {
 
     new DoubleClickListener() {
       @Override
-      protected boolean onDoubleClick(MouseEvent event) {
+      protected boolean onDoubleClick(@NotNull MouseEvent event) {
         if (patternTree.isVisible() && getSelectedConfiguration() != null) {
           owner.close(DialogWrapper.OK_EXIT_CODE);
         }

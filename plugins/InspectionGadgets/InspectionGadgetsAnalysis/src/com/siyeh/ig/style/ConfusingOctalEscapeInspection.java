@@ -32,12 +32,6 @@ public class ConfusingOctalEscapeInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("confusing.octal.escape.sequence.display.name");
-  }
-
-  @Override
-  @NotNull
   public String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("confusing.octal.escape.sequence.problem.descriptor");
   }
@@ -58,7 +52,7 @@ public class ConfusingOctalEscapeInspection extends BaseInspection {
       final String text = expression.getText();
       int escapeStart = -1;
       while (true) {
-        escapeStart = text.indexOf((int)'\\', escapeStart + 1);
+        escapeStart = text.indexOf('\\', escapeStart + 1);
         if (escapeStart < 0) {
           return;
         }

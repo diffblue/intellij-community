@@ -15,26 +15,21 @@
  */
 package com.siyeh.ig.bugs;
 
-import com.intellij.psi.CommonClassNames;
-import com.intellij.psi.PsiBinaryExpression;
-import com.intellij.psi.PsiExpression;
+import com.intellij.psi.*;
+import com.intellij.psi.impl.source.PsiFieldImpl;
+import com.intellij.psi.util.PsiUtil;
+import com.intellij.util.ObjectUtils;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.fixes.EqualityToEqualsFix;
 import com.siyeh.ig.psiutils.ComparisonUtils;
+import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.NotNull;
 
 public class NumberEqualityInspection extends BaseInspection {
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "number.comparison.display.name");
-  }
 
   @Override
   @NotNull
@@ -53,9 +48,8 @@ public class NumberEqualityInspection extends BaseInspection {
     return new NumberEqualityVisitor();
   }
 
-  @NotNull
   @Override
-  protected InspectionGadgetsFix[] buildFixes(Object... infos) {
+  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
     return EqualityToEqualsFix.buildEqualityFixes((PsiBinaryExpression)infos[0]);
   }
 
@@ -75,7 +69,20 @@ public class NumberEqualityInspection extends BaseInspection {
       if (!hasNumberType(lhs)) {
         return;
       }
+      if (isUniqueConstant(rhs) || isUniqueConstant(lhs)) return;
       registerError(expression.getOperationSign(), expression);
+    }
+
+    private static boolean isUniqueConstant(PsiExpression expression) {
+      PsiReferenceExpression ref = ObjectUtils.tryCast(PsiUtil.skipParenthesizedExprDown(expression), PsiReferenceExpression.class);
+      if (ref == null) return false;
+      PsiField target = ObjectUtils.tryCast(ref.resolve(), PsiField.class);
+      if (target == null) return false;
+      if (target instanceof PsiEnumConstant) return true;
+      if (!(target instanceof PsiFieldImpl)) return false;
+      if (!target.hasModifierProperty(PsiModifier.STATIC) || !target.hasModifierProperty(PsiModifier.FINAL)) return false;
+      PsiExpression initializer = PsiFieldImpl.getDetachedInitializer(target);
+      return ExpressionUtils.isNewObject(initializer);
     }
 
     private static boolean hasNumberType(PsiExpression expression) {

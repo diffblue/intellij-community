@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.Presentation;
  */
 public class MenuItemPresentationFactory extends PresentationFactory {
   public static final String HIDE_ICON = "HIDE_ICON";
+
   private final boolean myForceHide;
 
   public MenuItemPresentationFactory() {
@@ -19,9 +20,14 @@ public class MenuItemPresentationFactory extends PresentationFactory {
     myForceHide = forceHide;
   }
 
+  public boolean shallHideIcons() {
+    return myForceHide || !UISettings.getInstance().getShowIconsInMenus();
+  }
+
   @Override
   protected void processPresentation(Presentation presentation) {
-    if (!UISettings.getInstance().getShowIconsInMenus() || myForceHide) {
+    super.processPresentation(presentation);
+    if (shallHideIcons()) {
       presentation.setIcon(null);
       presentation.setDisabledIcon(null);
       presentation.setHoveredIcon(null);

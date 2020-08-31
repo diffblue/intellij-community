@@ -14,8 +14,9 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.QualifiedName;
+import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.psi.resolve.PyResolveImportUtil;
-import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,11 +63,6 @@ public abstract class QtFileType extends LanguageFileType implements INativeFile
   }
 
   @Override
-  public String getCharset(@NotNull VirtualFile file, @NotNull byte[] content) {
-    return null;
-  }
-
-  @Override
   public boolean openFileInAssociatedApplication(Project project, @NotNull VirtualFile file) {
     String qtTool = findQtTool(ModuleUtilCore.findModuleForFile(file, project), getToolName());
     if (qtTool == null) {
@@ -76,7 +72,7 @@ public abstract class QtFileType extends LanguageFileType implements INativeFile
       Runtime.getRuntime().exec(new String[] { qtTool, file.getPath() } );
     }
     catch (IOException e) {
-      Messages.showErrorDialog(project, "Failed to run Qt Designer: " + e.getMessage(), "Error");
+      Messages.showErrorDialog(project, PyBundle.message("qt.error.failed.run.qt.designer", e.getMessage()), PyBundle.message("qt.run.designer.error"));
     }
     return true;
   }
@@ -86,7 +82,7 @@ public abstract class QtFileType extends LanguageFileType implements INativeFile
       if (module == null) {
         return null;
       }
-      Sdk sdk = PythonSdkType.findPythonSdk(module);
+      Sdk sdk = PythonSdkUtil.findPythonSdk(module);
       if (sdk == null) {
         return null;
       }

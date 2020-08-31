@@ -17,6 +17,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.Range;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,10 +26,8 @@ import java.util.*;
 public class MoveElementLeftRightActionHandler extends EditorWriteActionHandler {
   private static final Comparator<PsiElement> BY_OFFSET = Comparator.comparingInt(PsiElement::getTextOffset);
 
-  private static final Set<String> OUR_ACTIONS = new HashSet<>(Arrays.asList(
-    IdeActions.MOVE_ELEMENT_LEFT,
-    IdeActions.MOVE_ELEMENT_RIGHT
-  ));
+  private static final Set<String> OUR_ACTIONS =
+    ContainerUtil.set(IdeActions.MOVE_ELEMENT_LEFT, IdeActions.MOVE_ELEMENT_RIGHT);
 
   private final boolean myIsLeft;
 
@@ -50,8 +49,7 @@ public class MoveElementLeftRightActionHandler extends EditorWriteActionHandler 
     return elementList != null;
   }
 
-  @Nullable
-  private static PsiElement[] getElementList(@NotNull PsiFile file, int rangeStart, int rangeEnd) {
+  private static PsiElement @Nullable [] getElementList(@NotNull PsiFile file, int rangeStart, int rangeEnd) {
     PsiElement startElement = file.findElementAt(rangeStart);
     if (startElement == null) return null;
     if (rangeEnd > rangeStart) {
@@ -67,8 +65,7 @@ public class MoveElementLeftRightActionHandler extends EditorWriteActionHandler 
     return getElementList(startElement, rangeStart, rangeStart);
   }
 
-  @Nullable
-  private static PsiElement[] getElementList(PsiElement element, int rangeStart, int rangeEnd) {
+  private static PsiElement @Nullable [] getElementList(PsiElement element, int rangeStart, int rangeEnd) {
     while (element != null) {
       List<MoveElementLeftRightHandler> handlers = MoveElementLeftRightHandler.EXTENSION.allForLanguageOrAny(element.getLanguage());
       for (MoveElementLeftRightHandler handler : handlers) {
@@ -137,7 +134,7 @@ public class MoveElementLeftRightActionHandler extends EditorWriteActionHandler 
   }
 
   @Nullable
-  private Range<Integer> findRangeOfElementsToMove(@NotNull PsiElement[] elements, int startOffset, int endOffset) {
+  private Range<Integer> findRangeOfElementsToMove(PsiElement @NotNull [] elements, int startOffset, int endOffset) {
     int startIndex = elements.length;
     int endIndex = -1;
     if (startOffset == endOffset) {

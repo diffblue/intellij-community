@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package net.sf.cglib.proxy;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -19,8 +19,8 @@ import java.util.Map;
 /**
  * @author peter
  */
-public class AdvancedProxy {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.util.xml.impl.AdvancedProxy");
+public final class AdvancedProxy {
+  private static final Logger LOG = Logger.getInstance(AdvancedProxy.class);
   public static Method FINALIZE_METHOD;
   public static Method EQUALS_METHOD;
   public static Method HASHCODE_METHOD;
@@ -147,8 +147,8 @@ public class AdvancedProxy {
     if (constructorArgs.length == 0) return ArrayUtil.EMPTY_CLASS_ARRAY;
 
     loop: for (final Constructor constructor : aClass.getDeclaredConstructors()) {
-      final Class[] parameterTypes = constructor.getParameterTypes();
-      if (parameterTypes.length == constructorArgs.length) {
+      if (constructor.getParameterCount() == constructorArgs.length) {
+        final Class[] parameterTypes = constructor.getParameterTypes();
         for (int i = 0; i < parameterTypes.length; i++) {
           Class parameterType = parameterTypes[i];
           final Object constructorArg = constructorArgs[i];
@@ -156,7 +156,7 @@ public class AdvancedProxy {
             continue loop;
           }
         }
-        return constructor.getParameterTypes();
+        return parameterTypes;
       }
     }
     throw new AssertionError("Cannot find constructor for arguments: " + Arrays.asList(constructorArgs));

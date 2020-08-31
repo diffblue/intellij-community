@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build;
 
 import com.intellij.build.events.BuildEvent;
@@ -32,6 +18,7 @@ import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.execution.ui.ExecutionConsole;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.execution.ui.actions.CloseAction;
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.OccurenceNavigator;
 import com.intellij.ide.actions.PinActiveTabAction;
 import com.intellij.openapi.actionSystem.*;
@@ -48,7 +35,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -56,33 +42,38 @@ import java.util.function.Supplier;
 /**
  * @author Vladislav.Soroka
  */
-@ApiStatus.Experimental
 public class BuildView extends CompositeView<ExecutionConsole>
   implements BuildProgressListener, ConsoleView, DataProvider, Filterable<ExecutionNode>, OccurenceNavigator {
   public static final String CONSOLE_VIEW_NAME = "consoleView";
-  private final AtomicReference<StartBuildEvent> myStartBuildEventRef = new AtomicReference<>();
-  private final BuildDescriptor myBuildDescriptor;
-  private final Project myProject;
+  @ApiStatus.Experimental
+  public static final DataKey<List<AnAction>> RESTART_ACTIONS = DataKey.create("restart actions");
+  private final @NotNull Project myProject;
+  private final @NotNull ViewManager myViewManager;
   private final AtomicBoolean isBuildStartEventProcessed = new AtomicBoolean();
   private final List<BuildEvent> myAfterStartEvents = ContainerUtil.createConcurrentList();
-  private final ViewManager myViewManager;
-  @Nullable private volatile ExecutionConsole myExecutionConsole;
+  private final @NotNull DefaultBuildDescriptor myBuildDescriptor;
+  private volatile @Nullable ExecutionConsole myExecutionConsole;
   private volatile BuildViewSettingsProvider myViewSettingsProvider;
 
-  public BuildView(Project project, BuildDescriptor buildDescriptor, String selectionStateKey, ViewManager viewManager) {
+  public BuildView(@NotNull Project project,
+                   @NotNull BuildDescriptor buildDescriptor,
+                   @Nullable String selectionStateKey,
+                   @NotNull ViewManager viewManager) {
     this(project, null, buildDescriptor, selectionStateKey, viewManager);
   }
 
-  public BuildView(Project project,
+  public BuildView(@NotNull Project project,
                    @Nullable ExecutionConsole executionConsole,
-                   BuildDescriptor buildDescriptor,
-                   String selectionStateKey,
-                   ViewManager viewManager) {
+                   @NotNull BuildDescriptor buildDescriptor,
+                   @Nullable String selectionStateKey,
+                   @NotNull ViewManager viewManager) {
     super(selectionStateKey);
     myProject = project;
-    myBuildDescriptor = buildDescriptor;
     myViewManager = viewManager;
     myExecutionConsole = executionConsole;
+    myBuildDescriptor = buildDescriptor instanceof DefaultBuildDescriptor
+                        ? (DefaultBuildDescriptor)buildDescriptor
+                        : new DefaultBuildDescriptor(buildDescriptor);
     Disposer.register(project, this);
   }
 
@@ -124,7 +115,6 @@ public class BuildView extends CompositeView<ExecutionConsole>
   }
 
   private void onStartBuild(@NotNull Object buildId, @NotNull StartBuildEvent startBuildEvent) {
-    myStartBuildEventRef.set(startBuildEvent);
     if (startBuildEvent instanceof StartBuildEventImpl) {
       myViewSettingsProvider = ((StartBuildEventImpl)startBuildEvent).getBuildViewSettingsProvider();
     }
@@ -132,20 +122,22 @@ public class BuildView extends CompositeView<ExecutionConsole>
       myViewSettingsProvider = () -> false;
     }
     if (myExecutionConsole == null) {
-      Supplier<RunContentDescriptor> descriptorSupplier = startBuildEvent.getContentDescriptorSupplier();
+      Supplier<RunContentDescriptor> descriptorSupplier = myBuildDescriptor.getContentDescriptorSupplier();
       RunContentDescriptor runContentDescriptor = descriptorSupplier != null ? descriptorSupplier.get() : null;
       myExecutionConsole = runContentDescriptor != null &&
                            runContentDescriptor.getExecutionConsole() != null &&
                            runContentDescriptor.getExecutionConsole() != this ?
-                           runContentDescriptor.getExecutionConsole() : new BuildTextConsoleView(myProject);
+                           runContentDescriptor.getExecutionConsole() : new BuildTextConsoleView(myProject, false,
+                                                                                                 myBuildDescriptor.getExecutionFilters());
       if (runContentDescriptor != null && Disposer.findRegisteredObject(runContentDescriptor, this) == null) {
         Disposer.register(this, runContentDescriptor);
       }
     }
-    if (myExecutionConsole != null) {
-      myExecutionConsole.getComponent(); //create editor to be able to add console editor actions
+    ExecutionConsole executionConsole = myExecutionConsole;
+    if (executionConsole != null) {
+      executionConsole.getComponent(); //create editor to be able to add console editor actions
       if (myViewSettingsProvider.isExecutionViewHidden() || !myViewSettingsProvider.isSideBySideView()) {
-        addViewAndShowIfNeeded(myExecutionConsole, CONSOLE_VIEW_NAME, myViewManager.isConsoleEnabledByDefault());
+        addViewAndShowIfNeeded(executionConsole, CONSOLE_VIEW_NAME, myViewManager.isConsoleEnabledByDefault());
       }
     }
 
@@ -154,9 +146,7 @@ public class BuildView extends CompositeView<ExecutionConsole>
       eventView = getEventView();
       if (eventView == null) {
         String eventViewName = BuildTreeConsoleView.class.getName();
-        eventView = new BuildTreeConsoleView(myProject, myBuildDescriptor,
-                                             myExecutionConsole,
-                                             myViewSettingsProvider);
+        eventView = new BuildTreeConsoleView(myProject, myBuildDescriptor, myExecutionConsole, myViewSettingsProvider);
         if (myViewSettingsProvider.isSideBySideView()) {
           addView(eventView, eventViewName);
           showView(eventViewName);
@@ -167,20 +157,19 @@ public class BuildView extends CompositeView<ExecutionConsole>
       }
     }
 
-    BuildProcessHandler processHandler = startBuildEvent.getProcessHandler();
+    BuildProcessHandler processHandler = myBuildDescriptor.getProcessHandler();
     if (myExecutionConsole instanceof ConsoleView) {
-      for (Filter filter : startBuildEvent.getExecutionFilters()) {
-        ((ConsoleView)myExecutionConsole).addMessageFilter(filter);
+      ConsoleView consoleView = (ConsoleView)myExecutionConsole;
+      if (consoleView != null && !(consoleView instanceof BuildTextConsoleView)) {
+        myBuildDescriptor.getExecutionFilters().forEach(consoleView::addMessageFilter);
       }
 
       if (processHandler != null) {
-        ((ConsoleView)myExecutionConsole).attachToProcess(processHandler);
-        Consumer<ConsoleView> attachedConsoleConsumer = startBuildEvent.getAttachedConsoleConsumer();
+        assert consoleView != null;
+        consoleView.attachToProcess(processHandler);
+        Consumer<ConsoleView> attachedConsoleConsumer = myBuildDescriptor.getAttachedConsoleConsumer();
         if (attachedConsoleConsumer != null) {
-          attachedConsoleConsumer.consume((ConsoleView)myExecutionConsole);
-        }
-        if (!processHandler.isStartNotified()) {
-          processHandler.startNotify();
+          attachedConsoleConsumer.consume(consoleView);
         }
       }
     }
@@ -242,14 +231,14 @@ public class BuildView extends CompositeView<ExecutionConsole>
   }
 
   @Override
-  public void setOutputPaused(boolean value) {
-    delegateToConsoleView(view -> view.setOutputPaused(value));
-  }
-
-  @Override
   public boolean isOutputPaused() {
     Boolean result = getConsoleViewValue(ConsoleView::isOutputPaused);
     return result != null && result;
+  }
+
+  @Override
+  public void setOutputPaused(boolean value) {
+    delegateToConsoleView(view -> view.setOutputPaused(value));
   }
 
   @Override
@@ -290,14 +279,18 @@ public class BuildView extends CompositeView<ExecutionConsole>
     return result != null && result;
   }
 
-  @NotNull
   @Override
-  public AnAction[] createConsoleActions() {
+  public AnAction @NotNull [] createConsoleActions() {
+    if (!myViewManager.isBuildContentView()) {
+      // console actions should be integrated with the provided toolbar when the console is shown not on Build tw
+      return AnAction.EMPTY_ARRAY;
+    }
     final DefaultActionGroup rerunActionGroup = new DefaultActionGroup();
     AnAction stopAction = null;
-    StartBuildEvent startBuildEvent = myStartBuildEventRef.get();
-    if (startBuildEvent != null && startBuildEvent.getProcessHandler() != null) {
-      stopAction = new StopProcessAction("Stop", "Stop", startBuildEvent.getProcessHandler());
+    if (myBuildDescriptor.getProcessHandler() != null) {
+      stopAction = new StopProcessAction(IdeBundle.messagePointer("action.DumbAware.BuildView.text.stop"),
+                                         IdeBundle.messagePointer("action.DumbAware.CopyrightProfilesPanel.description.stop"),
+                                         myBuildDescriptor.getProcessHandler());
       ActionUtil.copyFrom(stopAction, IdeActions.ACTION_STOP_PROGRAM);
       stopAction.registerCustomShortcutSet(stopAction.getShortcutSet(), this);
     }
@@ -329,11 +322,10 @@ public class BuildView extends CompositeView<ExecutionConsole>
       }
     }
     final DefaultActionGroup actionGroup = new DefaultActionGroup();
-    if (startBuildEvent != null) {
-      for (AnAction anAction : startBuildEvent.getRestartActions()) {
-        rerunActionGroup.add(anAction);
-      }
+    for (AnAction anAction : myBuildDescriptor.getRestartActions()) {
+      rerunActionGroup.add(anAction);
     }
+
     if (stopAction != null) {
       rerunActionGroup.add(stopAction);
     }
@@ -342,7 +334,17 @@ public class BuildView extends CompositeView<ExecutionConsole>
       actionGroup.addAll(getSwitchActions());
       actionGroup.addSeparator();
     }
-    return new AnAction[]{actionGroup, consoleActionGroup};
+    final DefaultActionGroup otherActionGroup = new DefaultActionGroup();
+
+    List<AnAction> otherActions = myBuildDescriptor.getActions();
+    if (!otherActions.isEmpty()) {
+      otherActionGroup.addSeparator();
+      for (AnAction anAction : otherActions) {
+        otherActionGroup.add(anAction);
+      }
+      otherActionGroup.addSeparator();
+    }
+    return new AnAction[]{actionGroup, consoleActionGroup, otherActionGroup};
   }
 
   @Override
@@ -358,13 +360,15 @@ public class BuildView extends CompositeView<ExecutionConsole>
     }
     Object data = super.getData(dataId);
     if (data != null) return data;
-    StartBuildEvent startBuildEvent = myStartBuildEventRef.get();
-    if (startBuildEvent != null && LangDataKeys.RUN_PROFILE.is(dataId)) {
-      ExecutionEnvironment environment = startBuildEvent.getExecutionEnvironment();
+    if (LangDataKeys.RUN_PROFILE.is(dataId)) {
+      ExecutionEnvironment environment = myBuildDescriptor.getExecutionEnvironment();
       return environment == null ? null : environment.getRunProfile();
     }
-    if (startBuildEvent != null && LangDataKeys.EXECUTION_ENVIRONMENT.is(dataId)) {
-      return startBuildEvent.getExecutionEnvironment();
+    if (LangDataKeys.EXECUTION_ENVIRONMENT.is(dataId)) {
+      return myBuildDescriptor.getExecutionEnvironment();
+    }
+    if (RESTART_ACTIONS.is(dataId)) {
+      return myBuildDescriptor.getRestartActions();
     }
     return null;
   }

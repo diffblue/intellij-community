@@ -16,6 +16,7 @@
 package com.intellij.refactoring.move.moveMembers;
 
 import com.intellij.ide.util.EditorHelper;
+import com.intellij.model.ModelBranch;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
@@ -27,7 +28,6 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.refactoring.BaseRefactoringProcessor;
 import com.intellij.refactoring.HelpID;
 import com.intellij.refactoring.RefactoringBundle;
-import com.intellij.refactoring.listeners.RefactoringElementListener;
 import com.intellij.refactoring.move.MoveCallback;
 import com.intellij.refactoring.move.MoveHandler;
 import com.intellij.refactoring.move.MoveMemberViewDescriptor;
@@ -40,7 +40,9 @@ import com.intellij.usageView.UsageViewUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.VisibilityUtil;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.MultiMap;
+import one.util.streamex.EntryStream;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -51,14 +53,14 @@ import java.util.*;
  * @author Jeka
  */
 public class MoveMembersProcessor extends BaseRefactoringProcessor {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.refactoring.move.moveMembers.MoveMembersProcessor");
+  private static final Logger LOG = Logger.getInstance(MoveMembersProcessor.class);
 
   private PsiClass myTargetClass;
   private final Set<PsiMember> myMembersToMove = new LinkedHashSet<>();
   private final MoveCallback myMoveCallback;
   private final boolean myOpenInEditor;
   private String myNewVisibility; // "null" means "as is"
-  private String myCommandName = MoveMembersImpl.REFACTORING_NAME;
+  private String myCommandName = MoveMembersImpl.getRefactoringName();
   private MoveMembersOptions myOptions;
 
   public MoveMembersProcessor(Project project, MoveMembersOptions options) {
@@ -99,7 +101,7 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
 
   private void setCommandName(final PsiMember[] members) {
     StringBuilder commandName = new StringBuilder();
-    commandName.append(MoveHandler.REFACTORING_NAME);
+    commandName.append(MoveHandler.getRefactoringName());
     commandName.append(" ");
     boolean first = true;
     for (PsiMember member : members) {
@@ -115,13 +117,12 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
 
   @Override
   @NotNull
-  protected UsageViewDescriptor createUsageViewDescriptor(@NotNull UsageInfo[] usages) {
+  protected UsageViewDescriptor createUsageViewDescriptor(UsageInfo @NotNull [] usages) {
     return new MoveMemberViewDescriptor(PsiUtilCore.toPsiElementArray(myMembersToMove));
   }
 
   @Override
-  @NotNull
-  protected UsageInfo[] findUsages() {
+  protected UsageInfo @NotNull [] findUsages() {
     final List<UsageInfo> usagesList = new ArrayList<>();
     for (PsiMember member : myMembersToMove) {
       for (PsiReference psiReference : ReferencesSearch.search(member)) {
@@ -147,7 +148,7 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
   }
 
   @Override
-  protected void refreshElements(@NotNull PsiElement[] elements) {
+  protected void refreshElements(PsiElement @NotNull [] elements) {
     LOG.assertTrue(myMembersToMove.size() == elements.length);
     myMembersToMove.clear();
     for (PsiElement resolved : elements) {
@@ -163,102 +164,147 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
   }
 
   @Override
-  protected void performRefactoring(@NotNull final UsageInfo[] usages) {
-    try {
-      PsiClass targetClass = JavaPsiFacade.getInstance(myProject).findClass(myOptions.getTargetClassName(),
-                                                                            GlobalSearchScope.projectScope(myProject));
-      if (targetClass == null) return;
+  protected boolean canPerformRefactoringInBranch() {
+    return true;
+  }
 
-      // collect anchors to place moved members at
-      final Map<PsiMember, SmartPsiElementPointer<PsiElement>> anchors = new HashMap<>();
-      final Map<PsiMember, PsiMember> anchorsInSourceClass = new HashMap<>();
-      for (PsiMember member : myMembersToMove) {
-        final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(member.getLanguage());
-        if (handler != null) {
-          final PsiElement anchor = handler.getAnchor(member, targetClass, myMembersToMove);
-          if (anchor instanceof PsiMember && myMembersToMove.contains((PsiMember)anchor)) {
-            anchorsInSourceClass.put(member, (PsiMember)anchor);
-          } else {
-            anchors.put(member, anchor == null ? null : SmartPointerManager.getInstance(myProject).createSmartPsiElementPointer(anchor));
-          }
-        }
-      }
+  @Override
+  protected void performRefactoring(final UsageInfo @NotNull [] usages) {
+    PsiClass targetClass = JavaPsiFacade.getInstance(myProject).findClass(myOptions.getTargetClassName(),
+                                                                          GlobalSearchScope.projectScope(myProject));
+    if (targetClass == null) return;
 
-      // correct references to moved members from the outside
-      ArrayList<MoveMembersUsageInfo> otherUsages = new ArrayList<>();
-      for (UsageInfo usageInfo : usages) {
-        MoveMembersUsageInfo usage = (MoveMembersUsageInfo)usageInfo;
-        if (!usage.reference.isValid()) continue;
-        final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(usageInfo.getElement().getLanguage());
-        if (handler != null) {
-          if (handler.changeExternalUsage(myOptions, usage)) continue;
-        }
-        otherUsages.add(usage);
-      }
+    Map<PsiMember, SmartPsiElementPointer<PsiMember>> movedMembers =
+      performMove(targetClass, myMembersToMove, ContainerUtil.map(usages, MoveMembersUsageInfo.class::cast));
+    afterAllMovements(movedMembers);
+  }
 
-      // correct references inside moved members and outer references to Inner Classes
-      final Map<PsiMember, PsiMember> movedMembers = new HashMap<>();
-      for (PsiMember member : myMembersToMove) {
-        ArrayList<PsiReference> refsToBeRebind = new ArrayList<>();
-        for (Iterator<MoveMembersUsageInfo> iterator = otherUsages.iterator(); iterator.hasNext();) {
-          MoveMembersUsageInfo info = iterator.next();
-          if (member.equals(info.member)) {
-            PsiReference ref = info.getReference();
-            if (ref != null) {
-              refsToBeRebind.add(ref);
-            }
-            iterator.remove();
-          }
-        }
-        final RefactoringElementListener elementListener = getTransaction().getElementListener(member);
-        final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(member.getLanguage());
-        if (handler != null) {
+  @Override
+  protected void performRefactoringInBranch(UsageInfo @NotNull [] originalUsages, ModelBranch branch) {
+    PsiClass targetClass = JavaPsiFacade.getInstance(myProject).findClass(myOptions.getTargetClassName(),
+                                                                          GlobalSearchScope.projectScope(myProject));
+    if (targetClass == null) return;
 
-          final PsiElement anchor;
-          if (anchorsInSourceClass.containsKey(member)) {
-            final PsiMember memberInSourceClass = anchorsInSourceClass.get(member);
-            //anchor should be already moved as myMembersToMove contains members in order they appear in source class
-            anchor = memberInSourceClass != null ? movedMembers.get(memberInSourceClass) : null;
-          }
-          else {
-            final SmartPsiElementPointer<PsiElement> pointer = anchors.get(member);
-            anchor = pointer != null ? pointer.getElement() : null;
-          }
+    PsiClass targetCopy = branch.obtainPsiCopy(targetClass);
+    Set<PsiMember> membersToMove = new LinkedHashSet<>(ContainerUtil.map(myMembersToMove, branch::obtainPsiCopy));
+    List<MoveMembersUsageInfo> usages = ContainerUtil.map(originalUsages, u -> ((MoveMembersUsageInfo)u).branched(branch));
 
-          PsiMember newMember = handler.doMove(myOptions, member, anchor, targetClass);
+    Map<PsiMember, SmartPsiElementPointer<PsiMember>> movedMembers = performMove(targetCopy, membersToMove, usages);
 
-          movedMembers.put(member, newMember);
-          elementListener.elementMoved(newMember);
+    branch.runAfterMerge(() -> {
+      PsiDocumentManager.getInstance(myProject).commitAllDocuments();
 
-          fixModifierList(member, newMember, usages);
-          for (PsiReference reference : refsToBeRebind) {
-            reference.bindToElement(newMember);
-          }
-        }
-      }
+      afterAllMovements(EntryStream.of(movedMembers).mapValues(p -> {
+        PsiMember member = p.getElement();
+        PsiMember original = member == null ? null : branch.findOriginalPsi(member);
+        return original == null ? null : SmartPointerManager.createPointer(original);
+      }).toMap());
+    });
+  }
 
-      // qualifier info must be decoded after members are moved
-      final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(myTargetClass.getLanguage());
-      if (handler != null) handler.decodeContextInfo(myTargetClass);
-
-      myMembersToMove.clear();
-      if (myMoveCallback != null) {
-        myMoveCallback.refactoringCompleted();
-      }
-
-      if (myOpenInEditor && !movedMembers.isEmpty()) {
-        final PsiMember item = ContainerUtil.getFirstItem(movedMembers.values());
-        if (item != null) {
-          EditorHelper.openInEditor(item);
+  private Map<PsiMember, SmartPsiElementPointer<PsiMember>> performMove(PsiClass targetClass,
+                                                                        Set<PsiMember> membersToMove,
+                                                                        List<MoveMembersUsageInfo> usages) {
+    // collect anchors to place moved members at
+    final Map<PsiMember, SmartPsiElementPointer<PsiElement>> anchors = new HashMap<>();
+    final Map<PsiMember, PsiMember> anchorsInSourceClass = new HashMap<>();
+    for (PsiMember member : membersToMove) {
+      final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(member.getLanguage());
+      if (handler != null) {
+        final PsiElement anchor = handler.getAnchor(member, targetClass, membersToMove);
+        if (anchor instanceof PsiMember && membersToMove.contains((PsiMember)anchor)) {
+          anchorsInSourceClass.put(member, (PsiMember)anchor);
+        } else {
+          anchors.put(member, anchor == null ? null : SmartPointerManager.getInstance(myProject).createSmartPsiElementPointer(anchor));
         }
       }
     }
-    catch (IncorrectOperationException e) {
-      LOG.error(e);
+
+    // correct references to moved members from the outside
+    ArrayList<MoveMembersUsageInfo> otherUsages = new ArrayList<>();
+    for (MoveMembersUsageInfo usage : usages) {
+      if (!usage.reference.isValid()) continue;
+      final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(usage.getElement().getLanguage());
+      if (handler != null) {
+        if (handler.changeExternalUsage(myOptions, usage)) continue;
+      }
+      otherUsages.add(usage);
+    }
+
+    // correct references inside moved members and outer references to Inner Classes
+    Map<PsiMember, SmartPsiElementPointer<PsiMember>> movedMembers = new HashMap<>();
+    for (PsiMember member : membersToMove) {
+      ArrayList<PsiReference> refsToBeRebind = new ArrayList<>();
+      for (Iterator<MoveMembersUsageInfo> iterator = otherUsages.iterator(); iterator.hasNext();) {
+        MoveMembersUsageInfo info = iterator.next();
+        if (member.equals(info.member)) {
+          PsiReference ref = info.getReference();
+          if (ref != null) {
+            refsToBeRebind.add(ref);
+          }
+          iterator.remove();
+        }
+      }
+      getTransaction().getElementListener(member); // initialize the listener while PSI is valid
+      final MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(member.getLanguage());
+      if (handler != null) {
+
+        SmartPsiElementPointer<? extends PsiElement> anchor;
+        if (anchorsInSourceClass.containsKey(member)) {
+          final PsiMember memberInSourceClass = anchorsInSourceClass.get(member);
+          //anchor should be already moved as myMembersToMove contains members in order they appear in source class
+          anchor = memberInSourceClass != null ? movedMembers.get(memberInSourceClass) : null;
+        }
+        else {
+          anchor = anchors.get(member);
+        }
+
+        PsiMember newMember = handler.doMove(myOptions, member, anchor == null ? null : anchor.getElement(), targetClass);
+
+        movedMembers.put(member, SmartPointerManager.createPointer(newMember));
+
+        fixModifierList(member, newMember, usages);
+        for (PsiReference reference : refsToBeRebind) {
+          try {
+            reference.bindToElement(newMember);
+          }
+          catch (Throwable e) {
+            LOG.error(e);
+          }
+        }
+      }
+    }
+
+    // qualifier info must be decoded after members are moved
+    MoveMemberHandler handler = MoveMemberHandler.EP_NAME.forLanguage(targetClass.getLanguage());
+    if (handler != null) handler.decodeContextInfo(targetClass);
+
+    return movedMembers;
+  }
+
+  private void afterAllMovements(Map<PsiMember, SmartPsiElementPointer<PsiMember>> movedMembers) {
+    for (Map.Entry<PsiMember, SmartPsiElementPointer<PsiMember>> entry : movedMembers.entrySet()) {
+      PsiMember newMember = entry.getValue().getElement();
+      if (newMember != null) {
+        PsiMember oldMember = entry.getKey();
+        getTransaction().getElementListener(oldMember).elementMoved(newMember);
+      }
+    }
+
+    myMembersToMove.clear();
+    if (myMoveCallback != null) {
+      myMoveCallback.refactoringCompleted();
+    }
+
+    if (myOpenInEditor) {
+      PsiMember item = JBIterable.from(movedMembers.values()).map(SmartPsiElementPointer::getElement).filter(Objects::nonNull).first();
+      if (item != null) {
+        EditorHelper.openInEditor(item);
+      }
     }
   }
 
-  private void fixModifierList(PsiMember member, PsiMember newMember, final UsageInfo[] usages) throws IncorrectOperationException {
+  private void fixModifierList(PsiMember member, PsiMember newMember, List<MoveMembersUsageInfo> usages) throws IncorrectOperationException {
     PsiModifierList modifierList = newMember.getModifierList();
 
     if (modifierList != null && myTargetClass.isInterface()) {
@@ -274,8 +320,8 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
     if (myNewVisibility == null) return;
 
     final List<UsageInfo> filtered = new ArrayList<>();
-    for (UsageInfo usage : usages) {
-      if (usage instanceof MoveMembersUsageInfo && member == ((MoveMembersUsageInfo)usage).member) {
+    for (MoveMembersUsageInfo usage : usages) {
+      if (member == usage.member) {
         filtered.add(usage);
       }
     }
@@ -348,7 +394,7 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
   public void doRun() {
     if (myMembersToMove.isEmpty()){
       String message = RefactoringBundle.message("no.members.selected");
-      CommonRefactoringUtil.showErrorMessage(MoveMembersImpl.REFACTORING_NAME, message, HelpID.MOVE_MEMBERS, myProject);
+      CommonRefactoringUtil.showErrorMessage(MoveMembersImpl.getRefactoringName(), message, HelpID.MOVE_MEMBERS, myProject);
       return;
     }
     super.doRun();
@@ -373,6 +419,19 @@ public class MoveMembersProcessor extends BaseRefactoringProcessor {
       this.member = member;
       this.qualifierClass = qualifierClass;
       reference = element;
+    }
+
+    @NotNull
+    MoveMembersProcessor.MoveMembersUsageInfo branched(ModelBranch branch) {
+      PsiElement element = branch.obtainPsiCopy(reference);
+      PsiElement highlightElement = getElement();
+      PsiReference psiReference = getReference();
+      return new MoveMembersUsageInfo(
+        branch.findPsiCopy(member),
+        element,
+        qualifierClass == null ? null : branch.findPsiCopy(qualifierClass),
+        highlightElement == null ? null : branch.findPsiCopy(highlightElement),
+        psiReference == null ? null : branch.findReferenceCopy(psiReference));
     }
   }
 }

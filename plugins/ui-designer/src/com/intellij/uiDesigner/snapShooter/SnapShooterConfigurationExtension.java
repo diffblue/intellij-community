@@ -1,8 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.uiDesigner.snapShooter;
 
 import com.intellij.designer.DesignerEditorPanelFacade;
+import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.execution.RunConfigurationExtension;
 import com.intellij.execution.application.ApplicationConfiguration;
 import com.intellij.execution.configurations.JavaParameters;
@@ -19,12 +20,15 @@ import com.intellij.openapi.components.BaseComponent;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.ProjectComponent;
 import com.intellij.openapi.extensions.AreaInstance;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.pom.Navigatable;
+import com.intellij.psi.codeStyle.MinusculeMatcher;
 import com.intellij.ui.ColoredTextContainer;
 import com.intellij.ui.JBColor;
 import com.intellij.uiDesigner.core.GridConstraints;
 import com.intellij.uiDesigner.lw.LwComponent;
 import com.intellij.util.PathUtil;
+import com.intellij.util.containers.FList;
 import com.intellij.util.lang.UrlClassLoader;
 import com.intellij.util.net.NetUtils;
 import com.intellij.util.ui.UIUtilities;
@@ -60,7 +64,11 @@ public class SnapShooterConfigurationExtension extends RunConfigurationExtension
       params.getProgramParametersList().prepend(appConfiguration.getMainClassName());
       params.getProgramParametersList().prepend(Integer.toString(settings.getLastPort()));
       Set<String> paths = new TreeSet<>();
+      String designerBundle = PathManager.getResourceRoot(getClass(), "/messages/UIDesignerBundle.properties");
       paths.add(PathUtil.getJarPathForClass(SnapShooter.class));               // intellij.java.guiForms.designer
+      if (designerBundle != null) {
+        paths.add(designerBundle);                                            // UIDesignerBundle
+      }
       paths.add(PathUtil.getJarPathForClass(BaseComponent.class));             // intellij.platform.core
       paths.add(PathUtil.getJarPathForClass(ProjectComponent.class));          // intellij.java
       paths.add(PathUtil.getJarPathForClass(DesignerEditorPanelFacade.class)); // intellij.platform.ide.impl
@@ -70,6 +78,10 @@ public class SnapShooterConfigurationExtension extends RunConfigurationExtension
       paths.add(PathUtil.getJarPathForClass(LafManagerListener.class));        // intellij.platform.ide
       paths.add(PathUtil.getJarPathForClass(DataProvider.class));              // intellij.platform.editor
       paths.add(PathUtil.getJarPathForClass(XmlStringUtil.class));             // intellij.platform.util
+      paths.add(PathUtil.getJarPathForClass(Strings.class));                   // intellij.platform.util.strings
+      paths.add(PathUtil.getJarPathForClass(FList.class));                     // intellij.platform.util.collections
+      paths.add(PathUtil.getJarPathForClass(MinusculeMatcher.class));          // intellij.platform.util.text.matching
+      paths.add(PathUtil.getJarPathForClass(StartUpMeasurer.class));           // intellij.platform.util.diagnostic
       paths.add(PathUtil.getJarPathForClass(UrlClassLoader.class));            // intellij.platform.util.classLoader
       paths.add(PathUtil.getJarPathForClass(Navigatable.class));               // intellij.platform.core
       paths.add(PathUtil.getJarPathForClass(AreaInstance.class));              // intellij.platform.extensions

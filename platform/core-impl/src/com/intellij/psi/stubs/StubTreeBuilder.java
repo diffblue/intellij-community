@@ -1,36 +1,29 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.stubs;
 
 import com.intellij.lang.Language;
+import com.intellij.lang.LanguageParserDefinitions;
+import com.intellij.lang.ParserDefinition;
 import com.intellij.lang.TreeBackedLighterAST;
 import com.intellij.openapi.fileTypes.FileType;
+import com.intellij.openapi.fileTypes.LanguageFileType;
+import com.intellij.openapi.roots.impl.PushedFilePropertiesRetriever;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Trinity;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.StubBuilder;
 import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.psi.tree.IFileElementType;
 import com.intellij.psi.tree.IStubFileElementType;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.FileContent;
+import com.intellij.util.indexing.IndexedFile;
 import com.intellij.util.indexing.IndexingDataKeys;
 import com.intellij.util.indexing.PsiDependentFileContent;
 import org.jetbrains.annotations.NotNull;
@@ -39,13 +32,56 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class StubTreeBuilder {
+public final class StubTreeBuilder {
   private static final Key<Stub> stubElementKey = Key.create("stub.tree.for.file.content");
 
   private StubTreeBuilder() { }
 
+  static boolean requiresContentToFindBuilder(@NotNull FileType fileType) {
+    final BinaryFileStubBuilder builder = BinaryFileStubBuilders.INSTANCE.forFileType(fileType);
+    return builder instanceof BinaryFileStubBuilder.CompositeBinaryFileStubBuilder<?>;
+  }
+
+  static StubBuilderType getStubBuilderType(@NotNull IndexedFile file, boolean toBuild) {
+    FileType fileType = file.getFileType();
+    final BinaryFileStubBuilder builder = BinaryFileStubBuilders.INSTANCE.forFileType(fileType);
+    if (builder != null) {
+      if (builder instanceof BinaryFileStubBuilder.CompositeBinaryFileStubBuilder<?>) {
+        Object subBuilder = ((BinaryFileStubBuilder.CompositeBinaryFileStubBuilder<?>)builder).getSubBuilder((FileContent) file);
+        return new StubBuilderType((BinaryFileStubBuilder.CompositeBinaryFileStubBuilder)builder, subBuilder);
+      } else {
+        return new StubBuilderType(builder);
+      }
+    }
+
+    if (fileType instanceof LanguageFileType) {
+      final Language l = ((LanguageFileType)fileType).getLanguage();
+      final ParserDefinition parserDefinition = LanguageParserDefinitions.INSTANCE.forLanguage(l);
+      if (parserDefinition == null) {
+        return null;
+      }
+
+      final IFileElementType elementType = parserDefinition.getFileNodeType();
+      if (!(elementType instanceof IStubFileElementType)) return null;
+      VirtualFile vFile = file.getFile();
+      boolean shouldBuildStubFor = ((IStubFileElementType)elementType).shouldBuildStubFor(vFile);
+      if (toBuild && !shouldBuildStubFor) return null;
+      @NotNull List<String> properties = PushedFilePropertiesRetriever.getInstance().dumpSortedPushedProperties(vFile);
+      return new StubBuilderType((IStubFileElementType)elementType, properties);
+    }
+
+    return null;
+  }
+
   @Nullable
-  public static Stub buildStubTree(final FileContent inputData) {
+  public static Stub buildStubTree(@NotNull FileContent inputData) {
+    StubBuilderType type = getStubBuilderType(inputData, false);
+    if (type == null) return null;
+    return buildStubTree(inputData, type);
+  }
+
+  @Nullable
+  public static Stub buildStubTree(@NotNull FileContent inputData, @NotNull StubBuilderType stubBuilderType) {
     Stub data = inputData.getUserData(stubElementKey);
     if (data != null) return data;
 
@@ -54,9 +90,7 @@ public class StubTreeBuilder {
       data = inputData.getUserData(stubElementKey);
       if (data != null) return data;
 
-      final FileType fileType = inputData.getFileType();
-
-      final BinaryFileStubBuilder builder = BinaryFileStubBuilders.INSTANCE.forFileType(fileType);
+      final BinaryFileStubBuilder builder = stubBuilderType.getBinaryFileStubBuilder();
       if (builder != null) {
         data = builder.buildStubTree(inputData);
         if (data instanceof PsiFileStubImpl && !((PsiFileStubImpl)data).rootsAreSet()) {

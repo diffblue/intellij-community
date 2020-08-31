@@ -41,10 +41,7 @@ open class WebServiceStatusProvider : WebServiceStatus {
 
   override fun isServerOk(): Boolean = serverStatus.equals("ok", ignoreCase = true)
 
-  override fun isExperimentOnCurrentIDE(): Boolean {
-    val version = experimentVersion()
-    return (version == EmulatedExperiment.GROUP_A_EXPERIMENT_VERSION || version == EmulatedExperiment.GROUP_B_EXPERIMENT_VERSION)
-  }
+  override fun isExperimentOnCurrentIDE(): Boolean = EmulatedExperiment.isInsideExperiment(experimentVersion())
 
   override fun updateStatus() {
     serverStatus = ""
@@ -64,12 +61,14 @@ open class WebServiceStatusProvider : WebServiceStatus {
         val intVersion = experimentVersion.toFloat().toInt()
         val perform = performExperiment.toBoolean()
         val emulatedVersion = EMULATED_EXPERIMENT.emulate(intVersion, perform, salt)
+        val prevInfo = info
         info = if (emulatedVersion != null) {
           ExperimentInfo(emulatedVersion, salt, true)
         }
         else {
           ExperimentInfo(intVersion, salt, perform)
         }
+        logCompletionExperimentStatus(info.experimentVersion, info.performExperiment, prevInfo)
         saveInfo(info)
       }
 
@@ -91,7 +90,7 @@ open class WebServiceStatusProvider : WebServiceStatus {
   }
 
   private fun loadInfoIfActual(): ExperimentInfo {
-    val updatedTimestamp = PropertiesComponent.getInstance().getOrInitLong(STATUS_UPDATED_TIMESTAMP_KEY, 0)
+    val updatedTimestamp = PropertiesComponent.getInstance().getLong(STATUS_UPDATED_TIMESTAMP_KEY, 0)
     if (updatedTimestamp != 0L && System.currentTimeMillis() - updatedTimestamp < INFO_TTL) {
       return loadInfo() ?: DEFAULT_INFO
     }
@@ -105,10 +104,17 @@ open class WebServiceStatusProvider : WebServiceStatus {
     val experimentVersion = properties.getInt(EXPERIMENT_VERSION_KEY, -1)
     val performExperiment = if (properties.isValueSet(PERFORM_EXPERIMENT_KEY)) properties.isTrueValue(PERFORM_EXPERIMENT_KEY) else null
     if (salt != null && experimentVersion != -1 && performExperiment != null) {
+      logCompletionExperimentStatus(experimentVersion, performExperiment, null)
       return ExperimentInfo(experimentVersion, salt, performExperiment)
     }
 
     return null
+  }
+
+  private fun logCompletionExperimentStatus(experimentVersion: Int, performExperiment: Boolean, prevInfo: ExperimentInfo?) {
+    if (prevInfo == null || prevInfo.experimentVersion != experimentVersion || prevInfo.performExperiment != performExperiment) {
+      LOG.info("Completion stats experiment: version=$experimentVersion, enabled=$performExperiment")
+    }
   }
 
   private fun saveInfo(info: ExperimentInfo) {

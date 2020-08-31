@@ -17,6 +17,7 @@ package com.intellij.util.download;
 
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,9 +25,7 @@ import javax.swing.*;
 import java.net.URL;
 import java.util.List;
 
-/**
- * @author nik
- */
+@ApiStatus.NonExtendable
 public abstract class DownloadableFileService {
   public static DownloadableFileService getInstance() {
     return ServiceManager.getService(DownloadableFileService.class);
@@ -43,7 +42,7 @@ public abstract class DownloadableFileService {
    */
   @NotNull
   public abstract DownloadableFileSetVersions<DownloadableFileSetDescription> createFileSetVersions(@Nullable String groupId,
-                                                                                                    @NotNull URL... localUrls);
+                                                                                                    URL @NotNull ... localUrls);
 
   @NotNull
   public abstract FileDownloader createDownloader(@NotNull DownloadableFileSetDescription description);
@@ -60,7 +59,7 @@ public abstract class DownloadableFileService {
                                                   JComponent parent);
 
   /**
-   * @deprecated use {@link #createDownloader(java.util.List, String)} instead
+   * @deprecated use {@link #createDownloader(List, String)} instead
    */
   @Deprecated
   @NotNull

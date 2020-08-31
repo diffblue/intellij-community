@@ -24,7 +24,7 @@ class PurityInferenceVisitor {
   private final Map<String, LighterASTNode> myFieldModifiers;
   private final List<LighterASTNode> mutatedRefs = new ArrayList<>();
   private final boolean constructor;
-  private boolean hasReturns;
+  private boolean mutatesThis;
   private boolean hasVolatileReads;
   private final List<LighterASTNode> calls = new ArrayList<>();
 
@@ -35,13 +35,10 @@ class PurityInferenceVisitor {
     myFieldModifiers = fieldModifiers;
   }
 
-  void visitNode(LighterASTNode element) {
+  boolean visitNode(LighterASTNode element) {
     IElementType type = element.getTokenType();
     if (type == ASSIGNMENT_EXPRESSION) {
       addMutation(tree.getChildren(element).get(0));
-    }
-    else if (type == RETURN_STATEMENT && JavaLightTreeUtil.findExpressionChild(tree, element) != null) {
-      hasReturns = true;
     }
     else if ((type == PREFIX_EXPRESSION || type == POSTFIX_EXPRESSION) && isMutatingOperation(element)) {
       addMutation(JavaLightTreeUtil.findExpressionChild(tree, element));
@@ -62,6 +59,7 @@ class PurityInferenceVisitor {
         }
       }
     }
+    return !unknownPurity();
   }
 
   private boolean isEffectivelyUnqualified(LighterASTNode element) {
@@ -72,14 +70,19 @@ class PurityInferenceVisitor {
 
   private void addMutation(LighterASTNode mutated) {
     if (mutated == null) return;
-    if (constructor && !myFieldModifiers.isEmpty()) {
+    if (!myFieldModifiers.isEmpty()) {
       IElementType type = mutated.getTokenType();
-      // writes to own fields in constructor do not count as mutations
       if (type == REFERENCE_EXPRESSION && isEffectivelyUnqualified(mutated)) {
         LighterASTNode modifiers = myFieldModifiers.get(JavaLightTreeUtil.getNameIdentifierText(tree, mutated));
         if (modifiers != null) {
           boolean isStatic = LightTreeUtil.firstChildOfType(tree, modifiers, JavaTokenType.STATIC_KEYWORD) != null;
-          if (!isStatic) return;
+          if (!isStatic) {
+            if (!constructor) {
+              // writes to own fields in constructor do not count as mutations
+              mutatesThis = true;
+            }
+            return;
+          }
         }
       }
     }
@@ -100,10 +103,16 @@ class PurityInferenceVisitor {
 
   @Nullable
   PurityInferenceResult getResult() {
-    if (calls.size() > 1 || (!constructor && (!hasReturns || hasVolatileReads))) return null;
+    if (unknownPurity()) return null;
 
     int bodyStart = body.getStartOffset();
-    return new PurityInferenceResult(ContainerUtil.map(mutatedRefs, node -> ExpressionRange.create(node, bodyStart)),
-                                     calls.isEmpty() ? null : ExpressionRange.create(calls.get(0), bodyStart));
+    return new PurityInferenceResult(
+      mutatesThis,
+      ContainerUtil.map(mutatedRefs, node -> ExpressionRange.create(node, bodyStart)),
+      calls.isEmpty() ? null : ExpressionRange.create(calls.get(0), bodyStart));
+  }
+
+  private boolean unknownPurity() {
+    return calls.size() > 1 || (!constructor && hasVolatileReads);
   }
 }

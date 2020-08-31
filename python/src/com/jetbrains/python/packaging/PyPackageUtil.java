@@ -15,10 +15,12 @@
  */
 package com.jetbrains.python.packaging;
 
+import com.google.common.collect.Sets;
 import com.intellij.execution.ExecutionException;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -33,15 +35,20 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.*;
+import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
+import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.ResolveResult;
 import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.PyNames;
+import com.jetbrains.python.PyPsiPackageUtil;
 import com.jetbrains.python.codeInsight.controlflow.ScopeOwner;
+import com.jetbrains.python.codeInsight.typing.PyTypeShed;
+import com.jetbrains.python.codeInsight.userSkeletons.PyUserSkeletonsUtil;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.PyPsiUtils;
 import com.jetbrains.python.psi.resolve.PyResolveContext;
@@ -49,6 +56,7 @@ import com.jetbrains.python.psi.types.TypeEvalContext;
 import com.jetbrains.python.remote.PyCredentialsContribution;
 import com.jetbrains.python.sdk.CredentialsTypeExChecker;
 import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -67,14 +75,17 @@ public class PyPackageUtil {
   public static final String DISTRIBUTE = "distribute";
   private static final Logger LOG = Logger.getInstance(PyPackageUtil.class);
 
+  private static class InterpreterChangeEvents {
+    private static final Logger LOG = Logger.getInstance(InterpreterChangeEvents.class);
+  }
+
   @NotNull
   private static final String REQUIRES = "requires";
 
   @NotNull
   private static final String INSTALL_REQUIRES = "install_requires";
 
-  @NotNull
-  private static final String[] SETUP_PY_REQUIRES_KWARGS_NAMES = new String[]{
+  private static final String @NotNull [] SETUP_PY_REQUIRES_KWARGS_NAMES = new String[]{
     REQUIRES, INSTALL_REQUIRES, "setup_requires", "tests_require"
   };
 
@@ -185,7 +196,7 @@ public class PyPackageUtil {
 
   @NotNull
   private static List<PyRequirement> getSetupPyRequiresFromArguments(@NotNull PyCallExpression setupCall,
-                                                                     @NotNull String... argumentNames) {
+                                                                     String @NotNull ... argumentNames) {
     return PyRequirementParser.fromText(
       StreamEx
         .of(argumentNames)
@@ -223,7 +234,7 @@ public class PyPackageUtil {
 
     if (elementToAnalyze instanceof PyReferenceExpression) {
       final TypeEvalContext context = TypeEvalContext.deepCodeInsight(elementToAnalyze.getProject());
-      final PyResolveContext resolveContext = PyResolveContext.noImplicits().withTypeEvalContext(context);
+      final PyResolveContext resolveContext = PyResolveContext.defaultContext().withTypeEvalContext(context);
 
       return StreamEx
         .of(((PyReferenceExpression)elementToAnalyze).multiFollowAssignmentsChain(resolveContext))
@@ -326,7 +337,7 @@ public class PyPackageUtil {
   }
 
   public static boolean packageManagementEnabled(@Nullable Sdk sdk) {
-    if (!PythonSdkType.isRemote(sdk)) {
+    if (!PythonSdkUtil.isRemote(sdk)) {
       return true;
     }
     return new CredentialsTypeExChecker() {
@@ -334,7 +345,7 @@ public class PyPackageUtil {
       protected boolean checkLanguageContribution(PyCredentialsContribution languageContribution) {
         return languageContribution.isPackageManagementEnabled();
       }
-    }.withSshContribution(true).withVagrantContribution(true).withWebDeploymentContribution(true).check(sdk);
+    }.check(sdk);
   }
 
   /**
@@ -401,19 +412,9 @@ public class PyPackageUtil {
   }
 
 
-  @Nullable
-  public static PyPackage findPackage(@NotNull List<? extends PyPackage> packages, @NotNull String name) {
-    for (PyPackage pkg : packages) {
-      if (name.equalsIgnoreCase(pkg.getName())) {
-        return pkg;
-      }
-    }
-    return null;
-  }
-
   public static boolean hasManagement(@NotNull List<? extends PyPackage> packages) {
-    return (findPackage(packages, SETUPTOOLS) != null || findPackage(packages, DISTRIBUTE) != null) ||
-           findPackage(packages, PIP) != null;
+    return (PyPsiPackageUtil.findPackage(packages, SETUPTOOLS) != null || PyPsiPackageUtil.findPackage(packages, DISTRIBUTE) != null) ||
+           PyPsiPackageUtil.findPackage(packages, PIP) != null;
   }
 
   @Nullable
@@ -527,23 +528,41 @@ public class PyPackageUtil {
       @Nullable
       @Override
       public ChangeApplier prepareChange(@NotNull List<? extends VFileEvent> events) {
-        final VirtualFile[] roots = sdk.getRootProvider().getFiles(OrderRootType.CLASSES);
+        final Set<VirtualFile> roots = getPackagingAwareSdkRoots(sdk);
         allEvents:
         for (VFileEvent event : events) {
+          if (event instanceof VFileContentChangeEvent || event instanceof VFilePropertyChangeEvent) continue;
           // In case of create event getFile() returns null as the file hasn't been created yet
-          final VirtualFile file = event instanceof VFileCreateEvent ? ((VFileCreateEvent)event).getParent() : event.getFile();
-          if (file != null) {
-            for (VirtualFile root : roots) {
-              if (VfsUtilCore.isAncestor(root, file, false)) {
-                app.executeOnPooledThread(runnable);
-                break allEvents;
-              }
-            }
+          VirtualFile parent = null;
+          if (event instanceof VFileCreateEvent) {
+            parent = ((VFileCreateEvent)event).getParent();
+          }
+          else {
+            VirtualFile file = event.getFile();
+            if (file != null) parent = file.getParent();
+          }
+
+          if (parent != null && roots.contains(parent)) {
+            InterpreterChangeEvents.LOG.debug("Interpreter change in " + parent + " indicated by " + event +
+                                              " (all events: " + events + ")");
+            app.executeOnPooledThread(runnable);
+            break allEvents;
           }
         }
         // No continuation in write action is needed
         return null;
       }
     }, disposable);
+  }
+
+  @NotNull
+  private static Set<VirtualFile> getPackagingAwareSdkRoots(@NotNull Sdk sdk) {
+    final Set<VirtualFile> result = Sets.newHashSet(sdk.getRootProvider().getFiles(OrderRootType.CLASSES));
+    final String skeletonsPath = PythonSdkType.getSkeletonsPath(PathManager.getSystemPath(), sdk.getHomePath());
+    final VirtualFile skeletonsRoot = LocalFileSystem.getInstance().findFileByPath(skeletonsPath);
+    result.removeIf(vf -> vf.equals(skeletonsRoot) ||
+                          vf.equals(PyUserSkeletonsUtil.getUserSkeletonsDirectory()) ||
+                          PyTypeShed.INSTANCE.isInside(vf));
+    return result;
   }
 }

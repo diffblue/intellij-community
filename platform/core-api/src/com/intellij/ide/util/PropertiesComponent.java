@@ -1,11 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util;
 
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.SimpleModificationTracker;
 import com.intellij.openapi.util.text.StringUtilRt;
-import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,17 +12,19 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
 
 /**
+ * Allows simple persistence of application/project-level values.
+ * <p/>
  * Roaming is disabled for PropertiesComponent, so, use it only and only for temporary non-roamable properties.
- *
- * See http://www.jetbrains.org/intellij/sdk/docs/basics/persisting_state_of_components.html "Using PropertiesComponent for Simple non-roamable Persistence"
+ * <p/>
+ * See <a href="http://www.jetbrains.org/intellij/sdk/docs/basics/persisting_state_of_components.html">Using PropertiesComponent for Simple non-roamable Persistence</a>.
  *
  * @author max
  * @author Konstantin Bulenkov
  */
 public abstract class PropertiesComponent extends SimpleModificationTracker {
-  public abstract void unsetValue(@NotNull String name);
+  public abstract void unsetValue(@NonNls @NotNull String name);
 
-  public abstract boolean isValueSet(@NotNull String name);
+  public abstract boolean isValueSet(@NonNls @NotNull String name);
 
   @Nullable
   public abstract String getValue(@NonNls @NotNull String name);
@@ -31,66 +32,69 @@ public abstract class PropertiesComponent extends SimpleModificationTracker {
   /**
    * Consider to use {@link #setValue(String, String, String)} to avoid write defaults.
    */
-  public abstract void setValue(@NotNull String name, @Nullable String value);
+  public abstract void setValue(@NonNls @NotNull String name, @Nullable String value);
 
   /**
    * Set value or unset if equals to default value
    */
-  public abstract void setValue(@NotNull String name, @Nullable String value, @Nullable String defaultValue);
+  public abstract void setValue(@NonNls @NotNull String name, @Nullable String value, @Nullable String defaultValue);
 
   /**
    * Set value or unset if equals to default value
    */
-  public abstract void setValue(@NotNull String name, float value, float defaultValue);
+  public abstract void setValue(@NonNls @NotNull String name, float value, float defaultValue);
 
   /**
    * Set value or unset if equals to default value
    */
-  public abstract void setValue(@NotNull String name, int value, int defaultValue);
+  public abstract void setValue(@NonNls @NotNull String name, int value, int defaultValue);
 
   /**
    * Set value or unset if equals to false
    */
-  public final void setValue(@NotNull String name, boolean value) {
+  public final void setValue(@NonNls @NotNull String name, boolean value) {
     setValue(name, value, false);
   }
 
   /**
    * Set value or unset if equals to default
    */
-  public abstract void setValue(@NotNull String name, boolean value, boolean defaultValue);
+  public abstract void setValue(@NonNls @NotNull String name, boolean value, boolean defaultValue);
 
-  @Nullable
-  public abstract String[] getValues(@NonNls @NotNull String name);
+  public abstract String @Nullable [] getValues(@NonNls @NotNull String name);
 
   public abstract void setValues(@NonNls @NotNull String name, String[] values);
 
+  /**
+   * Returns the project-level instance.
+   */
   public static PropertiesComponent getInstance(@NotNull Project project) {
     return ServiceManager.getService(project, PropertiesComponent.class);
   }
 
+  /**
+   * Returns the application-level instance.
+   */
   public static PropertiesComponent getInstance() {
     return ServiceManager.getService(PropertiesComponent.class);
   }
 
   public final boolean isTrueValue(@NonNls String name) {
-    return Boolean.valueOf(getValue(name)).booleanValue();
+    return Boolean.parseBoolean(getValue(name));
   }
 
-  public final boolean getBoolean(@NotNull String name, boolean defaultValue) {
+  public final boolean getBoolean(@NonNls @NotNull String name, boolean defaultValue) {
     return isValueSet(name) ? isTrueValue(name) : defaultValue;
   }
 
-  public final boolean getBoolean(@NotNull String name) {
+  public final boolean getBoolean(@NonNls @NotNull String name) {
     return getBoolean(name, false);
   }
 
   @NotNull
   public String getValue(@NonNls @NotNull String name, @NotNull String defaultValue) {
-    if (!isValueSet(name)) {
-      return defaultValue;
-    }
-    return ObjectUtils.notNull(getValue(name), defaultValue);
+    String value = getValue(name);
+    return value == null ? defaultValue : value;
   }
 
   /**
@@ -98,22 +102,25 @@ public abstract class PropertiesComponent extends SimpleModificationTracker {
    * Init was never performed and in any case is not recommended.
    */
   @Deprecated
-  public final int getOrInitInt(@NotNull String name, int defaultValue) {
+  public final int getOrInitInt(@NonNls @NotNull String name, int defaultValue) {
     return getInt(name, defaultValue);
   }
 
-  public int getInt(@NotNull String name, int defaultValue) {
+  public int getInt(@NonNls @NotNull String name, int defaultValue) {
     return StringUtilRt.parseInt(getValue(name), defaultValue);
   }
 
+  public long getLong(@NonNls @NotNull String name, long defaultValue) {
+    return StringUtilRt.parseLong(getValue(name), defaultValue);
+  }
+
+  /**
+   * @deprecated Use {@link #getLong(String, long)}
+   * Init was never performed and in any case is not recommended.
+   */
+  @Deprecated
   public final long getOrInitLong(@NonNls @NotNull String name, long defaultValue) {
-    try {
-      String value = getValue(name);
-      return value == null ? defaultValue : Long.parseLong(value);
-    }
-    catch (NumberFormatException e) {
-      return defaultValue;
-    }
+    return getLong(name, defaultValue);
   }
 
   /**
@@ -189,12 +196,13 @@ public abstract class PropertiesComponent extends SimpleModificationTracker {
     }
   }
 
-  public float getFloat(@NotNull String name, float defaultValue) {
+  public float getFloat(@NonNls @NotNull String name, float defaultValue) {
     if (isValueSet(name)) {
       try {
         return Float.parseFloat(getValue(name));
       }
-      catch (NumberFormatException ignore) {}
+      catch (NumberFormatException ignore) {
+      }
     }
     return defaultValue;
   }

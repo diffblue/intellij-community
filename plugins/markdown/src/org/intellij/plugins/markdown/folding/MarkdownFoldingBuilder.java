@@ -49,9 +49,12 @@ public class MarkdownFoldingBuilder extends CustomFoldingBuilder implements Dumb
                                           @NotNull PsiElement root,
                                           @NotNull Document document,
                                           boolean quick) {
+    if (root.getLanguage() != root.getContainingFile().getViewProvider().getBaseLanguage()) {
+      return;
+    }
     root.accept(new MarkdownElementVisitor() {
       @Override
-      public void visitElement(PsiElement element) {
+      public void visitElement(@NotNull PsiElement element) {
         super.visitElement(element);
         element.acceptChildren(this);
       }

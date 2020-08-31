@@ -3,13 +3,13 @@ package com.intellij.openapi.externalSystem.action;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder;
 import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.model.project.AbstractExternalEntityData;
 import com.intellij.openapi.externalSystem.model.project.ExternalConfigPathAware;
 import com.intellij.openapi.externalSystem.model.project.ModuleData;
 import com.intellij.openapi.externalSystem.model.project.ProjectData;
-import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode;
 import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle;
@@ -32,8 +32,8 @@ import java.util.List;
 public class RefreshExternalProjectAction extends ExternalSystemNodeAction<AbstractExternalEntityData> implements DumbAware {
   public RefreshExternalProjectAction() {
     super(AbstractExternalEntityData.class);
-    getTemplatePresentation().setText(ExternalSystemBundle.message("action.refresh.project.text", "External"));
-    getTemplatePresentation().setDescription(ExternalSystemBundle.message("action.refresh.project.description", "External"));
+    getTemplatePresentation().setText(ExternalSystemBundle.messagePointer("action.refresh.project.text", "External"));
+    getTemplatePresentation().setDescription(ExternalSystemBundle.messagePointer("action.refresh.project.description", "External"));
   }
 
   @Override
@@ -45,8 +45,8 @@ public class RefreshExternalProjectAction extends ExternalSystemNodeAction<Abstr
     final String systemIdNameText = systemId != null ? systemId.getReadableName() : "External";
     final String systemIdNameDescription = systemId != null ? systemId.getReadableName() : "external";
     Presentation presentation = e.getPresentation();
-    presentation.setText(ExternalSystemBundle.message("action.refresh.project.text", systemIdNameText));
-    presentation.setDescription(ExternalSystemBundle.message("action.refresh.project.description", systemIdNameDescription));
+    presentation.setText(ExternalSystemBundle.messagePointer("action.refresh.project.text", systemIdNameText));
+    presentation.setDescription(ExternalSystemBundle.messagePointer("action.refresh.project.description", systemIdNameDescription));
   }
 
   @Override
@@ -81,6 +81,6 @@ public class RefreshExternalProjectAction extends ExternalSystemNodeAction<Abstr
                                        ? externalConfigPathAware.getLinkedExternalProjectPath()
                                        : linkedProjectSettings.getExternalProjectPath();
 
-    ExternalSystemUtil.refreshProject(project, projectSystemId, externalProjectPath, false, ProgressExecutionMode.IN_BACKGROUND_ASYNC);
+    ExternalSystemUtil.refreshProject(externalProjectPath, new ImportSpecBuilder(project, projectSystemId));
   }
 }

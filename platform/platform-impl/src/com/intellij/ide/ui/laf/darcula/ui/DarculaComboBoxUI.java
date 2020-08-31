@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui.laf.darcula.ui;
 
 import com.intellij.ide.ui.laf.darcula.DarculaUIUtil;
@@ -7,7 +7,6 @@ import com.intellij.openapi.ui.ErrorBorderCapable;
 import com.intellij.openapi.util.ColoredItem;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.*;
 import com.intellij.ui.scale.JBUIScale;
@@ -29,6 +28,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
+import java.awt.geom.RectangularShape;
 import java.awt.geom.RoundRectangle2D;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -45,7 +45,19 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
                                                                           JBColor.namedColor("ComboBox.darcula.nonEditableBackground",
                                                                                              new JBColor(0xfcfcfc, 0x3c3f41)));
 
+  private float myArc = COMPONENT_ARC.getFloat();
+  private Insets myBorderCompensation = JBUI.insets(1);
+  private boolean myPaintArrowButton = true;
+
   public DarculaComboBoxUI() {}
+
+  public DarculaComboBoxUI(float arc,
+                           Insets borderCompensation,
+                           boolean paintArrowButton) {
+    myArc = arc;
+    myBorderCompensation = borderCompensation;
+    myPaintArrowButton = paintArrowButton;
+  }
 
   @SuppressWarnings("unused")
   @Deprecated
@@ -137,31 +149,32 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_NORMALIZE);
           g2.translate(r.x, r.y);
 
-          float bw = BW.getFloat();
-          float lw = LW.getFloat();
-          float arc = COMPONENT_ARC.getFloat();
-          arc = arc > bw + lw ? arc - bw - lw : 0.0f;
+          if (myPaintArrowButton) {
+            float bw = BW.getFloat();
+            float lw = LW.getFloat();
+            float arc = myArc;
+            arc = arc > bw + lw ? arc - bw - lw : 0.0f;
 
-          Path2D innerShape = new Path2D.Float();
-          innerShape.moveTo(lw, bw + lw);
-          innerShape.lineTo(r.width - bw - lw - arc, bw + lw);
-          innerShape.quadTo(r.width - bw - lw, bw + lw, r.width - bw - lw, bw + lw + arc);
-          innerShape.lineTo(r.width - bw - lw, r.height - bw - lw - arc);
-          innerShape.quadTo(r.width - bw - lw, r.height - bw - lw, r.width - bw - lw - arc, r.height - bw - lw);
-          innerShape.lineTo(lw, r.height - bw - lw);
-          innerShape.closePath();
+            Path2D innerShape = new Path2D.Float();
+            innerShape.moveTo(lw, bw + lw);
+            innerShape.lineTo(r.width - bw - lw - arc, bw + lw);
+            innerShape.quadTo(r.width - bw - lw, bw + lw, r.width - bw - lw, bw + lw + arc);
+            innerShape.lineTo(r.width - bw - lw, r.height - bw - lw - arc);
+            innerShape.quadTo(r.width - bw - lw, r.height - bw - lw, r.width - bw - lw - arc, r.height - bw - lw);
+            innerShape.lineTo(lw, r.height - bw - lw);
+            innerShape.closePath();
 
-          g2.setColor(JBUI.CurrentTheme.Arrow.backgroundColor(comboBox.isEnabled(), comboBox.isEditable()));
-          g2.fill(innerShape);
+            g2.setColor(JBUI.CurrentTheme.Arrow.backgroundColor(comboBox.isEnabled(), comboBox.isEditable()));
+            g2.fill(innerShape);
 
-          // Paint vertical line
-          if (comboBox.isEditable()) {
-            g2.setColor(getOutlineColor(comboBox.isEnabled(), false));
-            g2.fill(new Rectangle2D.Float(0, bw + lw, LW.getFloat(), r.height - (bw + lw) * 2));
+            // Paint vertical line
+            if (comboBox.isEditable()) {
+              g2.setColor(getOutlineColor(comboBox.isEnabled(), false));
+              g2.fill(new Rectangle2D.Float(0, bw + lw, LW.getFloat(), r.height - (bw + lw) * 2));
+            }
           }
 
-          g2.setColor(JBUI.CurrentTheme.Arrow.foregroundColor(comboBox.isEnabled()));
-          g2.fill(getArrowShape(this));
+          paintArrow(g2, this);
         }
         finally {
           g2.dispose();
@@ -176,6 +189,11 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
     button.setBorder(JBUI.Borders.empty());
     button.setOpaque(false);
     return button;
+  }
+
+  protected void paintArrow(Graphics2D g2, JButton btn) {
+    g2.setColor(JBUI.CurrentTheme.Arrow.foregroundColor(comboBox.isEnabled()));
+    g2.fill(getArrowShape(btn));
   }
 
   @SuppressWarnings("unused")
@@ -224,7 +242,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
 
     Graphics2D g2 = (Graphics2D)g.create();
     Rectangle r = new Rectangle(c.getSize());
-    JBInsets.removeFrom(r, JBUI.insets(1));
+    JBInsets.removeFrom(r, myBorderCompensation);
 
     try {
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -232,10 +250,9 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       g2.translate(r.x, r.y);
 
       float bw = BW.getFloat();
-      float arc = COMPONENT_ARC.getFloat();
 
       g2.setColor(getBackgroundColor());
-      g2.fill(new RoundRectangle2D.Float(bw, bw, r.width - bw * 2, r.height - bw * 2, arc, arc));
+      g2.fill(getOuterShape(r, bw, myArc));
     }
     finally {
       g2.dispose();
@@ -245,18 +262,25 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       checkFocus();
       paintCurrentValue(g, rectangleForCurrentValue(), hasFocus);
     }
+    // remove staled renderers from hierarchy
+    // see BasicTreeUI#paint
+    // see BasicListUI#paintImpl
+    // see BasicTableUI#paintCells
+    currentValuePane.removeAll();
   }
 
   private Color getBackgroundColor() {
+    Color bg = comboBox.getBackground();
     if (comboBox.isEditable() && editor != null) {
-      return comboBox.isEnabled() ? editor.getBackground() : comboBox.getBackground();
+      return comboBox.isEnabled() ? editor.getBackground() :
+             comboBox.isBackgroundSet() && !(bg instanceof UIResource) ? bg : UIUtil.getComboBoxDisabledBackground();
     }
     else {
-      Color bg = comboBox.getBackground();
       Object value = comboBox.getSelectedItem();
       Color coloredItemColor = value instanceof ColoredItem ? ((ColoredItem)value).getColor(): null;
       return ObjectUtils.notNull(coloredItemColor,
-              !comboBox.isEnabled() || comboBox.isBackgroundSet() && !(bg instanceof UIResource) ? bg : NON_EDITABLE_BACKGROUND);
+              comboBox.isBackgroundSet() && !(bg instanceof UIResource) ? bg :
+              comboBox.isEnabled() ? NON_EDITABLE_BACKGROUND : UIUtil.getComboBoxDisabledBackground());
     }
   }
 
@@ -419,29 +443,21 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_NORMALIZE);
 
-        JBInsets.removeFrom(r, JBUI.insets(1));
+        JBInsets.removeFrom(r, myBorderCompensation);
         g2.translate(r.x, r.y);
 
         float lw = LW.getFloat();
-        float arc = COMPONENT_ARC.getFloat();
 
         Object op = comboBox.getClientProperty("JComponent.outline");
         if (comboBox.isEnabled() && op != null) {
-          paintOutlineBorder(g2, r.width, r.height, arc, true, hasFocus, Outline.valueOf(op.toString()));
+          paintOutlineBorder(g2, r.width, r.height, myArc, true, hasFocus, Outline.valueOf(op.toString()));
         }
         else {
           if (hasFocus) {
-            paintOutlineBorder(g2, r.width, r.height, arc, true, true, Outline.focus);
+            paintOutlineBorder(g2, r.width, r.height, myArc, true, true, Outline.focus);
           }
 
-          Path2D border = new Path2D.Float(Path2D.WIND_EVEN_ODD);
-          border.append(new RoundRectangle2D.Float(bw, bw, r.width - bw * 2, r.height - bw * 2, arc, arc), false);
-
-          arc = arc > lw ? arc - lw : 0.0f;
-          border.append(new RoundRectangle2D.Float(bw + lw, bw + lw, r.width - (bw + lw) * 2, r.height - (bw + lw) * 2, arc, arc), false);
-
-          g2.setColor(getOutlineColor(c.isEnabled(), hasFocus));
-          g2.fill(border);
+          paintBorder(c, g2, bw, r, lw, myArc);
         }
       }
       else {
@@ -451,6 +467,25 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
     finally {
       g2.dispose();
     }
+  }
+
+  protected void paintBorder(Component c, Graphics2D g2, float bw, Rectangle r, float lw, float arc) {
+    Path2D border = new Path2D.Float(Path2D.WIND_EVEN_ODD);
+    border.append(getOuterShape(r, bw, arc), false);
+
+    arc = arc > lw ? arc - lw : 0.0f;
+    border.append(getInnerShape(r, bw, lw, arc), false);
+
+    g2.setColor(getOutlineColor(c.isEnabled(), hasFocus));
+    g2.fill(border);
+  }
+
+  protected RectangularShape getOuterShape(Rectangle r, float bw, float arc) {
+    return new RoundRectangle2D.Float(bw, bw, r.width - bw * 2, r.height - bw * 2, arc, arc);
+  }
+
+  protected RectangularShape getInnerShape(Rectangle r, float bw, float lw, float arc) {
+    return new RoundRectangle2D.Float(bw + lw, bw + lw, r.width - (bw + lw) * 2, r.height - (bw + lw) * 2, arc, arc);
   }
 
   protected void checkFocus() {
@@ -560,14 +595,12 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       }
     }
 
-    if (Registry.is("ide.ui.composite.editor.for.combobox")) {
-      // BasicComboboxUI sets focusability depending on the combobox focusability.
-      // JPanel usually is unfocusable and uneditable.
-      // It could be set as an editor when people want to have a composite component as an editor.
-      // In such cases we should restore unfocusable state for panels.
-      if (editor instanceof JPanel) {
-        editor.setFocusable(false);
-      }
+    // BasicComboboxUI sets focusability depending on the combobox focusability.
+    // JPanel usually is unfocusable and uneditable.
+    // It could be set as an editor when people want to have a composite component as an editor.
+    // In such cases we should restore unfocusable state for panels.
+    if (editor instanceof JPanel) {
+      editor.setFocusable(false);
     }
   }
 
@@ -720,6 +753,41 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           }
         }
       };
+    }
+
+    @Override
+    protected int getPopupHeightForRowCount(int maxRowCount) {
+      int minRowCount = Math.min(maxRowCount, comboBox.getItemCount());
+      int height = 0;
+      ListCellRenderer<Object> renderer = list.getCellRenderer();
+
+      for (int i = 0; i < minRowCount; i++) {
+        Object value = list.getModel().getElementAt(i);
+        Component c = renderer.getListCellRendererComponent(list, value, i, false, false);
+
+        // The whole method is copied from the parent class except for the following line
+        // that adjusts the minimum row height of a list cell.
+        // See WideSelectionListUI.updateLayoutState
+        height += UIUtil.updateListRowHeight(c.getPreferredSize()).height;
+      }
+
+      if (height == 0) {
+        height = comboBox.getHeight();
+      }
+
+      Border border = scroller.getViewportBorder();
+      if (border != null) {
+        Insets insets = border.getBorderInsets(null);
+        height += insets.top + insets.bottom;
+      }
+
+      border = scroller.getBorder();
+      if (border != null) {
+        Insets insets = border.getBorderInsets(null);
+        height += insets.top + insets.bottom;
+      }
+
+      return height;
     }
 
     private class MyDelegateRenderer implements ListCellRenderer {

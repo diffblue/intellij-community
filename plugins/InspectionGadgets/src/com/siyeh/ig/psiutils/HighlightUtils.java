@@ -15,9 +15,6 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.colors.EditorColorsScheme;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
@@ -29,6 +26,7 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -38,22 +36,63 @@ public class HighlightUtils {
   private HighlightUtils() {
   }
 
+  /**
+   * @deprecated Intention can be invoked on a non EDT thread with a mock editor, so usages highlighting in the selected editor is incorrect.
+   * Please use {@link #highlightElement(PsiElement, Editor)} instead.
+   */
   public static void highlightElement(@NotNull PsiElement element) {
     highlightElements(Collections.singleton(element));
   }
 
+  public static void highlightElement(@NotNull PsiElement element, Editor editor) {
+    highlightElements(Collections.singleton(element), editor);
+  }
+
+  public static void highlightElements(@NotNull final Collection<? extends PsiElement> elementCollection, Editor editor) {
+    highlightElements(elementCollection, InspectionGadgetsBundle.message("press.escape.to.remove.highlighting.message"), editor);
+  }
+
+  /**
+   * @deprecated Intention can be invoked on a non EDT thread with a mock editor, so usages highlighting in the selected editor is incorrect.
+   * Please use {@link #highlightElement(PsiElement, Editor)} instead.
+   */
   public static void highlightElement(@NotNull PsiElement element, String statusBarText) {
     highlightElements(Collections.singleton(element), statusBarText);
   }
 
+  /**
+   * @deprecated Intention can be invoked on a non EDT thread with a mock editor, so usages highlighting in the selected editor is incorrect.
+   * Please use {@link #highlightElements(Collection, Editor)} instead.
+   */
   public static void highlightElements(@NotNull final Collection<? extends PsiElement> elementCollection) {
     highlightElements(elementCollection, InspectionGadgetsBundle.message("press.escape.to.remove.highlighting.message"));
   }
 
+  /**
+   * @deprecated Intention can be invoked on a non EDT thread with a mock editor, so usages highlighting in the selected editor is incorrect.
+   * Please use {@link #highlightElements(Collection, String, Editor)} instead.
+   */
+  @Deprecated
   public static void highlightElements(@NotNull final Collection<? extends PsiElement> elementCollection, String statusBarText) {
     if (elementCollection.isEmpty()) {
       return;
     }
+
+    Editor selectedTextEditor =
+      FileEditorManager.getInstance(ContainerUtil.getFirstItem(elementCollection).getProject()).getSelectedTextEditor();
+
+    highlightElements(elementCollection, statusBarText, selectedTextEditor);
+  }
+
+  public static void highlightElements(@NotNull final Collection<? extends PsiElement> elementCollection,
+                                       String statusBarText,
+                                       @Nullable Editor editor) {
+    if (elementCollection.isEmpty()) {
+      return;
+    }
+
+    if (!checkEditor(editor)) return;
+
     if (elementCollection.contains(null)) {
       throw new IllegalArgumentException("Nulls passed in collection: " + elementCollection);
     }
@@ -65,14 +104,8 @@ public class HighlightUtils {
       }
       final PsiElement firstElement = elements[0];
       final Project project = firstElement.getProject();
-      if (project.isDisposed()) return;
-      final Editor editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
-      if (editor == null) {
-        return;
-      }
-      final EditorColorsScheme globalScheme = EditorColorsManager.getInstance().getGlobalScheme();
-      final TextAttributes textattributes = globalScheme.getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-      HighlightManager.getInstance(project).addOccurrenceHighlights(editor, elements, textattributes, true, null);
+      if (project.isDisposed() || editor.isDisposed()) return;
+      HighlightManager.getInstance(project).addOccurrenceHighlights(editor, elements, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
       WindowManager.getInstance().getStatusBar(project).setInfo(statusBarText);
       final FindManager findmanager = FindManager.getInstance(project);
       FindModel findmodel = findmanager.getFindNextModel();
@@ -85,9 +118,15 @@ public class HighlightUtils {
     });
   }
 
+  private static boolean checkEditor(@Nullable Editor editor) {
+    //don't need to highlight occurrences in the intention preview editor
+    return editor != null && !editor.isViewer();
+  }
+
   public static void showRenameTemplate(PsiElement context,
                                         PsiNameIdentifierOwner element,
                                         PsiReference... references) {
+    if (!element.isPhysical()) return;
     context = CodeInsightUtilCore.forcePsiPostprocessAndRestoreElement(
       context);
     final Project project = context.getProject();

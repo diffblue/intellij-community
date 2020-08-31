@@ -124,14 +124,13 @@ public abstract class ModuleEditor implements Place.Navigator, Disposable {
     if (myModifiableRootModel == null) {
       final Module module = getModule();
       if (module != null) {
-        myModifiableRootModel = ModuleRootManagerEx.getInstanceEx(module).getModifiableModel(new UIRootConfigurationAccessor(myProject));
+        myModifiableRootModel = ModuleRootManagerEx.getInstanceEx(module).getModifiableModelForMultiCommit(new UIRootConfigurationAccessor(myProject));
       }
     }
     return myModifiableRootModel;
   }
 
-  @NotNull
-  public OrderEntry[] getOrderEntries() {
+  public OrderEntry @NotNull [] getOrderEntries() {
     if (myModifiableRootModel == null) { // do not clone all model if not necessary
       return ModuleRootManager.getInstance(getModule()).getOrderEntries();
     }
@@ -210,8 +209,7 @@ public abstract class ModuleEditor implements Place.Navigator, Disposable {
     }
   }
 
-  @NotNull
-  private static ModuleConfigurationEditorProvider[] collectProviders(@NotNull Module module) {
+  private static ModuleConfigurationEditorProvider @NotNull [] collectProviders(@NotNull Module module) {
     List<ModuleConfigurationEditorProvider> result = new ArrayList<>(module.getComponentInstancesOfType(ModuleConfigurationEditorProvider.class));
     for (ModuleConfigurationEditorProvider component : result) {
       reportDeprecatedModuleEditor(component.getClass());
@@ -350,10 +348,9 @@ public abstract class ModuleEditor implements Place.Navigator, Disposable {
 
   private class ModifiableRootModelInvocationHandler implements InvocationHandler, ProxyDelegateAccessor {
     private final ModifiableRootModel myDelegateModel;
-    @NonNls private final Set<String> myCheckedNames = new HashSet<>(
-      Arrays.asList("addOrderEntry", "addLibraryEntry", "addInvalidLibrary", "addModuleOrderEntry", "addInvalidModuleEntry",
-                    "removeOrderEntry", "setSdk", "inheritSdk", "inheritCompilerOutputPath", "setExcludeOutput", "replaceEntryOfType",
-                    "rearrangeOrderEntries"));
+    @NonNls private final Set<String> myCheckedNames = ContainerUtil
+      .set("addOrderEntry", "addLibraryEntry", "addInvalidLibrary", "addModuleOrderEntry", "addInvalidModuleEntry", "removeOrderEntry",
+           "setSdk", "inheritSdk", "inheritCompilerOutputPath", "setExcludeOutput", "replaceEntryOfType", "rearrangeOrderEntries");
 
     ModifiableRootModelInvocationHandler(@NotNull ModifiableRootModel model) {
       myDelegateModel = model;
@@ -568,6 +565,7 @@ public abstract class ModuleEditor implements Place.Navigator, Disposable {
 
   public void setModuleName(@NotNull String name) {
     myName = name;
+    updateImportedModelWarning();
   }
 
   private class ModuleEditorPanel extends JPanel implements DataProvider{

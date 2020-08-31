@@ -18,8 +18,7 @@ package com.intellij.openapi.roots.ui.configuration;
 import com.intellij.application.options.ModulesComboBox;
 
 /**
- * @author nik
- * @deprecated use {@link com.intellij.application.options.ModulesComboBox} instead
+ * @deprecated use {@link ModulesComboBox} instead
  */
 @Deprecated
 public class ModulesCombobox extends ModulesComboBox {

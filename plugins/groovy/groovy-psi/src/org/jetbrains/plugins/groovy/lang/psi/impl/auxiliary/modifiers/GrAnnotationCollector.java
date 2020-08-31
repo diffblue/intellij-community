@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.impl.auxiliary.modifiers;
 
 import com.intellij.openapi.project.Project;
@@ -27,10 +27,9 @@ import static java.util.Collections.singletonMap;
 import static org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.*;
 import static org.jetbrains.plugins.groovy.lang.resolve.imports.GroovyImports.getAliasedShortNames;
 
-public class GrAnnotationCollector {
+public final class GrAnnotationCollector {
 
-  @NotNull
-  public static GrAnnotation[] getResolvedAnnotations(@NotNull GrModifierList modifierList) {
+  public static GrAnnotation @NotNull [] getResolvedAnnotations(@NotNull GrModifierList modifierList) {
     final GrAnnotation[] rawAnnotations = modifierList.getRawAnnotations();
 
     if (!mayHaveAnnotationCollector(rawAnnotations)) return rawAnnotations;
@@ -75,6 +74,9 @@ public class GrAnnotationCollector {
     Set<String> allUsedAttrs = new LinkedHashSet<>();
     for (Map.Entry<String, Map<String, PsiNameValuePair>> entry : annotations.entrySet()) {
       final String qname = entry.getKey();
+      if (qname.equals(alias.getQualifiedName())) {
+        continue;
+      }
       final PsiClass resolved = JavaPsiFacade.getInstance(alias.getProject()).findClass(qname, alias.getResolveScope());
       if (resolved == null) continue;
 
@@ -180,7 +182,7 @@ public class GrAnnotationCollector {
     }
   }
 
-  private static boolean mayHaveAnnotationCollector(@NotNull GrAnnotation[] rawAnnotations) {
+  private static boolean mayHaveAnnotationCollector(GrAnnotation @NotNull [] rawAnnotations) {
     for (GrAnnotation annotation : rawAnnotations) {
       if (mayHaveAnnotationCollector(annotation)) {
         return true;

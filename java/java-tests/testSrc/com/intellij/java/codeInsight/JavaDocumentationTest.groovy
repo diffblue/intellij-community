@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight
 
 import com.intellij.codeInsight.documentation.DocumentationManager
@@ -172,7 +172,7 @@ class JavaDocumentationTest extends LightJavaCodeInsightFixtureTestCase {
         JavaPsiFacade.getInstance(project).findClass('Foo', it.resolveScope)?.findMethodBySignature(it, false)
       }
     }
-    DocumentationDelegateProvider.EP_NAME.getPoint(null).registerExtension(provider, myFixture.testRootDisposable)
+    DocumentationDelegateProvider.EP_NAME.getPoint().registerExtension(provider, myFixture.testRootDisposable)
 
     configure '''\
 class Foo {
@@ -256,7 +256,7 @@ class Bar {
 
   void doTestCtrlHoverDoc(String inputFile, String expectedDoc) {
     configure inputFile.stripIndent()
-    String doc = CtrlMouseHandler.getInfo(myFixture.editor, CtrlMouseHandler.BrowseMode.Declaration)
+    String doc = CtrlMouseHandler.getGoToDeclarationOrUsagesText(myFixture.editor)
     assert UIUtil.getHtmlBody(doc) == expectedDoc
   }
 }

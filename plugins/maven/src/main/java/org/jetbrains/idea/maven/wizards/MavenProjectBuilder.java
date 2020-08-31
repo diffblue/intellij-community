@@ -1,11 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.wizards;
 
 import com.intellij.ide.impl.NewProjectUtil;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUtil;
-import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProviderImpl;
 import com.intellij.openapi.externalSystem.service.project.IdeUIModifiableModelsProvider;
 import com.intellij.openapi.externalSystem.service.project.manage.ExternalProjectsManagerImpl;
 import com.intellij.openapi.module.ModifiableModuleModel;
@@ -17,27 +16,33 @@ import com.intellij.openapi.projectRoots.*;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.ui.configuration.ModulesConfigurator;
 import com.intellij.openapi.roots.ui.configuration.ModulesProvider;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.packaging.artifacts.ModifiableArtifactModel;
 import com.intellij.projectImport.DeprecatedProjectBuilderForImport;
 import com.intellij.projectImport.ProjectImportBuilder;
-import icons.MavenIcons;
+import com.intellij.projectImport.ProjectOpenProcessor;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.Promise;
 import org.jetbrains.idea.maven.model.MavenExplicitProfiles;
 import org.jetbrains.idea.maven.project.*;
+import org.jetbrains.idea.maven.project.actions.LookForNestedToggleAction;
 import org.jetbrains.idea.maven.utils.*;
 
 import javax.swing.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
+
+import static icons.OpenapiIcons.RepositoryLibraryLogo;
 
 /**
  * Do not use this project import builder directly.
@@ -46,8 +51,7 @@ import java.util.concurrent.TimeoutException;
  * Use {@link com.intellij.ide.actions.ImportModuleAction#doImport} to import (attach) a new project.
  * Use {@link com.intellij.ide.impl.ProjectUtil#openOrImport} to open (import) a new project.
  */
-public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> implements DeprecatedProjectBuilderForImport {
-
+public final class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> implements DeprecatedProjectBuilderForImport {
   private static final Logger LOG = Logger.getInstance(MavenProjectBuilder.class);
 
   private static class Parameters {
@@ -56,7 +60,7 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     private MavenGeneralSettings myGeneralSettingsCache;
     private MavenImportingSettings myImportingSettingsCache;
 
-    private VirtualFile myImportRoot;
+    private Path myImportRoot;
     private List<VirtualFile> myFiles;
 
     private MavenProjectsTree myMavenProjectTree;
@@ -70,12 +74,12 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
   @Override
   @NotNull
   public String getName() {
-    return ProjectBundle.message("maven.name");
+    return MavenProjectBundle.message("maven.name");
   }
 
   @Override
   public Icon getIcon() {
-    return MavenIcons.MavenLogo;
+    return RepositoryLibraryLogo;
   }
 
   @Override
@@ -96,18 +100,9 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     return myParameters;
   }
 
-  @Override
-  public boolean validate(Project current, Project dest) {
-    return true;
-  }
-
   private boolean setupProjectImport(@NotNull Project project) {
-    VirtualFile rootDirectory = getRootDirectory();
-    if (rootDirectory == null) return false;
-    String rootPath = rootDirectory.getPath();
-    if (!setRootDirectory(project, rootPath)) return false;
-    if (!selectProjectsToUpdate()) return false;
-    return true;
+    Path rootDirectory = getRootPath();
+    return rootDirectory != null && setRootDirectory(project, rootDirectory) && selectProjectsToUpdate();
   }
 
   private boolean selectProjectsToUpdate() {
@@ -120,10 +115,14 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
   }
 
   private void setupProjectName(@NotNull Project project) {
-    if (!(project instanceof ProjectEx)) return;
+    if (!(project instanceof ProjectEx)) {
+      return;
+    }
+
     String projectName = getSuggestedProjectName();
-    if (projectName == null) return;
-    ((ProjectEx)project).setProjectName(projectName);
+    if (projectName != null) {
+      ((ProjectEx)project).setProjectName(projectName);
+    }
   }
 
   @Nullable
@@ -190,7 +189,7 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
 
     if (ApplicationManager.getApplication().isHeadlessEnvironment() &&
         !ApplicationManager.getApplication().isUnitTestMode()) {
-      Promise<List<Module>> promise = manager.scheduleImportAndResolve(true);
+      Promise<List<Module>> promise = manager.scheduleImportAndResolve();
       manager.waitForResolvingCompletion();
       try {
         return promise.blockingGet(0);
@@ -201,9 +200,10 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     }
 
     boolean isFromUI = model != null;
-    return manager.importProjects(isFromUI
-                                  ? new IdeUIModifiableModelsProvider(project, model, (ModulesConfigurator)modulesProvider, artifactModel)
-                                  : new IdeModifiableModelsProviderImpl(project));
+    if (isFromUI) {
+      return manager.importProjects(new IdeUIModifiableModelsProvider(project, model, (ModulesConfigurator)modulesProvider, artifactModel));
+    }
+    return manager.importProjects();
   }
 
   private static void appendProfilesFromString(Collection<String> selectedProfiles, String profilesList) {
@@ -217,32 +217,56 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     }
   }
 
-  public boolean setRootDirectory(@Nullable Project projectToUpdate, final String root) {
+  /**
+   * @deprecated Use {@link #setRootDirectory(Project, Path)}
+   */
+  @Deprecated
+  public boolean setRootDirectory(@Nullable Project projectToUpdate, @NotNull String root) {
+    return setRootDirectory(projectToUpdate, Paths.get(root));
+  }
+
+  public boolean setRootDirectory(@Nullable Project projectToUpdate, @NotNull Path root) {
     getParameters().myFiles = null;
     getParameters().myMavenProjectTree = null;
 
     // We cannot determinate project in non-EDT thread.
     getParameters().myProjectToUpdate = projectToUpdate != null ? projectToUpdate : ProjectManager.getInstance().getDefaultProject();
 
-    return runConfigurationProcess(ProjectBundle.message("maven.scanning.projects"), new MavenTask() {
+    return runConfigurationProcess(MavenProjectBundle.message("maven.scanning.projects"), new MavenTask() {
       @Override
       public void run(MavenProgressIndicator indicator) throws MavenProcessCanceledException {
-        indicator.setText(ProjectBundle.message("maven.locating.files"));
+        indicator.setText(MavenProjectBundle.message("maven.locating.files"));
 
-        getParameters().myImportRoot = LocalFileSystem.getInstance().refreshAndFindFileByPath(root);
-        if (getParameters().myImportRoot == null) throw new MavenProcessCanceledException();
+        getParameters().myImportRoot = root;
+        if (getParameters().myImportRoot == null) {
+          throw new MavenProcessCanceledException();
+        }
 
-        final VirtualFile file = getRootDirectory();
-        if (file == null) throw new MavenProcessCanceledException();
-
-        getParameters().myFiles = FileFinder.findPomFiles(file.getChildren(),
-                                                          getImportingSettings().isLookForNested(),
-                                                          indicator,
-                                                          new ArrayList<>());
+        Path file = getRootPath();
+        VirtualFile virtualFile = file == null ? null : LocalFileSystem.getInstance().refreshAndFindFileByPath(FileUtil.toSystemIndependentName(file.toString()));
+        if (virtualFile == null) {
+          throw new MavenProcessCanceledException();
+        }
+        getParameters().myFiles = FileFinder.findPomFiles(virtualFile.getChildren(),
+          LookForNestedToggleAction.isSelected(),
+          indicator,
+          new ArrayList<>());
 
         readMavenProjectTree(indicator);
 
         indicator.setText("");
+        indicator.setText2("");
+      }
+    });
+  }
+
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval
+  public boolean setSelectedProfiles(MavenExplicitProfiles profiles) {
+    return runConfigurationProcess(MavenProjectBundle.message("maven.scanning.projects"), new MavenTask() {
+      @Override
+      public void run(MavenProgressIndicator indicator) {
+        readMavenProjectTree(indicator);
         indicator.setText2("");
       }
     });
@@ -338,32 +362,46 @@ public class MavenProjectBuilder extends ProjectImportBuilder<MavenProject> impl
     return project;
   }
 
-  @Nullable
-  public VirtualFile getRootDirectory() {
+  /**
+   * @deprecated Use {@link #getRootPath()}
+   */
+  @Deprecated
+  public @Nullable VirtualFile getRootDirectory() {
+    Path rootPath = getRootPath();
+    return rootPath == null ? null : VfsUtil.findFile(rootPath, false);
+  }
+
+  public @Nullable Path getRootPath() {
     if (getParameters().myImportRoot == null && isUpdate()) {
-      final Project project = getProjectToUpdate();
-      getParameters().myImportRoot = project != null ? project.getBaseDir() : null;
+      Project project = getProjectToUpdate();
+      getParameters().myImportRoot = project == null ? null : Paths.get(Objects.requireNonNull(project.getBasePath()));
     }
     return getParameters().myImportRoot;
   }
 
-  public String getSuggestedProjectName() {
-    final List<MavenProject> list = getParameters().myMavenProjectTree.getRootProjects();
-    if (list.size() == 1) {
-      return list.get(0).getMavenId().getArtifactId();
-    }
-    return null;
+  public @Nullable String getSuggestedProjectName() {
+    List<MavenProject> list = getParameters().myMavenProjectTree.getRootProjects();
+    return list.size() == 1 ? list.get(0).getMavenId().getArtifactId() : null;
   }
 
   @Override
-  public void setFileToImport(String path) {
-    VirtualFile file = LocalFileSystem.getInstance().refreshAndFindFileByPath(path);
-    getParameters().myImportRoot = file == null || file.isDirectory() ? file : file.getParent();
+  public void setFileToImport(@NotNull String path) {
+    setFileToImport(Paths.get(path));
+  }
+
+  public void setFileToImport(@NotNull Path path) {
+    getParameters().myImportRoot = Files.isDirectory(path) ? path : path.getParent();
   }
 
   @Nullable
   @Override
   public Project createProject(String name, String path) {
     return ExternalProjectsManagerImpl.setupCreatedProject(super.createProject(name, path));
+  }
+
+  @NotNull
+  @Override
+  public ProjectOpenProcessor getProjectOpenProcessor() {
+    return ProjectOpenProcessor.EXTENSION_POINT_NAME.findExtensionOrFail(MavenProjectOpenProcessor.class);
   }
 }

@@ -3,7 +3,7 @@ package com.intellij.codeInsight.daemon.impl.analysis;
 
 import com.intellij.application.options.XmlSettings;
 import com.intellij.codeInsight.completion.ExtendedTagInsertHandler;
-import com.intellij.codeInsight.daemon.XmlErrorMessages;
+import com.intellij.codeInsight.daemon.XmlErrorBundle;
 import com.intellij.codeInsight.daemon.impl.ShowAutoImportPass;
 import com.intellij.codeInsight.daemon.impl.VisibleHighlightingPassFactory;
 import com.intellij.codeInsight.hint.HintManager;
@@ -32,6 +32,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.cache.impl.id.IdTableBuilding;
 import com.intellij.psi.meta.PsiMetaData;
+import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.psi.xml.*;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.IncorrectOperationException;
@@ -57,7 +58,7 @@ import java.util.Set;
  */
 public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFix {
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.analysis.CreateNSDeclarationIntentionFix");
+  private static final Logger LOG = Logger.getInstance(CreateNSDeclarationIntentionFix.class);
 
   private final String myNamespacePrefix;
   private final PsiAnchor myElement;
@@ -66,12 +67,6 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
   @NotNull
   private XmlFile getFile() {
     return (XmlFile)myElement.getFile();
-  }
-
-  @Nullable
-  public static CreateNSDeclarationIntentionFix createFix(@NotNull final PsiElement element, @NotNull final String namespacePrefix) {
-    PsiFile file = element.getContainingFile();
-    return file instanceof XmlFile ? new CreateNSDeclarationIntentionFix(element, namespacePrefix) : null;
   }
 
   protected CreateNSDeclarationIntentionFix(@NotNull final PsiElement element,
@@ -91,7 +86,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
   @NotNull
   public String getText() {
     final String alias = getXmlNamespaceHelper().getNamespaceAlias(getFile());
-    return XmlErrorMessages.message("create.namespace.declaration.quickfix", alias);
+    return XmlErrorBundle.message("create.namespace.declaration.quickfix", alias);
   }
 
   private XmlNamespaceHelper getXmlNamespaceHelper() {
@@ -101,7 +96,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
   @Override
   @NotNull
   public String getFamilyName() {
-    return XmlErrorMessages.message("create.namespace.declaration.quickfix.family");
+    return XmlErrorBundle.message("create.namespace.declaration.quickfix.family");
   }
 
   @Override
@@ -118,8 +113,10 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
 
   @Override
   public boolean isAvailable(@NotNull Project project, Editor editor, PsiFile file) {
+    if (!(file instanceof XmlFile)) return false;
     PsiElement element = myElement.retrieve();
-    return element != null && element.isValid();
+    XmlTag rootTag = ((XmlFile)file).getRootTag();
+    return element != null && rootTag != null && !PsiUtilCore.hasErrorElementChild(rootTag);
   }
 
   /** Looks up the unbound namespaces and sorts them */
@@ -201,7 +198,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
   }
 
   private String getTitle() {
-    return XmlErrorMessages.message("select.namespace.title", StringUtil.capitalize(getXmlNamespaceHelper().getNamespaceAlias(getFile())));
+    return XmlErrorBundle.message("select.namespace.title", StringUtil.capitalize(getXmlNamespaceHelper().getNamespaceAlias(getFile())));
   }
 
   @Override
@@ -252,7 +249,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
 
     IdTableBuilding.ScanWordProcessor wordProcessor = new IdTableBuilding.ScanWordProcessor() {
       @Override
-      public void run(final CharSequence chars, @Nullable char[] charsArray, int start, int end) {
+      public void run(final CharSequence chars, char @Nullable [] charsArray, int start, int end) {
         if (wordsFoundCount[0] == words.length) return;
         final int foundWordLen = end - start;
 
@@ -284,7 +281,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
   }
 
 
-  public static void runActionOverSeveralAttributeValuesAfterLettingUserSelectTheNeededOne(@NotNull final String[] namespacesToChooseFrom,
+  public static void runActionOverSeveralAttributeValuesAfterLettingUserSelectTheNeededOne(final String @NotNull [] namespacesToChooseFrom,
                                                                                            final Project project, final StringToAttributeProcessor onSelection,
                                                                                            String title,
                                                                                            final IntentionAction requestor,
@@ -293,9 +290,9 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
     if (namespacesToChooseFrom.length > 1 && !ApplicationManager.getApplication().isUnitTestMode()) {
       JBPopupFactory.getInstance()
         .createPopupChooserBuilder(ContainerUtil.newArrayList(namespacesToChooseFrom))
-        .setRenderer(XmlNSRenderer.INSTANCE)
+        .setRenderer(new XmlNSRenderer<>())
         .setTitle(title)
-        .setItemChosenCallback((selectedValue) -> {
+        .setItemChosenCallback(selectedValue -> {
           PsiDocumentManager.getInstance(project).commitAllDocuments();
           CommandProcessor.getInstance().executeCommand(
             project,
@@ -328,7 +325,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
                                          final ExternalUriProcessor processor) {
     ProgressManager.getInstance().runProcessWithProgressSynchronously(
       () -> ReadAction.run(() -> processExternalUrisImpl(metaHandler, file, processor)),
-      XmlErrorMessages.message("finding.acceptable.uri"),
+      XmlErrorBundle.message("finding.acceptable.uri"),
       false,
       file.getProject()
     );
@@ -372,7 +369,7 @@ public class CreateNSDeclarationIntentionFix implements HintAction, LocalQuickFi
     final String searchFor = metaHandler.searchFor();
 
     if (pi != null) {
-      pi.setText(XmlErrorMessages.message("looking.in.schemas"));
+      pi.setText(XmlErrorBundle.message("looking.in.schemas"));
       pi.setIndeterminate(false);
     }
     final ExternalResourceManager instanceEx = ExternalResourceManager.getInstance();

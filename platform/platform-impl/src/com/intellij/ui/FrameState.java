@@ -1,8 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.wm.ex.IdeFrameEx;
+import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.impl.FrameInfoHelper;
 import org.jetbrains.annotations.NotNull;
 import sun.awt.AWTAccessor;
@@ -13,9 +13,6 @@ import java.awt.event.ComponentListener;
 import java.awt.peer.ComponentPeer;
 import java.awt.peer.FramePeer;
 
-/**
- * @author Sergey Malenkov
- */
 public class FrameState {
   private Rectangle myBounds;
   private boolean myMaximized;
@@ -54,12 +51,6 @@ public class FrameState {
       }
     }
     return state;
-  }
-
-  public static boolean isFullScreen(Component component) {
-    return component instanceof IdeFrameEx
-           && FrameInfoHelper.isFullScreenSupportedInCurrentOs()
-           && ((IdeFrameEx)component).isInFullScreen();
   }
 
   private static FrameState findFrameState(@NotNull Component component) {
@@ -114,7 +105,9 @@ public class FrameState {
 
   final void update(Component component) {
     Rectangle bounds = component.getBounds();
-    myFullScreen = isFullScreen(component);
+    myFullScreen = component instanceof IdeFrame
+                   && FrameInfoHelper.isFullScreenSupportedInCurrentOs()
+                   && ((IdeFrame)component).isInFullScreen();
     myMaximized = FrameInfoHelper.isMaximized(getExtendedState(component));
     if (myBounds != null) {
       if (myFullScreen || myMaximized) {

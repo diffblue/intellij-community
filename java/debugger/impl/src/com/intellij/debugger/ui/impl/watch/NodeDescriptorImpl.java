@@ -1,8 +1,8 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.ui.impl.watch;
 
 import com.intellij.codeInspection.SmartHashMap;
-import com.intellij.debugger.DebuggerBundle;
+import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebugProcess;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluateExceptionUtil;
@@ -20,7 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public abstract class NodeDescriptorImpl implements NodeDescriptor {
-  protected static final Logger LOG = Logger.getInstance("#com.intellij.debugger.ui.impl.watch.NodeDescriptorImpl");
+  protected static final Logger LOG = Logger.getInstance(NodeDescriptorImpl.class);
 
   public static final String UNKNOWN_VALUE_MESSAGE = "";
   public boolean myIsExpanded = false;
@@ -62,17 +62,17 @@ public abstract class NodeDescriptorImpl implements NodeDescriptor {
     labelListener.labelChanged();
   }
 
-  protected void updateRepresentationNoNotify(EvaluationContextImpl context, DescriptorLabelListener labelListener) {
+  public void updateRepresentationNoNotify(EvaluationContextImpl context, DescriptorLabelListener labelListener) {
     try {
       try {
         myEvaluateException = null;
         myLabel = calcRepresentation(context, labelListener);
       }
       catch (InconsistentDebugInfoException e) {
-        throw new EvaluateException(DebuggerBundle.message("error.inconsistent.debug.info"));
+        throw new EvaluateException(JavaDebuggerBundle.message("error.inconsistent.debug.info"));
       }
       catch (InvalidStackFrameException e) {
-        throw new EvaluateException(DebuggerBundle.message("error.invalid.stackframe"));
+        throw new EvaluateException(JavaDebuggerBundle.message("error.invalid.stackframe"));
       }
       catch (ObjectCollectedException e) {
         throw EvaluateExceptionUtil.OBJECT_WAS_COLLECTED;
@@ -90,7 +90,7 @@ public abstract class NodeDescriptorImpl implements NodeDescriptor {
         else {
           LOG.warn(e);
         }
-        throw new EvaluateException("Internal error, see logs for more details");
+        throw new EvaluateException(JavaDebuggerBundle.message("internal.debugger.error"));
       }
     }
     catch (EvaluateException e) {

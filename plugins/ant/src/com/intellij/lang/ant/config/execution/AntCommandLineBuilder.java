@@ -118,7 +118,7 @@ public class AntCommandLineBuilder {
         myCommandLine.getClassPath().add(toolsJar);
       }
     }
-    PathUtilEx.addRtJar(myCommandLine.getClassPath());
+    AntPathUtil.addRtJar(myCommandLine.getClassPath());
 
     myCommandLine.setMainClass(AntMain2.class.getName());
     final ParametersList programParameters = myCommandLine.getProgramParametersList();
@@ -174,7 +174,7 @@ public class AntCommandLineBuilder {
   }
 
   public void addTargets(Collection<String> targets) {
-    ContainerUtil.addAll(myTargets, targets);
+    myTargets.addAll(targets);
   }
 
   public String[] getTargets() {

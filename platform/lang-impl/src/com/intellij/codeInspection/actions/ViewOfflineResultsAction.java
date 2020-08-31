@@ -20,9 +20,9 @@ import com.intellij.analysis.AnalysisScope;
 import com.intellij.analysis.PerformAnalysisInBackgroundOption;
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
-import com.intellij.codeInspection.InspectionApplication;
 import com.intellij.codeInspection.InspectionManager;
 import com.intellij.codeInspection.InspectionsBundle;
+import com.intellij.codeInspection.InspectionsResultUtil;
 import com.intellij.codeInspection.ex.*;
 import com.intellij.codeInspection.offline.OfflineProblemDescriptor;
 import com.intellij.codeInspection.offlineViewer.OfflineInspectionRVContentProvider;
@@ -44,6 +44,7 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VfsUtil;
@@ -85,14 +86,14 @@ public class ViewOfflineResultsAction extends AnAction {
       @Override
       public Icon getIcon(VirtualFile file) {
         if (file.isDirectory() &&
-            file.findChild(InspectionApplication.DESCRIPTIONS + "." + StdFileTypes.XML.getDefaultExtension()) != null) {
+            file.findChild(InspectionsResultUtil.DESCRIPTIONS + "." + StdFileTypes.XML.getDefaultExtension()) != null) {
           return AllIcons.Nodes.InspectionResults;
         }
         return super.getIcon(file);
       }
     }.withFileFilter(f -> f.isDirectory() || StdFileTypes.XML.getDefaultExtension().equals(f.getExtension()))
-      .withTitle("Select Path")
-      .withDescription("Select directory which contains exported inspections results");
+      .withTitle(InspectionsBundle.message("view.offline.inspections.select.path.title"))
+      .withDescription(InspectionsBundle.message("view.offline.inspections.select.path.description"));
     final VirtualFile virtualFile = FileChooser.chooseFile(descriptor, project, null);
     if (virtualFile == null) return;
 
@@ -114,7 +115,7 @@ public class ViewOfflineResultsAction extends AnAction {
             final String extension = inspectionFile.getExtension();
             File inspectionIoFile = VfsUtilCore.virtualToIoFile(inspectionFile);
             try {
-              if (shortName.equals(InspectionApplication.DESCRIPTIONS)) {
+              if (shortName.equals(InspectionsResultUtil.DESCRIPTIONS)) {
                 profileName[0] = ReadAction.compute(() -> OfflineViewParseUtil.parseProfileName(inspectionIoFile));
               }
               else if (StdFileTypes.XML.getDefaultExtension().equals(extension)) {
@@ -139,7 +140,7 @@ public class ViewOfflineResultsAction extends AnAction {
       @Override
       public void onSuccess() {
         if (resMap.isEmpty()) return;
-        ApplicationManager.getApplication().invokeLater(() -> {
+        DumbService.getInstance(project).smartInvokeLater(() -> {
           final String name = profileName[0];
           LOG.assertTrue(name != null);
           showOfflineView(project, name, resMap, InspectionsBundle.message("offline.view.title") + " (" + name + ")");

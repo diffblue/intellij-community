@@ -1,12 +1,13 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.settings;
 
-import com.intellij.debugger.DebuggerBundle;
 import com.intellij.debugger.DebuggerContext;
+import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebugProcess;
 import com.intellij.debugger.engine.JavaValuePresentation;
 import com.intellij.debugger.engine.evaluation.*;
 import com.intellij.debugger.engine.evaluation.expression.ExpressionEvaluator;
+import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.ui.impl.watch.ArrayElementDescriptorImpl;
 import com.intellij.debugger.ui.impl.watch.ValueDescriptorImpl;
@@ -15,6 +16,7 @@ import com.intellij.debugger.ui.tree.ArrayElementDescriptor;
 import com.intellij.debugger.ui.tree.DebuggerTreeNode;
 import com.intellij.debugger.ui.tree.ValueDescriptor;
 import com.intellij.debugger.ui.tree.render.*;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.PersistentStateComponent;
@@ -22,7 +24,6 @@ import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
@@ -33,8 +34,8 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.impl.java.stubs.index.JavaAnnotationIndex;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.searches.AnnotatedElementsSearch;
 import com.intellij.util.EventDispatcher;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.xdebugger.frame.presentation.XValuePresentation;
@@ -49,6 +50,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 @State(name = "NodeRendererSettings", storages = {
   @Storage("debugger.xml"),
@@ -249,6 +251,7 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
     }
 
     // plugins registered renderers come after that
+    CompoundRendererProvider.EP_NAME.extensions().map(CompoundRendererProvider::createRenderer).forEach(allRenderers::add);
     allRenderers.addAll(NodeRenderer.EP_NAME.getExtensionList());
 
     // now all predefined stuff
@@ -263,28 +266,21 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
 
   private void addAnnotationRenderers(List<NodeRenderer> renderers, Project project) {
     try {
-      GlobalSearchScope allScope = GlobalSearchScope.allScope(project);
-      String annotationFqn = Debug.Renderer.class.getName().replace("$", ".");
-      PsiClass annotationClass =
-        JavaPsiFacade.getInstance(project).findClass(annotationFqn, allScope);
-      if (annotationClass != null) {
-        AnnotatedElementsSearch.searchPsiClasses(annotationClass, allScope)
-          .forEach(e -> {
-            PsiAnnotation annotation = e.getAnnotation(annotationFqn);
-            if (annotation != null) {
-              String text = getAttributeValue(annotation, "text");
-              LabelRenderer labelRenderer = StringUtil.isEmpty(text) ? null : createLabelRenderer(null, text, null);
-              String childrenArray = getAttributeValue(annotation, "childrenArray");
-              String isLeaf = getAttributeValue(annotation, "hasChildren");
-              ExpressionChildrenRenderer childrenRenderer =
-                StringUtil.isEmpty(childrenArray) ? null : createExpressionArrayChildrenRenderer(childrenArray, isLeaf, myArrayRenderer);
-              CompoundReferenceRenderer renderer = createCompoundReferenceRenderer(
-                e.getQualifiedName(), e.getQualifiedName(), labelRenderer, childrenRenderer);
-              renderer.setEnabled(true);
-              renderers.add(renderer);
-            }
-          });
-      }
+      visitAnnotatedElements(Debug.Renderer.class.getName().replace("$", "."), project, (e, annotation) -> {
+        if (e instanceof PsiClass) {
+          String text = getAttributeValue(annotation, "text");
+          LabelRenderer labelRenderer = StringUtil.isEmpty(text) ? null : createLabelRenderer(null, text, null);
+          String childrenArray = getAttributeValue(annotation, "childrenArray");
+          String isLeaf = getAttributeValue(annotation, "hasChildren");
+          ExpressionChildrenRenderer childrenRenderer =
+            StringUtil.isEmpty(childrenArray) ? null : createExpressionArrayChildrenRenderer(childrenArray, isLeaf, myArrayRenderer);
+          PsiClass cls = ((PsiClass)e);
+          CompoundReferenceRenderer renderer = createCompoundReferenceRenderer(
+            cls.getQualifiedName(), cls.getQualifiedName(), labelRenderer, childrenRenderer);
+          renderer.setEnabled(true);
+          renderers.add(renderer);
+        }
+      });
     }
     catch (IndexNotReadyException | ProcessCanceledException ignore) {
     }
@@ -360,24 +356,15 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
     else if(rendererId.equals(EnumerationChildrenRenderer.UNIQUE_ID)) {
       return new EnumerationChildrenRenderer();
     }
-    else if(rendererId.equals(ToStringRenderer.UNIQUE_ID)) {
+    else if (rendererId.equals(ToStringRenderer.UNIQUE_ID)) {
       return myToStringRenderer;
     }
-    else if(rendererId.equals(CompoundNodeRenderer.UNIQUE_ID) || rendererId.equals(REFERENCE_RENDERER)) {
+    else if (rendererId.equals(CompoundReferenceRenderer.UNIQUE_ID) ||
+             rendererId.equals(CompoundReferenceRenderer.UNIQUE_ID_OLD) ||
+             rendererId.equals(REFERENCE_RENDERER)) {
       return createCompoundReferenceRenderer("unnamed", CommonClassNames.JAVA_LANG_OBJECT, null, null);
     }
-    else if (rendererId.equals(CompoundTypeRenderer.UNIQUE_ID)) {
-      return createCompoundTypeRenderer("unnamed", CommonClassNames.JAVA_LANG_OBJECT, null, null);
-    }
     return null;
-  }
-
-  public CompoundTypeRenderer createCompoundTypeRenderer(
-    @NonNls final String rendererName, @NonNls final String className, final ValueLabelRenderer labelRenderer, final ChildrenRenderer childrenRenderer
-  ) {
-    CompoundTypeRenderer renderer = new CompoundTypeRenderer(this, rendererName, labelRenderer, childrenRenderer);
-    renderer.setClassName(className);
-    return renderer;
   }
 
   public CompoundReferenceRenderer createCompoundReferenceRenderer(
@@ -385,6 +372,7 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
     ) {
     CompoundReferenceRenderer renderer = new CompoundReferenceRenderer(this, rendererName, labelRenderer, childrenRenderer);
     renderer.setClassName(className);
+    renderer.setIsApplicableChecker(type -> DebuggerUtilsAsync.instanceOf(type, renderer.getClassName()));
     return renderer;
   }
 
@@ -399,9 +387,9 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
   public static ExpressionChildrenRenderer createExpressionChildrenRenderer(@NonNls String expressionText,
                                                                              @NonNls String childrenExpandableText) {
     final ExpressionChildrenRenderer childrenRenderer = new ExpressionChildrenRenderer();
-    childrenRenderer.setChildrenExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expressionText, "", StdFileTypes.JAVA));
+    childrenRenderer.setChildrenExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expressionText, "", JavaFileType.INSTANCE));
     if (childrenExpandableText != null) {
-      childrenRenderer.setChildrenExpandable(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, childrenExpandableText, "", StdFileTypes.JAVA));
+      childrenRenderer.setChildrenExpandable(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, childrenExpandableText, "", JavaFileType.INSTANCE));
     }
     return childrenRenderer;
   }
@@ -412,7 +400,7 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
       ArrayList<EnumerationChildrenRenderer.ChildInfo> childrenList = new ArrayList<>(expressions.length);
       for (String[] expression : expressions) {
         childrenList.add(new EnumerationChildrenRenderer.ChildInfo(
-          expression[0], new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expression[1], "", StdFileTypes.JAVA), false));
+          expression[0], new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expression[1], "", JavaFileType.INSTANCE), false));
       }
       childrenRenderer.setChildren(childrenList);
     }
@@ -436,11 +424,12 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
         return evaluated + postfix;
       }
     };
-    labelRenderer.setLabelExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expressionText, "", StdFileTypes.JAVA));
+    labelRenderer.setLabelExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, expressionText, "", JavaFileType.INSTANCE));
     return labelRenderer;
   }
 
-  private static class MapEntryLabelRenderer extends ReferenceRenderer implements ValueLabelRenderer, XValuePresentationProvider {
+  private static class MapEntryLabelRenderer extends ReferenceRenderer
+    implements ValueLabelRenderer, XValuePresentationProvider, OnDemandRenderer {
     private static final Key<ValueDescriptorImpl> KEY_DESCRIPTOR = Key.create("KEY_DESCRIPTOR");
     private static final Key<ValueDescriptorImpl> VALUE_DESCRIPTOR = Key.create("VALUE_DESCRIPTOR");
 
@@ -449,12 +438,15 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
 
     private MapEntryLabelRenderer() {
       super("java.util.Map$Entry");
-      myKeyExpression.setReferenceExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, "this.getKey()", "", StdFileTypes.JAVA));
-      myValueExpression.setReferenceExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, "this.getValue()", "", StdFileTypes.JAVA));
+      myKeyExpression.setReferenceExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, "this.getKey()", "", JavaFileType.INSTANCE));
+      myValueExpression.setReferenceExpression(new TextWithImportsImpl(CodeFragmentKind.EXPRESSION, "this.getValue()", "", JavaFileType.INSTANCE));
     }
 
     @Override
     public String calcLabel(ValueDescriptor descriptor, EvaluationContext evaluationContext, DescriptorLabelListener listener) throws EvaluateException {
+      if (!isShowValue(descriptor, evaluationContext)) {
+        return "";
+      }
       String keyText = calcExpression(evaluationContext, descriptor, myKeyExpression, listener, KEY_DESCRIPTOR);
       String valueText = calcExpression(evaluationContext, descriptor, myValueExpression, listener, VALUE_DESCRIPTOR);
       return keyText + " -> " + valueText;
@@ -487,6 +479,12 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
       return "MapEntry renderer";
     }
 
+    @NotNull
+    @Override
+    public String getLinkText() {
+      return JavaDebuggerBundle.message("message.node.evaluate");
+    }
+
     private Value doEval(EvaluationContext evaluationContext, Value originalValue, MyCachedEvaluator cachedEvaluator)
       throws EvaluateException {
       final DebugProcess debugProcess = evaluationContext.getDebugProcess();
@@ -502,7 +500,7 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
         return evaluator.evaluate(thisEvaluationContext);
       }
       catch (final EvaluateException ex) {
-        throw new EvaluateException(DebuggerBundle.message("error.unable.to.evaluate.expression") + " " + ex.getMessage(), ex);
+        throw new EvaluateException(JavaDebuggerBundle.message("error.unable.to.evaluate.expression") + " " + ex.getMessage(), ex);
       }
     }
 
@@ -571,6 +569,7 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
             createLabelRenderer(" size = ", "size()", null),
             createExpressionArrayChildrenRenderer("toArray()", "!isEmpty()", arrayRenderer));
       setClassName(CommonClassNames.JAVA_UTIL_LIST);
+      setIsApplicableChecker(type -> DebuggerUtilsAsync.instanceOf(type, getClassName()));
     }
 
     @Override
@@ -584,5 +583,18 @@ public class NodeRendererSettings implements PersistentStateComponent<Element> {
         return super.getChildValueExpression(node, context);
       }
     }
+  }
+
+  static void visitAnnotatedElements(String annotationFqn, Project project, BiConsumer<PsiModifierListOwner, PsiAnnotation> consumer) {
+    JavaAnnotationIndex.getInstance().get(StringUtil.getShortName(annotationFqn), project, GlobalSearchScope.allScope(project))
+      .forEach(annotation -> {
+        PsiElement parent = annotation.getContext();
+        if (annotationFqn.equals(annotation.getQualifiedName()) && parent instanceof PsiModifierList) {
+          PsiElement owner = parent.getParent();
+          if (owner instanceof PsiModifierListOwner) {
+            consumer.accept((PsiModifierListOwner)owner, annotation);
+          }
+        }
+      });
   }
 }

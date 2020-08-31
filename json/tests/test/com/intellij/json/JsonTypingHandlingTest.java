@@ -2,6 +2,7 @@
 package com.intellij.json;
 
 import com.intellij.codeInsight.CodeInsightSettings;
+import com.intellij.json.editor.JsonEditorOptions;
 import org.jetbrains.annotations.NotNull;
 
 public class JsonTypingHandlingTest extends JsonTestCase {
@@ -17,8 +18,14 @@ public class JsonTypingHandlingTest extends JsonTestCase {
   private void doTestQuote(@NotNull final String before, @NotNull final String expected) {
     doTypingTest('"', before, expected, "json");
   }
+  private void doTestSingleQuote(@NotNull final String before, @NotNull final String expected) {
+    doTypingTest('\'', before, expected, "json");
+  }
   private void doTestColon(@NotNull final String before, @NotNull final String expected) {
     doTypingTest(':', before, expected, "json");
+  }
+  private void doTestComma(@NotNull final String before, @NotNull final String expected) {
+    doTypingTest(',', before, expected, "json");
   }
 
   @SuppressWarnings("SameParameterValue")
@@ -164,5 +171,109 @@ public class JsonTypingHandlingTest extends JsonTestCase {
                 "  \"x\": 5<caret>}\n", "{\n" +
                                  "  \"x\": 5\n" +
                                  "}\n");
+  }
+
+  public void testMoveColon() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COLON_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = true;
+      doTestColon("{\"x<caret>\"}", "{\"x\": <caret>}");
+    }
+    finally {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testMoveComma() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COMMA_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = true;
+      doTestComma("{\"x\": \"value<caret>\"}", "{\"x\": \"value\",<caret>}");
+    }
+    finally {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testMoveCommaForArray() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COMMA_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = true;
+      doTestComma("{\"x\": [\"value<caret>\"]}", "{\"x\": [\"value\",<caret>]}");
+    }
+    finally {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testDoNotMoveColonIfColon() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COLON_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = true;
+      doTestColon("{\"x<caret>\":}", "{\"x:<caret>\":}");
+    }
+    finally {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testDoNotMoveColonIfDisabled() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COLON_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = false;
+      doTestColon("{\"x<caret>\"}", "{\"x:<caret>\"}");
+    }
+    finally {
+      editorOptions.COLON_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testDoNotMoveCommaIfComma() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COMMA_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = true;
+      doTestComma("{\"x\": \"value<caret>\",}", "{\"x\": \"value,<caret>\",}");
+    }
+    finally {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testDoNotMoveCommaIfDisabled() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COMMA_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = false;
+      doTestComma("{\"x\": \"value<caret>\"}", "{\"x\": \"value,<caret>\"}");
+    }
+    finally {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testDoNotMoveCommaForArrayIfComma() {
+    JsonEditorOptions editorOptions = JsonEditorOptions.getInstance();
+    boolean oldQuote = editorOptions.COMMA_MOVE_OUTSIDE_QUOTES;
+    try {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = true;
+      doTestComma("{\"x\": [\"value<caret>\",]}", "{\"x\": [\"value,<caret>\",]}");
+    }
+    finally {
+      editorOptions.COMMA_MOVE_OUTSIDE_QUOTES = oldQuote;
+    }
+  }
+
+  public void testQuotePairingNotInsideString01() {
+    doTestQuote("{\"MyKey\": \"This \\<caret>\"}", "{\"MyKey\": \"This \\\"<caret>\"}");
+  }
+
+  public void testQuotePairingNotInsideString02() {
+    doTestSingleQuote("{\"MyKey\": \"This <caret> \\\"is\\\" my value\"}", "{\"MyKey\": \"This ' \\\"is\\\" my value\"}");
   }
 }

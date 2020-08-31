@@ -40,12 +40,12 @@ import java.util.concurrent.ConcurrentMap;
  * Contributor-based goto model
  */
 public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelEx, PossiblyDumbAware {
-  public static final Logger LOG = Logger.getInstance("#com.intellij.ide.util.gotoByName.ContributorsBasedGotoByModel");
+  public static final Logger LOG = Logger.getInstance(ContributorsBasedGotoByModel.class);
 
   protected final Project myProject;
   private final List<ChooseByNameContributor> myContributors;
 
-  protected ContributorsBasedGotoByModel(@NotNull Project project, @NotNull ChooseByNameContributor[] contributors) {
+  protected ContributorsBasedGotoByModel(@NotNull Project project, ChooseByNameContributor @NotNull [] contributors) {
     this(project, Arrays.asList(contributors));
   }
 
@@ -57,7 +57,7 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
 
   @Override
   public boolean isDumbAware() {
-    return ContainerUtil.find(myContributors, o -> DumbService.isDumbAware(o)) != null;
+    return ContainerUtil.find(getContributorList(), o -> DumbService.isDumbAware(o)) != null;
   }
 
   @NotNull
@@ -70,12 +70,12 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
     return false;
   }
 
-  private final ConcurrentMap<ChooseByNameContributor, TIntHashSet> myContributorToItsSymbolsMap = ContainerUtil.newConcurrentMap();
+  private final ConcurrentMap<ChooseByNameContributor, TIntHashSet> myContributorToItsSymbolsMap = ContainerUtil.createConcurrentWeakMap();
 
   @Override
   public void processNames(@NotNull Processor<? super String> nameProcessor, @NotNull FindSymbolParameters parameters) {
     long start = System.currentTimeMillis();
-    List<ChooseByNameContributor> contributors = filterDumb(myContributors);
+    List<ChooseByNameContributor> contributors = filterDumb(getContributorList());
     ProgressIndicator indicator = ProgressManager.getInstance().getProgressIndicator();
     Processor<ChooseByNameContributor> processor = new ReadActionProcessor<ChooseByNameContributor>() {
       @Override
@@ -138,9 +138,8 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
     return IdFilter.getProjectIdFilter(myProject, withLibraries);
   }
 
-  @NotNull
   @Override
-  public String[] getNames(final boolean checkBoxState) {
+  public String @NotNull [] getNames(final boolean checkBoxState) {
     final THashSet<String> allNames = new THashSet<>();
 
     Collection<String> result = Collections.synchronizedCollection(allNames);
@@ -164,10 +163,15 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
     return answer;
   }
 
-  @NotNull
-  public Object[] getElementsByName(@NotNull final String name,
-                                    @NotNull final FindSymbolParameters parameters,
-                                    @NotNull final ProgressIndicator canceled) {
+  public Object @NotNull [] getElementsByName(@NotNull final String name,
+                                              @NotNull final FindSymbolParameters parameters,
+                                              @NotNull final ProgressIndicator canceled) {
+    List<ChooseByNameContributor> applicable = ContainerUtil.filter(filterDumb(getContributorList()), contributor -> {
+      TIntHashSet filter = myContributorToItsSymbolsMap.get(contributor);
+      return filter == null || filter.contains(name.hashCode());
+    });
+    if (applicable.isEmpty()) return ArrayUtil.EMPTY_OBJECT_ARRAY;
+
     long elementByNameStarted = System.currentTimeMillis();
     final List<NavigationItem> items = Collections.synchronizedList(new ArrayList<>());
 
@@ -175,8 +179,6 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
       if (myProject.isDisposed()) {
         return true;
       }
-      TIntHashSet filter = myContributorToItsSymbolsMap.get(contributor);
-      if (filter != null && !filter.contains(name.hashCode())) return true;
       try {
         boolean searchInLibraries = parameters.isSearchInLibraries();
         long contributorStarted = System.currentTimeMillis();
@@ -222,7 +224,7 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
       }
       return true;
     };
-    if (!JobLauncher.getInstance().invokeConcurrentlyUnderProgress(filterDumb(myContributors), canceled, processor)) {
+    if (!JobLauncher.getInstance().invokeConcurrentlyUnderProgress(applicable, canceled, processor)) {
       canceled.cancel();
     }
     canceled.checkCanceled(); // if parallel job execution was canceled because of PCE, rethrow it from here
@@ -242,9 +244,8 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
    *  which {@link #acceptItem(NavigationItem) returns true.
    *
    */
-  @NotNull
   @Override
-  public Object[] getElementsByName(@NotNull final String name, final boolean checkBoxState, @NotNull final String pattern) {
+  public Object @NotNull [] getElementsByName(@NotNull final String name, final boolean checkBoxState, @NotNull final String pattern) {
     return getElementsByName(name, FindSymbolParameters.wrap(pattern, myProject, checkBoxState), new ProgressIndicatorBase());
   }
 
@@ -261,8 +262,12 @@ public abstract class ContributorsBasedGotoByModel implements ChooseByNameModelE
     return null;
   }
 
+  protected List<ChooseByNameContributor> getContributorList() {
+    return myContributors;
+  }
+
   protected ChooseByNameContributor[] getContributors() {
-    return myContributors.toArray(new ChooseByNameContributor[]{});
+    return getContributorList().toArray(new ChooseByNameContributor[]{});
   }
 
   /**

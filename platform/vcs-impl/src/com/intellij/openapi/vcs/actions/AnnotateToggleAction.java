@@ -18,10 +18,10 @@ package com.intellij.openapi.vcs.actions;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.TextAnnotationGutterProvider;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
-import com.intellij.openapi.editor.ex.EditorGutterComponentEx;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.localVcs.UpToDateLineNumberProvider;
 import com.intellij.openapi.project.DumbAware;
@@ -111,6 +111,7 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
                                  @NotNull final AbstractVcs vcs,
                                  @NotNull final UpToDateLineNumberProvider upToDateLineNumbers,
                                  final boolean warnAboutSuspiciousAnnotations) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
     if (project.isDisposed() || editor.isDisposed()) return;
 
     if (warnAboutSuspiciousAnnotations) {
@@ -204,7 +205,10 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
       gutters.add(mergeSourceGutter);
     }
 
-    final LineAnnotationAspect[] aspects = fileAnnotation.getAspects();
+    final List<LineAnnotationAspect> aspects = ContainerUtil.newArrayList(fileAnnotation.getAspects());
+    for (AnnotationGutterColumnProvider extension : AnnotationGutterColumnProvider.EP_NAME.getExtensions()) {
+      ContainerUtil.addIfNotNull(aspects, extension.createColumn(fileAnnotation));
+    }
     for (LineAnnotationAspect aspect : aspects) {
       gutters.add(new AspectAnnotationFieldGutter(fileAnnotation, aspect, presentation, bgColorMap));
     }
@@ -235,7 +239,7 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
 
   @NotNull
   static List<ActiveAnnotationGutter> getVcsAnnotations(@NotNull Editor editor) {
-    List<TextAnnotationGutterProvider> annotations = ((EditorGutterComponentEx)editor.getGutter()).getTextAnnotations();
+    List<TextAnnotationGutterProvider> annotations = editor.getGutter().getTextAnnotations();
     return ContainerUtil.filterIsInstance(annotations, ActiveAnnotationGutter.class);
   }
 
@@ -245,7 +249,7 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
 
   static void closeVcsAnnotations(@NotNull Editor editor) {
     List<ActiveAnnotationGutter> vcsAnnotations = getVcsAnnotations(editor);
-    ((EditorGutterComponentEx)editor.getGutter()).closeTextAnnotations(vcsAnnotations);
+    editor.getGutter().closeTextAnnotations(vcsAnnotations);
   }
 
   @Nullable
@@ -344,10 +348,7 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
 
   @Nullable
   private static Provider getProvider(AnActionEvent e) {
-    for (Provider provider : EP_NAME.getExtensions()) {
-      if (provider.isEnabled(e)) return provider;
-    }
-    return null;
+    return EP_NAME.findFirstSafe(provider -> provider.isEnabled(e));
   }
 
   public interface Provider {
@@ -371,8 +372,8 @@ public class AnnotateToggleAction extends ToggleAction implements DumbAware {
 
       setText(VcsBundle.message("annotation.wrong.line.number.notification.text", vcs.getDisplayName()));
 
-      createActionLabel("Display anyway", () -> showAnnotations());
-      createActionLabel("Hide", () -> hideNotification()).setToolTipText("Hide this notification");
+      createActionLabel(VcsBundle.message("link.label.display.anyway"), () -> showAnnotations());
+      createActionLabel(VcsBundle.message("link.label.hide"), () -> hideNotification()).setToolTipText("Hide this notification");
     }
 
     public void showAnnotations() {

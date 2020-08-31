@@ -22,17 +22,13 @@ import com.intellij.psi.tree.IElementType;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author cdr
- */
 public class PropertyValueImpl extends LeafPsiElement {
   public PropertyValueImpl(@NotNull IElementType type, CharSequence text) {
     super(type, text);
   }
 
   @Override
-  @NotNull
-  public PsiReference[] getReferences() {
+  public PsiReference @NotNull [] getReferences() {
     return ReferenceProvidersRegistry.getReferencesFromProviders(this);
   }
 

@@ -17,6 +17,8 @@ package com.intellij.psi.templateLanguages;
 
 import com.intellij.lang.Language;
 import com.intellij.psi.FileViewProvider;
+import com.intellij.psi.tree.IElementType;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -26,7 +28,7 @@ public interface TemplateLanguageFileViewProvider extends FileViewProvider {
 
   /**
    * e.g. JSP
-   * @return instanceof {@link com.intellij.psi.templateLanguages.TemplateLanguage}
+   * @return instanceof {@link TemplateLanguage}
    */
   @Override
   @NotNull
@@ -38,4 +40,15 @@ public interface TemplateLanguageFileViewProvider extends FileViewProvider {
    */
   @NotNull
   Language getTemplateDataLanguage();
+
+  /**
+   * Should return content type that is used to override file content type for template data language.
+   * It is required for template language injections to override non-base language content type properly
+   * @param language for which we want to create a file
+   * @return content element type for non-base language, null otherwise
+   */
+  @ApiStatus.Experimental
+  default IElementType getContentElementType(@NotNull Language language) {
+    return null;
+  }
 }

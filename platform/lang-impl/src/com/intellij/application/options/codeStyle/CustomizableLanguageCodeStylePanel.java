@@ -29,7 +29,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CodeStyleSettingsCustomizable;
 import com.intellij.psi.codeStyle.LanguageCodeStyleSettingsProvider;
@@ -54,7 +53,7 @@ import java.util.Set;
  * @author rvishnyakov
  */
 public abstract class CustomizableLanguageCodeStylePanel extends CodeStyleAbstractPanel implements CodeStyleSettingsCustomizable {
-  private static final Logger LOG = Logger.getInstance("com.intellij.application.options.codeStyle.MultilanguageCodeStyleAbstractPanel");
+  private static final Logger LOG = Logger.getInstance(CustomizableLanguageCodeStylePanel.class);
 
   protected CustomizableLanguageCodeStylePanel(CodeStyleSettings settings) {
     super(settings);
@@ -130,7 +129,7 @@ public abstract class CustomizableLanguageCodeStylePanel extends CodeStyleAbstra
         manager.commitDocument(doc);
       }
       try {
-        CodeStyleManager.getInstance(project).reformat(psiFile);
+        super.doReformat(project, psiFile);
       }
       catch (IncorrectOperationException e) {
         LOG.error(e);

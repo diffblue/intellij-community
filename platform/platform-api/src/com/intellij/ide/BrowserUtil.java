@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
@@ -11,6 +11,8 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,9 +26,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.intellij.util.containers.ContainerUtilRt.newArrayList;
-
-public class BrowserUtil {
+public final class BrowserUtil {
   // The pattern for 'scheme' mainly according to RFC1738.
   // We have to violate the RFC since we need to distinguish real schemes from local Windows paths;
   // the only difference with RFC is that we do not allow schemes with length=1
@@ -70,7 +70,7 @@ public class BrowserUtil {
     getBrowserLauncher().browse(uri);
   }
 
-  public static void browse(@NotNull String url) {
+  public static void browse(@NonNls @NotNull String url) {
     browse(url, null);
   }
 
@@ -88,7 +88,7 @@ public class BrowserUtil {
       return Collections.singletonList(browserPathOrName);
     }
     else if (SystemInfo.isMac) {
-      List<String> command = newArrayList(ExecUtil.getOpenCommandPath(), "-a", browserPathOrName);
+      List<String> command = ContainerUtil.newArrayList(ExecUtil.getOpenCommandPath(), "-a", browserPathOrName);
       if (newWindowIfPossible) {
         command.add("-n");
       }
@@ -100,10 +100,6 @@ public class BrowserUtil {
     else {
       return Collections.singletonList(browserPathOrName);
     }
-  }
-
-  public static boolean isOpenCommandSupportArgs() {
-    return SystemInfo.isMacOSSnowLeopard;
   }
 
   @NotNull

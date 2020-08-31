@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.codeStyle.arrangement;
 
 import com.intellij.application.options.codeStyle.arrangement.color.ArrangementColorsProvider;
@@ -27,7 +27,7 @@ import static com.intellij.psi.codeStyle.arrangement.std.StdArrangementTokens.Mo
 /**
  * @author Denis Zhdanov
  */
-public class ArrangementUtil {
+public final class ArrangementUtil {
   private static final Logger LOG = Logger.getInstance(ArrangementUtil.class);
 
   private ArrangementUtil() {
@@ -79,7 +79,7 @@ public class ArrangementUtil {
   //endregion
 
   @NotNull
-  public static ArrangementMatchCondition combine(@NotNull ArrangementMatchCondition... nodes) {
+  public static ArrangementMatchCondition combine(ArrangementMatchCondition @NotNull ... nodes) {
     final ArrangementCompositeMatchCondition result = new ArrangementCompositeMatchCondition();
     final ArrangementMatchConditionVisitor visitor = new ArrangementMatchConditionVisitor() {
       @Override
@@ -188,9 +188,9 @@ public class ArrangementUtil {
     return result.get();
   }
 
-  public static <T> Set<T> flatten(@NotNull Iterable<? extends Iterable<T>> data) {
+  public static <T> Set<T> flatten(@NotNull Iterable<? extends Iterable<? extends T>> data) {
     Set<T> result = new HashSet<>();
-    for (Iterable<T> i : data) {
+    for (Iterable<? extends T> i : data) {
       for (T t : i) {
         result.add(t);
       }

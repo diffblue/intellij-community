@@ -1,21 +1,8 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.diff.impl.patch;
 
 import com.intellij.openapi.diff.impl.patch.lib.base85xjava.Base85x;
+import com.intellij.openapi.vcs.VcsBundle;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.ByteArrayOutputStream;
@@ -31,16 +18,16 @@ import java.util.zip.Inflater;
 import static com.intellij.openapi.diff.impl.patch.lib.base85xjava.Base85x.decodeChar;
 import static com.intellij.openapi.diff.impl.patch.lib.base85xjava.Base85x.encodeChar;
 
-public class BinaryEncoder {
+public final class BinaryEncoder {
 
   private static char getCharForLineSize(int lineSize) throws BinaryPatchException, Base85x.Base85FormatException {
-    checkLenIsValid(lineSize, "Can't encode binary file patch: wrong line size");
+    checkLenIsValid(lineSize, VcsBundle.message("patch.binary.decoder.line.error"));
     return encodeChar(decodeChar('A') + lineSize - 1);
   }
 
   private static int getLineSizeFromChar(char charSize) throws BinaryPatchException, Base85x.Base85FormatException {
     int result = decodeChar(charSize) - decodeChar('A') + 1;
-    checkLenIsValid(result, "Can't decode binary file patch: wrong char-size symbol");
+    checkLenIsValid(result, VcsBundle.message("patch.binary.decoder.char.error"));
     return result;
   }
 
@@ -88,7 +75,7 @@ public class BinaryEncoder {
             resultLength = inflater.inflate(inflated);
           }
           catch (DataFormatException e) {
-            throw new BinaryPatchException("Can't decode binary file patch: can't decompress data");
+            throw new BinaryPatchException(VcsBundle.message("patch.binary.decoder.decompress.error"));
           }
           output.write(inflated, 0, resultLength);
         }
@@ -97,7 +84,7 @@ public class BinaryEncoder {
       }
       int count = output.size();
       if (count != size) {
-        throw new BinaryPatchException(String.format("%s binary content was decoded than expected", size > count ? "Less" : "More"));
+        throw new BinaryPatchException(VcsBundle.message("patch.binary.decoder.content.error", size > count ? 0 : 1));
       }
     }
     catch (Base85x.Base85FormatException e) {

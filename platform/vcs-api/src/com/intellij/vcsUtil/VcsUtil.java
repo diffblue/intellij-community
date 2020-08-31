@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcsUtil;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -23,13 +9,10 @@ import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.fileTypes.FileTypeManager;
-import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
@@ -39,10 +22,14 @@ import com.intellij.openapi.vcs.actions.VcsContextFactory;
 import com.intellij.openapi.vcs.changes.*;
 import com.intellij.openapi.vcs.history.ShortVcsRevisionNumber;
 import com.intellij.openapi.vcs.history.VcsRevisionNumber;
-import com.intellij.openapi.vfs.*;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.PersistentFSConstants;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.util.Function;
 import com.intellij.util.ThrowableConvertor;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,9 +40,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @SuppressWarnings("UtilityClassWithoutPrivateConstructor")
+@ApiStatus.NonExtendable
 public class VcsUtil {
   protected static final char[] ourCharsToBeChopped = {'/', '\\'};
-  private static final Logger LOG = Logger.getInstance("#com.intellij.vcsUtil.VcsUtil");
+  private static final Logger LOG = Logger.getInstance(VcsUtil.class);
 
   public static final String MAX_VCS_LOADED_SIZE_KB = "idea.max.vcs.loaded.size.kb";
   private static final int ourMaxLoadedFileSize = computeLoadedFileSize();
@@ -68,14 +56,17 @@ public class VcsUtil {
   }
 
   private static int computeLoadedFileSize() {
-    int result = (int)PersistentFSConstants.FILE_LENGTH_TO_CACHE_THRESHOLD;
-    String userLimitKb = System.getProperty(MAX_VCS_LOADED_SIZE_KB);
+    long result = PersistentFSConstants.FILE_LENGTH_TO_CACHE_THRESHOLD;
     try {
-      return userLimitKb != null ? Integer.parseInt(userLimitKb) * 1024 : result;
+      String userLimitKb = System.getProperty(MAX_VCS_LOADED_SIZE_KB);
+      if (userLimitKb != null) {
+        result = Integer.parseInt(userLimitKb) * 1024L;
+      }
     }
     catch (NumberFormatException ignored) {
-      return result;
     }
+
+    return (int)Math.min(result, Integer.MAX_VALUE);
   }
 
   /**
@@ -134,11 +125,11 @@ public class VcsUtil {
    * File is considered to be a valid vcs file if it resides under the content
    * root controlled by the given vcs.
    */
-  public static boolean isFileForVcs(@NotNull VirtualFile file, Project project, AbstractVcs host) {
+  public static boolean isFileForVcs(@NotNull VirtualFile file, @NotNull Project project, @Nullable AbstractVcs host) {
     return getVcsFor(project, file) == host;
   }
 
-  public static boolean isFileForVcs(FilePath path, Project project, AbstractVcs host) {
+  public static boolean isFileForVcs(@NotNull FilePath path, @NotNull Project project, @Nullable AbstractVcs host) {
     return getVcsFor(project, path) == host;
   }
 
@@ -225,8 +216,7 @@ public class VcsUtil {
     });
   }
 
-  @Nullable
-  public static byte[] getFileByteContent(@NotNull File file) {
+  public static byte @Nullable [] getFileByteContent(@NotNull File file) {
     try {
       return FileUtil.loadFileBytes(file);
     }
@@ -236,26 +226,32 @@ public class VcsUtil {
     }
   }
 
-  public static FilePath getFilePath(String path) {
+  @NotNull
+  public static FilePath getFilePath(@NotNull String path) {
     return getFilePath(new File(path));
   }
 
+  @NotNull
   public static FilePath getFilePath(@NotNull VirtualFile file) {
     return VcsContextFactory.SERVICE.getInstance().createFilePathOn(file);
   }
 
+  @NotNull
   public static FilePath getFilePath(@NotNull File file) {
     return VcsContextFactory.SERVICE.getInstance().createFilePathOn(file);
   }
 
+  @NotNull
   public static FilePath getFilePath(@NotNull String path, boolean isDirectory) {
     return VcsContextFactory.SERVICE.getInstance().createFilePath(path, isDirectory);
   }
 
-  public static FilePath getFilePathOnNonLocal(String path, boolean isDirectory) {
+  @NotNull
+  public static FilePath getFilePathOnNonLocal(@NotNull String path, boolean isDirectory) {
     return VcsContextFactory.SERVICE.getInstance().createFilePathOnNonLocal(path, isDirectory);
   }
 
+  @NotNull
   public static FilePath getFilePath(@NotNull File file, boolean isDirectory) {
     return VcsContextFactory.SERVICE.getInstance().createFilePathOn(file, isDirectory);
   }
@@ -263,6 +259,7 @@ public class VcsUtil {
   /**
    * @deprecated use {@link #getFilePath(String, boolean)}
    */
+  @NotNull
   @Deprecated
   public static FilePath getFilePathForDeletedFile(@NotNull String path, boolean isDirectory) {
     return VcsContextFactory.SERVICE.getInstance().createFilePathOn(new File(path), isDirectory);
@@ -364,43 +361,9 @@ public class VcsUtil {
    * @return {@code VirtualFile}s available in the current context.
    *         Returns empty array if there are no available files.
    */
-  @NotNull
-  public static VirtualFile[] getVirtualFiles(@NotNull AnActionEvent e) {
+  public static VirtualFile @NotNull [] getVirtualFiles(@NotNull AnActionEvent e) {
     VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
     return files == null ? VirtualFile.EMPTY_ARRAY : files;
-  }
-
-  /**
-   * Collects all files which are located in the passed directory.
-   *
-   * @throws IllegalArgumentException if {@code dir} isn't a directory.
-   */
-  public static void collectFiles(final VirtualFile dir,
-                                  final List<? super VirtualFile> files,
-                                  final boolean recursive,
-                                  final boolean addDirectories) {
-    if (!dir.isDirectory()) {
-      throw new IllegalArgumentException(VcsBundle.message("exception.text.file.should.be.directory", dir.getPresentableUrl()));
-    }
-
-    final FileTypeManager fileTypeManager = FileTypeManager.getInstance();
-    VfsUtilCore.visitChildrenRecursively(dir, new VirtualFileVisitor<Void>() {
-      @Override
-      public boolean visitFile(@NotNull VirtualFile file) {
-        if (file.isDirectory()) {
-          if (addDirectories) {
-            files.add(file);
-          }
-          if (!recursive && !Comparing.equal(file, dir)) {
-            return false;
-          }
-        }
-        else if (fileTypeManager == null || file.getFileType() != FileTypes.UNKNOWN) {
-          files.add(file);
-        }
-        return true;
-      }
-    });
   }
 
   /**
@@ -434,7 +397,7 @@ public class VcsUtil {
   }
 
   public static <T> T computeWithModalProgress(@Nullable Project project,
-                                               @NotNull String title,
+                                               @NotNull @Nls String title,
                                                boolean canBeCancelled,
                                                @NotNull ThrowableConvertor<? super ProgressIndicator, T, ? extends VcsException> computable)
     throws VcsException {
@@ -543,8 +506,8 @@ public class VcsUtil {
     return idx > 0;
   }
 
-  public static String getPathForProgressPresentation(@NotNull final File file) {
-    return file.getName() + " (" + file.getParent() + ")";
+  public static String getPathForProgressPresentation(@NotNull File file) {
+    return file.getName() + " (" + FileUtil.getLocationRelativeToUserHome(file.getParent()) + ")";
   }
 
   @NotNull
@@ -579,7 +542,7 @@ public class VcsUtil {
     List<VcsDirectoryMapping> mappings = new ArrayList<>(existingMappings);
     for (Iterator<VcsDirectoryMapping> iterator = mappings.iterator(); iterator.hasNext(); ) {
       VcsDirectoryMapping mapping = iterator.next();
-      if (mapping.isDefaultMapping() && StringUtil.isEmptyOrSpaces(mapping.getVcs())) {
+      if (mapping.isDefaultMapping() && mapping.isNoneMapping()) {
         LOG.debug("Removing <Project> -> <None> mapping");
         iterator.remove();
       }

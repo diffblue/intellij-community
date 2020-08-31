@@ -1,17 +1,17 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui
 
-import com.intellij.diagnostic.LoadingPhase
+import com.intellij.diagnostic.LoadingState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
-import com.intellij.openapi.components.ServiceManager
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.serviceContainer.NonInjectable
 import com.intellij.ui.JreHiDpiUtil
 import com.intellij.ui.scale.JBUIScale
 import com.intellij.util.ComponentTreeEventDispatcher
@@ -19,6 +19,7 @@ import com.intellij.util.SystemProperties
 import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.xmlb.annotations.Transient
+import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -28,9 +29,9 @@ import kotlin.math.roundToInt
 
 private val LOG = logger<UISettings>()
 
-@State(name = "UISettings", storages = [(Storage("ui.lnf.xml"))], reportStatistic = true)
-class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettings) : PersistentStateComponent<UISettingsState> {
-  constructor() : this(ServiceManager.getService(NotRoamableUiSettings::class.java))
+@State(name = "UISettings", storages = [(Storage("ui.lnf.xml"))])
+class UISettings @NonInjectable constructor(private val notRoamableOptions: NotRoamableUiSettings) : PersistentStateComponent<UISettingsState> {
+  constructor() : this(ApplicationManager.getApplication().getService(NotRoamableUiSettings::class.java))
 
   private var state = UISettingsState()
 
@@ -48,21 +49,13 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       notRoamableOptions.state.editorAAType = value
     }
 
-  var allowMergeButtons: Boolean
-    get() = state.allowMergeButtons
-    set(value) {
-      state.allowMergeButtons = value
-    }
+  val allowMergeButtons: Boolean
+    get() = Registry.`is`("ide.allow.merge.buttons", true)
 
-  val alwaysShowWindowsButton: Boolean
-    get() = state.alwaysShowWindowsButton
+  val animateWindows: Boolean
+    get() = Registry.`is`("ide.animate.toolwindows", false)
 
-  var animateWindows: Boolean
-    get() = state.animateWindows
-    set(value) {
-      state.animateWindows = value
-    }
-
+  @Deprecated("use StatusBarWidgetSettings#isEnabled(MemoryUsagePanel.WIDGET_ID)")
   var showMemoryIndicator: Boolean
     get() = state.showMemoryIndicator
     set(value) {
@@ -75,17 +68,20 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.colorBlindness = value
     }
 
+  var useContrastScrollbars: Boolean
+    get() = state.useContrastScrollBars
+    set(value) {
+      state.useContrastScrollBars = value
+    }
+
   var hideToolStripes: Boolean
     get() = state.hideToolStripes
     set(value) {
       state.hideToolStripes = value
     }
 
-  var hideNavigationOnFocusLoss: Boolean
-    get() = state.hideNavigationOnFocusLoss
-    set(value) {
-      state.hideNavigationOnFocusLoss = value
-    }
+  val hideNavigationOnFocusLoss: Boolean
+    get() = Registry.`is`("ide.hide.navigation.on.focus.loss", false)
 
   var reuseNotModifiedTabs: Boolean
     get() = state.reuseNotModifiedTabs
@@ -117,22 +113,37 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.useSmallLabelsOnTabs = value
     }
 
-  val smoothScrolling: Boolean
+  var smoothScrolling: Boolean
     get() = state.smoothScrolling
+    set(value) {
+      state.smoothScrolling = value
+    }
+
+  val animatedScrolling: Boolean
+    get() = state.animatedScrolling
+
+  val animatedScrollingDuration: Int
+    get() = state.animatedScrollingDuration
+
+  val animatedScrollingCurvePoints: Int
+    get() = state.animatedScrollingCurvePoints
 
   val closeTabButtonOnTheRight: Boolean
     get() = state.closeTabButtonOnTheRight
 
-  var cycleScrolling: Boolean
-    get() = state.cycleScrolling
-    set(value) {
-      state.cycleScrolling = value
-    }
+  val cycleScrolling: Boolean
+    get() = Registry.`is`("ide.cycle.scrolling", false)
 
   var navigateToPreview: Boolean
     get() = state.navigateToPreview
     set(value) {
       state.navigateToPreview = value
+    }
+
+  var selectedTabsLayoutInfoId: String?
+    get() = state.selectedTabsLayoutInfoId
+    set(value) {
+      state.selectedTabsLayoutInfoId = value
     }
 
   val scrollTabLayoutInEditor: Boolean
@@ -156,6 +167,12 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.showNavigationBar = value
     }
 
+  var showMembersInNavigationBar: Boolean
+    get() = state.showMembersInNavigationBar
+    set(value) {
+      state.showMembersInNavigationBar = value
+    }
+
   var showStatusBar: Boolean
     get() = state.showStatusBar
     set(value) {
@@ -168,11 +185,8 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.showMainMenu = value
     }
 
-  var showIconInQuickNavigation: Boolean
-    get() = state.showIconInQuickNavigation
-    set(value) {
-      state.showIconInQuickNavigation = value
-    }
+  val showIconInQuickNavigation: Boolean
+    get() = Registry.`is`("ide.show.icons.in.quick.navigation", false)
 
   var showTreeIndentGuides: Boolean
     get() = state.showTreeIndentGuides
@@ -180,7 +194,15 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.showTreeIndentGuides = value
     }
 
+  var compactTreeIndents: Boolean
+    get() = state.compactTreeIndents
+    set(value) {
+      state.compactTreeIndents = value
+    }
+
   var moveMouseOnDefaultButton: Boolean
+    @ScheduledForRemoval(inVersion = "2020.3")
+    @Deprecated("Use registry key 'ide.settings.move.mouse.on.default.button'")
     get() = state.moveMouseOnDefaultButton
     set(value) {
       state.moveMouseOnDefaultButton = value
@@ -204,13 +226,13 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.sortLookupElementsLexicographically = value
     }
 
-  @Deprecated("The property name is grammatically incorrect", replaceWith = ReplaceWith("this.hideTabsIfNeeded"))
-  val hideTabsIfNeed: Boolean
-    get() = hideTabsIfNeeded
-
   val hideTabsIfNeeded: Boolean
-    get() = state.hideTabsIfNeeded
-
+    get() = state.hideTabsIfNeeded || editorTabPlacement == SwingConstants.LEFT || editorTabPlacement == SwingConstants.RIGHT
+  var showFileIconInTabs: Boolean
+    get() = state.showFileIconInTabs
+    set(value) {
+      state.showFileIconInTabs = value
+    }
   var hideKnownExtensionInTabs: Boolean
     get() = state.hideKnownExtensionInTabs
     set(value) {
@@ -250,8 +272,11 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.presentationMode = value
     }
 
-  val presentationModeFontSize: Int
+  var presentationModeFontSize: Int
     get() = state.presentationModeFontSize
+    set(value) {
+      state.presentationModeFontSize = value
+    }
 
   var editorTabPlacement: Int
     get() = state.editorTabPlacement
@@ -265,11 +290,17 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
       state.editorTabLimit = value
     }
 
-  val recentFilesLimit: Int
+  var recentFilesLimit: Int
     get() = state.recentFilesLimit
+    set(value) {
+      state.recentFilesLimit = value
+    }
 
-  val recentLocationsLimit: Int
+  var recentLocationsLimit: Int
     get() = state.recentLocationsLimit
+    set(value) {
+      state.recentLocationsLimit = value
+    }
 
   var maxLookupWidth: Int
     get() = state.maxLookupWidth
@@ -377,13 +408,22 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
   val showInplaceCommentsInternal: Boolean
     get() = showInplaceComments && ApplicationManager.getApplication()?.isInternal ?: false
 
+  var enableAlphaMode: Boolean
+    get() = state.enableAlphaMode
+    set(value) {
+      state.enableAlphaMode = value
+    }
+
+  var fullPathsInWindowHeader: Boolean
+    get() = state.fullPathsInWindowHeader
+    set(value) {
+      state.fullPathsInWindowHeader = value
+    }
+
   init {
     // TODO Remove the registry keys and migration code in 2019.3
-    if (Registry.`is`("tabs.alphabetical", false)) {
+    if (SystemProperties.`is`("tabs.alphabetical")) {
       sortTabsAlphabetically = true
-    }
-    if (Registry.`is`("ide.editor.tabs.open.at.the.end", false)) {
-      openTabsAtTheEnd = true
     }
   }
 
@@ -406,19 +446,26 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
 
     @Suppress("ObjectPropertyName")
     @Volatile
-    private var _instance: UISettings? = null
+    private var cachedInstance: UISettings? = null
 
     @JvmStatic
     val instance: UISettings
-      get() = instanceOrNull!!
+      get() {
+        var result = cachedInstance
+        if (result == null) {
+          LoadingState.CONFIGURATION_STORE_INITIALIZED.checkOccurred()
+          result = ApplicationManager.getApplication().getService(UISettings::class.java)!!
+          cachedInstance = result
+        }
+        return result
+      }
 
     @JvmStatic
     val instanceOrNull: UISettings?
       get() {
-        var result = _instance
-        if (result == null && LoadingPhase.CONFIGURATION_STORE_INITIALIZED.isComplete) {
-          result = ServiceManager.getService(UISettings::class.java)
-          _instance = result
+        val result = cachedInstance
+        if (result == null && LoadingState.CONFIGURATION_STORE_INITIALIZED.isOccurred) {
+          return instance
         }
         return result
       }
@@ -431,14 +478,19 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
     val shadowInstance: UISettings
       get() = instanceOrNull ?: UISettings(NotRoamableUiSettings())
 
-    @JvmField
-    val FORCE_USE_FRACTIONAL_METRICS = SystemProperties.getBooleanProperty("idea.force.use.fractional.metrics", false)
+    @JvmStatic
+    val PREFERRED_FRACTIONAL_METRICS_VALUE: Any
+      get() {
+        return if (!Registry.`is`("ide.disable.fractionalMetrics", false)
+                   && SystemProperties.getBooleanProperty("idea.force.use.fractional.metrics", SystemInfo.isMacOSCatalina))
+          RenderingHints.VALUE_FRACTIONALMETRICS_ON
+        else
+          RenderingHints.VALUE_FRACTIONALMETRICS_OFF
+      }
 
     @JvmStatic
     fun setupFractionalMetrics(g2d: Graphics2D) {
-      if (FORCE_USE_FRACTIONAL_METRICS) {
-        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
-      }
+      g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, PREFERRED_FRACTIONAL_METRICS_VALUE)
     }
 
     /**
@@ -448,26 +500,18 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
      */
     @JvmStatic
     fun setupAntialiasing(g: Graphics) {
-      val g2d = g as Graphics2D
-      g2d.setRenderingHint(RenderingHints.KEY_TEXT_LCD_CONTRAST, UIUtil.getLcdContrastValue())
+      g as Graphics2D
+      g.setRenderingHint(RenderingHints.KEY_TEXT_LCD_CONTRAST, UIUtil.getLcdContrastValue())
 
-      val application = ApplicationManager.getApplication()
-      if (application == null) {
-        // We cannot use services while Application has not been loaded yet
-        // So let's apply the default hints.
+      if (LoadingState.CONFIGURATION_STORE_INITIALIZED.isOccurred && ApplicationManager.getApplication() == null) {
+        // cannot use services while Application has not been loaded yet, so let's apply the default hints
         GraphicsUtil.applyRenderingHints(g)
         return
       }
 
-      val uiSettings = ServiceManager.getService(UISettings::class.java)
-      if (uiSettings != null) {
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, AntialiasingType.getKeyForCurrentScope(false))
-      }
-      else {
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF)
-      }
+      g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, AntialiasingType.getKeyForCurrentScope(false))
 
-      setupFractionalMetrics(g2d)
+      setupFractionalMetrics(g)
     }
 
     /**
@@ -539,7 +583,7 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
     IconLoader.setFilter(ColorBlindnessSupport.get(state.colorBlindness)?.filter)
 
     // if this is the main UISettings instance (and not on first call to getInstance) push event to bus and to all current components
-    if (this === _instance) {
+    if (this === cachedInstance) {
       myTreeDispatcher.multicaster.uiSettingsChanged(this)
       ApplicationManager.getApplication().messageBus.syncPublisher(UISettingsListener.TOPIC).uiSettingsChanged(this)
     }
@@ -598,12 +642,23 @@ class UISettings constructor(private val notRoamableOptions: NotRoamableUiSettin
   @Suppress("DEPRECATION")
   private fun migrateOldSettings() {
     if (state.ideAAType != AntialiasingType.SUBPIXEL) {
-      editorAAType = state.ideAAType
+      ideAAType = state.ideAAType
       state.ideAAType = AntialiasingType.SUBPIXEL
     }
     if (state.editorAAType != AntialiasingType.SUBPIXEL) {
       editorAAType = state.editorAAType
       state.editorAAType = AntialiasingType.SUBPIXEL
+    }
+    if (state.ideAAType == AntialiasingType.SUBPIXEL && !AntialiasingType.canUseSubpixelAAForIDE()) {
+      state.ideAAType = AntialiasingType.GREYSCALE;
+    }
+    if (state.moveMouseOnDefaultButton) {
+      Registry.get("ide.settings.move.mouse.on.default.button").setValue(true)
+      state.moveMouseOnDefaultButton = false
+    }
+    if (!state.allowMergeButtons) {
+      Registry.get("ide.allow.merge.buttons").setValue(false)
+      state.allowMergeButtons = true
     }
   }
 

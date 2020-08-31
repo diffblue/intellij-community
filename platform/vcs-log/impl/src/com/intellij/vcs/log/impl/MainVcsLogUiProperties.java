@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.impl;
 
 import com.intellij.vcs.log.graph.PermanentGraph;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,13 +22,14 @@ public interface MainVcsLogUiProperties extends VcsLogUiProperties {
   VcsLogUiProperty<Boolean> TEXT_FILTER_REGEX = new VcsLogUiProperty<>("TextFilter.Regex");
   VcsLogUiProperty<Boolean> SHOW_CHANGES_FROM_PARENTS = new VcsLogUiProperty<>("Changes.ShowChangesFromParents");
   VcsLogUiProperty<Boolean> SHOW_ONLY_AFFECTED_CHANGES = new VcsLogUiProperty<>("Changes.ShowOnlyAffected");
+  VcsLogUiProperty<Boolean> DIFF_PREVIEW_VERTICAL_SPLIT = new VcsLogUiProperty<>("Window.DiffPreviewVerticalSplit");
 
-  void addRecentlyFilteredGroup(@NotNull String filterName, @NotNull Collection<String> values);
+  void addRecentlyFilteredGroup(@NonNls @NotNull String filterName, @NotNull Collection<String> values);
 
   @NotNull
-  List<List<String>> getRecentlyFilteredGroups(@NotNull String filterName);
+  List<List<String>> getRecentlyFilteredGroups(@NonNls @NotNull String filterName);
 
-  void saveFilterValues(@NotNull String filterName, @Nullable List<String> values);
+  void saveFilterValues(@NonNls @NotNull String filterName, @Nullable List<String> values);
 
   @Nullable
   List<String> getFilterValues(@NotNull String filterName);

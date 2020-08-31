@@ -16,20 +16,16 @@
 package com.intellij.lang.properties.findUsages;
 
 import com.intellij.lang.HelpID;
-import com.intellij.lang.LangBundle;
 import com.intellij.lang.cacheBuilder.WordsScanner;
 import com.intellij.lang.findUsages.FindUsagesProvider;
 import com.intellij.lang.properties.IProperty;
+import com.intellij.lang.properties.PropertiesBundle;
 import com.intellij.lang.properties.parsing.PropertiesWordsScanner;
-import com.intellij.lang.properties.psi.impl.PropertyValueImpl;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiNamedElement;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author cdr
- */
 public class PropertiesFindUsagesProvider implements FindUsagesProvider {
   @Override
   public boolean canFindUsagesFor(@NotNull PsiElement psiElement) {
@@ -44,7 +40,7 @@ public class PropertiesFindUsagesProvider implements FindUsagesProvider {
   @Override
   @NotNull
   public String getType(@NotNull PsiElement element) {
-    if (element instanceof IProperty) return LangBundle.message("terms.property");
+    if (element instanceof IProperty) return PropertiesBundle.message("terms.property");
     return "";
   }
 

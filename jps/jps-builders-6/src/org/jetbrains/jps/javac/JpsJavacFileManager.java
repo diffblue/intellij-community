@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.javac;
 
 import com.intellij.openapi.util.io.FileUtilRt;
@@ -6,13 +6,13 @@ import com.intellij.util.BooleanFunction;
 import com.intellij.util.Function;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.jps.PathUtils;
 import org.jetbrains.jps.builders.java.JavaSourceTransformer;
 
 import javax.tools.*;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -61,17 +61,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
       return new File(s);
     }
   };
-  private static final Method ourContainsMethod;
-  static {
-    Method method = null;
-    try {
-      method = JavaFileManager.class.getDeclaredMethod("contains", Location.class, FileObject.class);
-    }
-    catch (Throwable ignored) {
-    }
-    ourContainsMethod = method;
-  }
-  
+
   private Map<File, Set<File>> myOutputsMap = Collections.emptyMap();
   @Nullable
   private String myEncodingName;
@@ -82,6 +72,12 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     myJavacBefore9 = javacBefore9;
     mySourceTransformers = transformers;
     myContext = new Context() {
+      @Nullable
+      @Override
+      public String getExplodedAutomaticModuleName(File pathElement) {
+        return context.getExplodedAutomaticModuleName(pathElement);
+      }
+
       @Override
       public boolean isCanceled() {
         return context.isCanceled();
@@ -111,7 +107,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   }
 
   private Iterable<? extends JavaFileObject> wrapJavaFileObjects(final Iterable<? extends JavaFileObject> originalObjects) {
-    return mySourceTransformers.isEmpty()? originalObjects : convert(originalObjects, new Function<JavaFileObject, JavaFileObject>() {
+    return mySourceTransformers.isEmpty()? originalObjects : Iterators.map(originalObjects, new Function<JavaFileObject, JavaFileObject>() {
       @Override
       public JavaFileObject fun(JavaFileObject fo) {
         return JavaFileObject.Kind.SOURCE.equals(fo.getKind())? new TransformableJavaFileObject(fo, mySourceTransformers) : fo;
@@ -130,7 +126,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
       // workaround javac bug (missing null-check): throwing exception here instead of returning null
       throw new FileNotFoundException("Java resource does not exist : " + location + '/' + kind + '/' + className);
     }
-    return mySourceTransformers.isEmpty()? fo : new TransformableJavaFileObject(fo, mySourceTransformers);
+    return mySourceTransformers.isEmpty()? fo : fo == null? null : new TransformableJavaFileObject(fo, mySourceTransformers);
   }
 
   @Override
@@ -207,7 +203,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     if (loc == StandardLocation.CLASS_OUTPUT) {
       if (myOutputsMap.size() > 1 && sourceFile != null) {
         // multiple outputs case
-        final File outputDir = findOutputDir(PathUtils.convertToFile(sourceFile.toUri()));
+        final File outputDir = findOutputDir(new File(sourceFile.toUri()));
         if (outputDir != null) {
           return outputDir;
         }
@@ -267,6 +263,9 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   }
 
   public interface Context {
+    @Nullable
+    String getExplodedAutomaticModuleName(File pathElement);
+    
     boolean isCanceled();
 
     @NotNull
@@ -333,11 +332,14 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   @Override
   public void setLocation(Location location, Iterable<? extends File> path) throws IOException{
     getStdManager().setLocation(location, path);
+    if ("MODULE_PATH".equals(location.getName())) {
+      initExplodedModuleNames(location, path);
+    }
   }
 
   @Override
   public Iterable<? extends JavaFileObject> getJavaFileObjectsFromFiles(final Iterable<? extends File> files) {
-    return wrapJavaFileObjects(convert(files, myFileToInputFileObjectConverter));
+    return wrapJavaFileObjects(Iterators.map(files, myFileToInputFileObjectConverter));
   }
 
   @Override
@@ -347,7 +349,7 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
 
   @Override
   public Iterable<? extends JavaFileObject> getJavaFileObjectsFromStrings(final Iterable<String> names) {
-    return getJavaFileObjectsFromFiles(convert(names, ourPathToFileConverter));
+    return getJavaFileObjectsFromFiles(Iterators.map(names, ourPathToFileConverter));
   }
 
   @Override
@@ -457,10 +459,10 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
                 return kindsFilter.fun(dir) && myFileOperations.isFile(file);
               }
             };
-            result.add(convert(filter(myFileOperations.listFiles(dir, recurse), filter), myFileToInputFileObjectConverter));
+            result.add(Iterators.map(Iterators.filter(myFileOperations.listFiles(dir, recurse), filter), myFileToInputFileObjectConverter));
           }
         }
-        allFiles = merge(result);
+        allFiles = Iterators.flat(result);
       }
       else {
         // locations, not supported by this class should be handled by default javac file manager
@@ -485,21 +487,15 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
   }
 
   // this method overrides corresponding API method since javac 9
-  public boolean contains(Location location, FileObject fo) {
+  public boolean contains(Location location, FileObject fo) throws IOException {
     if (fo instanceof JpsFileObject) {
       return location.equals(((JpsFileObject)fo).getLocation());
     }
-    if (ourContainsMethod == null) {
-      throw new UnsupportedOperationException("Operation is not supported for file objects " + fo.getClass().getName());
-    }
-    // delegate the call further
-    try {
-      return ((Boolean)ourContainsMethod.invoke(getStdManager(), location, fo)).booleanValue();
-    }
-    catch (Throwable e) {
-      throw new UnsupportedOperationException(e);
-    }
+    return myContainsCall.callDefaultImpl(getStdManager(), "file object " + fo.getClass().getName(), location, fo);
   }
+  private final DelegateCallHandler<JavaFileManager, Boolean> myContainsCall = new DelegateCallHandler<JavaFileManager, Boolean>(
+    JavaFileManager.class, "contains", Location.class, FileObject.class
+  );
 
   public void onOutputFileGenerated(File file) {
     final File parent = file.getParentFile();
@@ -530,168 +526,74 @@ public class JpsJavacFileManager extends ForwardingJavaFileManager<StandardJavaF
     myOutputsMap = outputDirToSrcRoots;
   }
 
-  public static <T> Iterable<T> merge(final Iterable<? extends T> first, final Iterable<? extends T> second) {
-    return new Iterable<T>() {
-      @Override
-      @NotNull
-      public Iterator<T> iterator() {
-        final Iterator<? extends T> i1 = first.iterator();
-        final Iterator<? extends T> i2 = second.iterator();
-        return new Iterator<T>() {
-          @Override
-          public boolean hasNext() {
-            return i1.hasNext() || i2.hasNext();
-          }
-
-          @Override
-          public T next() {
-            return i1.hasNext()? i1.next() : i2.next();
-          }
-
-          @Override
-          public void remove() {
-            throw new UnsupportedOperationException();
-          }
-        };
+  private final DelegateCallHandler<StandardJavaFileManager, Void> mySetLocationForModuleCall = new DelegateCallHandler<StandardJavaFileManager, Void>(
+    StandardJavaFileManager.class, "setLocationForModule", Location.class, String.class, Collection.class
+  );
+  private final DelegateCallHandler<File, Object> myToPathCall = new DelegateCallHandler<File, Object>(File.class, "toPath");
+  
+  private void initExplodedModuleNames(final Location modulePathLocation, Iterable<? extends File> path) throws IOException {
+    if (mySetLocationForModuleCall.isAvailable() && myToPathCall.isAvailable()) {
+      for (File pathEntry : path) {
+        final String explodedModuleName = myContext.getExplodedAutomaticModuleName(pathEntry);
+        if (explodedModuleName != null) {
+          mySetLocationForModuleCall.callDefaultImpl(
+            getStdManager(), modulePathLocation, explodedModuleName, Collections.singleton(myToPathCall.callDefaultImpl(pathEntry))
+          );
+        }
       }
-    };
-  }
-
-  public static <T> Iterable<T> merge(final Collection<? extends Iterable<T>> parts) {
-    if (parts.isEmpty()) {
-      return Collections.emptyList();
     }
-    if (parts.size() == 1) {
-      return parts.iterator().next();
+  }
+
+  @SuppressWarnings("unchecked")
+  private static class DelegateCallHandler<T, R> {
+    private final Method myMethod;
+    private final String myUnsupportedMessage;
+
+    DelegateCallHandler(final Class<? extends T> apiInterface, String methodName, Class<?>... argTypes) {
+      myUnsupportedMessage = "Operation "+ methodName + " is not supported";
+      Method m = null;
+      try {
+        m = apiInterface.getDeclaredMethod(methodName, argTypes);
+      }
+      catch (Throwable ignored) {
+      }
+      myMethod = m;
     }
-    return merge((Iterable<Iterable<T>>)parts);
-  }
 
-  public static <T> Iterable<T> merge(final Iterable<? extends Iterable<? extends T>> parts) {
-    return new Iterable<T>() {
-      @NotNull
-      @Override
-      public Iterator<T> iterator() {
-        final Iterator<? extends Iterable<? extends T>> partsIterator = parts.iterator();
-        return new Iterator<T>() {
-          Iterator<? extends T> currentPart;
-          @Override
-          public boolean hasNext() {
-            return getCurrentPart() != null;
-          }
+    boolean isAvailable() {
+      return myMethod != null;
+    }
 
-          @Override
-          public T next() {
-            final Iterator<? extends T> part = getCurrentPart();
-            if (part != null) {
-              return part.next();
-            }
-            throw new NoSuchElementException();
-          }
+    R callDefaultImpl(final T callTarget, Object... args) throws IOException {
+      return callDefaultImpl(callTarget, "", args);
+    }
 
-          @Override
-          public void remove() {
-            throw new UnsupportedOperationException();
-          }
-
-          private Iterator<? extends T> getCurrentPart() {
-            while (currentPart == null || !currentPart.hasNext()) {
-              if (partsIterator.hasNext()) {
-                currentPart = partsIterator.next().iterator();
-              }
-              else {
-                currentPart = null;
-                break;
-              }
-            }
-            return currentPart;
-          }
-        };
+    R callDefaultImpl(final T callTarget, String errorDetails, Object... args) throws IOException{
+      if (!isAvailable()) {
+        throw new UnsupportedOperationException(getErrorMessage(errorDetails));
       }
-    };
-  }
-
-  public static <I,O> Iterable<O> convert(final Iterable<? extends I> from, final Function<? super I, ? extends O> converter) {
-    return new Iterable<O>() {
-      @NotNull
-      @Override
-      public Iterator<O> iterator() {
-        final Iterator<? extends I> it = from.iterator();
-        return new Iterator<O>() {
-          @Override
-          public boolean hasNext() {
-            return it.hasNext();
-          }
-
-          @Override
-          public O next() {
-            return converter.fun(it.next());
-          }
-
-          @Override
-          public void remove() {
-            throw new UnsupportedOperationException();
-          }
-        };
+      // delegate the call further
+      try {
+        return (R)myMethod.invoke(callTarget, args);
       }
-    };
-  }
-
-  public static <T> Iterable<T> filter(final Iterable<? extends T> data, final BooleanFunction<? super T> acceptElement) {
-    return new Iterable<T>() {
-      @NotNull
-      @Override
-      public Iterator<T> iterator() {
-        final Iterator<? extends T> it = data.iterator();
-        return new Iterator<T>() {
-          private T current = null;
-          private boolean isPending = false;
-
-          @Override
-          public boolean hasNext() {
-            if (!isPending) {
-              findNext();
-            }
-            return isPending;
-          }
-
-          @Override
-          public T next() {
-            try {
-              if (!isPending) {
-                findNext();
-                if (!isPending) {
-                  throw new NoSuchElementException();
-                }
-              }
-              return current;
-            }
-            finally {
-              current = null;
-              isPending = false;
-            }
-          }
-
-          @Override
-          public void remove() {
-            throw new UnsupportedOperationException();
-          }
-
-          private void findNext() {
-            isPending = false;
-            current = null;
-            while (it.hasNext()) {
-              final T next = it.next();
-              if (acceptElement.fun(next)) {
-                isPending = true;
-
-                current = next;
-                break;
-              }
-            }
-          }
-        };
+      catch (InvocationTargetException e) {
+        final Throwable cause = e.getCause();
+        if (cause instanceof IOException) {
+          throw (IOException)cause;
+        }
+        if (cause instanceof RuntimeException) {
+          throw (RuntimeException)cause;
+        }
+        throw new UnsupportedOperationException(getErrorMessage(errorDetails), cause != null ? cause : e);
       }
-    };
+      catch (Throwable e) {
+        throw new UnsupportedOperationException(getErrorMessage(errorDetails), e);
+      }
+    }
+
+    private String getErrorMessage(String errorDetails) {
+      return errorDetails.isEmpty() ? myUnsupportedMessage : myUnsupportedMessage + ": " + errorDetails;
+    }
   }
+
 }

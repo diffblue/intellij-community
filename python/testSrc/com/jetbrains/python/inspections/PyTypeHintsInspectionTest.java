@@ -1,6 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.inspections;
 
+import com.intellij.testFramework.LightProjectDescriptor;
 import com.jetbrains.python.fixtures.PyInspectionTestCase;
 import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
@@ -360,6 +361,23 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
                  "assert issubclass(A, <error descr=\"'Final' cannot be used with instance and class checks\">B[T]</error>)\n" +
                  "C = B[T]\n" +
                  "assert issubclass(A, <error descr=\"'Final' cannot be used with instance and class checks\">C</error>)");
+  }
+
+  // PY-35235
+  public void testInstanceAndClassChecksOnLiteral() {
+    doTestByText("from typing_extensions import Literal\n" +
+                 "\n" +
+                 "class A:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "assert isinstance(A(), <error descr=\"'Literal' cannot be used with instance and class checks\">Literal</error>)\n" +
+                 "B = Literal\n" +
+                 "assert issubclass(A, <error descr=\"'Literal' cannot be used with instance and class checks\">B</error>)\n" +
+                 "\n" +
+                 "assert isinstance(A(), <error descr=\"'Literal' cannot be used with instance and class checks\">Literal[1]</error>)\n" +
+                 "assert issubclass(A, <error descr=\"'Literal' cannot be used with instance and class checks\">B[1]</error>)\n" +
+                 "C = B[1]\n" +
+                 "assert issubclass(A, <error descr=\"'Literal' cannot be used with instance and class checks\">C</error>)");
   }
 
   // PY-28249
@@ -865,9 +883,116 @@ public class PyTypeHintsInspectionTest extends PyInspectionTestCase {
     );
   }
 
+  // PY-35235
+  public void testLiteral() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing_extensions import Literal\n" +
+                         "\n" +
+                         "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">1 + 2</warning>]\n" +
+                         "b: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">4j</warning>]\n" +
+                         "c: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">3.14</warning>]\n" +
+                         "d: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">...</warning>]\n" +
+                         "\n" +
+                         "class A:\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "e: Literal[Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]]\n" +
+                         "f = Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">A</warning>]\n" +
+                         "g: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f</warning>]")
+    );
+  }
+
+  // PY-35235
+  public void testLiteralWithoutArguments() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import Literal\n" +
+                         "a: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning> = 1\n" +
+                         "b = 2  # type: <warning descr=\"'Literal' must have at least one parameter\">Literal</warning>")
+    );
+  }
+
+  // PY-35235
+  public void testNonPlainStringAsTypingLiteralIndex() {
+    runWithLanguageLevel(
+      LanguageLevel.PYTHON36,
+      () -> doTestByText("from typing import Literal\n" +
+                         "a: Literal[<warning descr=\"'Literal' may be parameterized with literal ints, byte and unicode strings, bools, Enum values, None, other literal types, or type aliases to other literal types\">f\"1\"</warning>] = \"1\"")
+    );
+  }
+
+  public void testParameterizedBuiltinCollectionsBefore39() {
+    runWithLanguageLevel(LanguageLevel.PYTHON38, () -> {
+      doTestByText("xs: <warning descr=\"Builtin 'type' cannot be parameterized directly\">type[str]</warning>\n" +
+                   "ys: <warning descr=\"Builtin 'tuple' cannot be parameterized directly\">tuple[int, str]</warning>\n" +
+                   "zs: <warning descr=\"Builtin 'dict' cannot be parameterized directly\">dict[int, str]</warning>");
+    });
+  }
+
+  // PY-42418
+  public void testParameterizedBuiltinCollections() {
+    runWithLanguageLevel(LanguageLevel.getLatest(), () -> {
+      doTestByText("xs: type[str]\n" +
+                   "ys: tuple[int, str]\n" +
+                   "zs: dict[int, str]");
+    });
+  }
+
+  // PY-41847
+  public void testAnnotated() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestByText("from typing import Annotated\n" +
+                         "\n" +
+                         "a: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">1</warning>]\n" +
+                         "b: Annotated[int, 1]\n" +
+                         "c: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">...</warning>]\n" +
+                         "\n" +
+                         "class A:\n" +
+                         "    pass\n" +
+                         "\n" +
+                         "d: Annotated[A, '']\n" +
+                         "e: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">Annotated[A, True]</warning>]\n" +
+                         "f: Annotated[Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">A</warning>], '']")
+    );
+  }
+
+  // PY-41847
+  public void testInstanceAndClassChecksOnAnnotated() {
+    doTestByText("from typing import Annotated\n" +
+                 "\n" +
+                 "class A:\n" +
+                 "    pass\n" +
+                 "\n" +
+                 "assert isinstance(A(), <error descr=\"'Annotated' cannot be used with instance and class checks\">Annotated</error>)\n" +
+                 "B = Annotated\n" +
+                 "assert issubclass(A, <error descr=\"'Annotated' cannot be used with instance and class checks\">B</error>)\n" +
+                 "\n" +
+                 "assert isinstance(A(), <error descr=\"'Annotated' cannot be used with instance and class checks\">Annotated[1]</error>)\n" +
+                 "assert issubclass(A, <error descr=\"'Annotated' cannot be used with instance and class checks\">B[1]</error>)\n" +
+                 "C = B[int, 2]\n" +
+                 "assert issubclass(A, <error descr=\"'Annotated' cannot be used with instance and class checks\">C</error>)");
+  }
+
+  // PY-41847
+  public void testAnnotatedWithoutArguments() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> doTestByText("from typing import Annotated\n" +
+                         "a: <warning descr=\"'Annotated' must be called with at least two arguments\">Annotated</warning> = 1\n" +
+                         "b = 2  # type: Annotated[<warning descr=\"'Annotated' must be called with at least two arguments\">int</warning>]")
+    );
+  }
+
   @NotNull
   @Override
   protected Class<? extends PyInspection> getInspectionClass() {
     return PyTypeHintsInspection.class;
+  }
+
+  @Override
+  protected LightProjectDescriptor getProjectDescriptor() {
+    return ourPy3Descriptor;
   }
 }

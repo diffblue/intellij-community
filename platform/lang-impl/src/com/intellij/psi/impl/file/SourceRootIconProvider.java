@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.psi.impl.file;
 
@@ -11,7 +11,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.SourceFolder;
-import com.intellij.openapi.roots.impl.ProjectFileIndexImpl;
 import com.intellij.openapi.roots.ui.configuration.SourceRootPresentation;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.registry.Registry;
@@ -27,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-public class SourceRootIconProvider {
+public final class SourceRootIconProvider {
   @NotNull
   public static Icon getDirectoryIcon(VirtualFile vFile, Project project) {
     SourceFolder sourceFolder = ProjectRootsUtil.getModuleSourceRoot(vFile, project);
@@ -39,7 +38,7 @@ public class SourceRootIconProvider {
       return excludedIcon != null ? excludedIcon : PlatformIcons.FOLDER_ICON;
     }
   }
-  
+
   @Nullable
   public static Icon getIconIfExcluded(@NotNull Project project, @NotNull VirtualFile vFile) {
     if (!Registry.is("ide.hide.excluded.files")) {
@@ -53,10 +52,10 @@ public class SourceRootIconProvider {
 
   @Nullable
   private static Icon calcFileLayerIcon(VirtualFile vFile, Project project) {
-    ProjectFileIndexImpl index = (ProjectFileIndexImpl)ProjectFileIndex.getInstance(project);
+    ProjectFileIndex index = ProjectFileIndex.getInstance(project);
     if (vFile != null) {
       VirtualFile parent = vFile.getParent();
-      
+
       if (index.isExcluded(vFile)) {
         //If the parent directory is also excluded it'll have a special icon (see DirectoryIconProvider), so it makes no sense to add
         // additional marks for all files under it.
@@ -90,7 +89,7 @@ public class SourceRootIconProvider {
       return null;
     }
   }
-  
+
   public static class FileLayerProvider implements IconLayerProvider, DumbAware {
     @Nullable
     @Override
@@ -104,7 +103,7 @@ public class SourceRootIconProvider {
       }
       return null;
     }
-  
+
     @NotNull
     @Override
     public String getLayerDescription() {

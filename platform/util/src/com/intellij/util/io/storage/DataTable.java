@@ -30,7 +30,7 @@ import java.io.File;
 import java.io.IOException;
 
 class DataTable implements Disposable, Forceable {
-  private static final Logger LOG = Logger.getInstance("com.intellij.util.io.storage.DataTable");
+  private static final Logger LOG = Logger.getInstance(DataTable.class);
 
   private static final int HEADER_SIZE = 32;
   private static final int DIRTY_MAGIC = 0x12ad34e4;
@@ -87,7 +87,7 @@ class DataTable implements Disposable, Forceable {
     writeBytes(newLength - 1, new byte[]{0});
     long actualLength = myFile.length();
     if (actualLength != newLength) {
-      LOG.error("Failed to resize the storage at: " + myFile.getFile() + ". Required: " + newLength + ", actual: " + actualLength);
+      LOG.error("Failed to resize the storage at: " + myFile + ". Required: " + newLength + ", actual: " + actualLength);
     }
     return result;
   }

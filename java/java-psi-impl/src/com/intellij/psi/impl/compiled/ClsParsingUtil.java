@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.compiled;
 
 import com.intellij.lang.java.lexer.JavaLexer;
@@ -24,7 +24,7 @@ import org.jetbrains.org.objectweb.asm.Opcodes;
  * @author ven
  */
 public class ClsParsingUtil {
-  private static final Logger LOG = Logger.getInstance("com.intellij.psi.impl.compiled.ClsParsingUtil");
+  private static final Logger LOG = Logger.getInstance(ClsParsingUtil.class);
 
   private static final JavaParserUtil.ParserWrapper ANNOTATION_VALUE =
     builder -> JavaParser.INSTANCE.getDeclarationParser().parseAnnotationValue(builder);
@@ -102,7 +102,8 @@ public class ClsParsingUtil {
 
   static PsiExpression psiToClsExpression(@NotNull PsiExpression expr, @NotNull ClsElementImpl parent) {
     if (expr instanceof PsiLiteralExpression) {
-      boolean forDecompiling = ((ClsFileImpl)parent.getContainingFile()).isForDecompiling();
+      PsiFile file = parent.getContainingFile();
+      boolean forDecompiling = file instanceof ClsFileImpl && ((ClsFileImpl)file).isForDecompiling();
       PsiType type = forDecompiling ? PsiType.NULL : expr.getType();
       Object value = forDecompiling ? null : ((PsiLiteralExpression)expr).getValue();
       return new ClsLiteralExpressionImpl(parent, expr.getText(), type, value);
@@ -141,7 +142,8 @@ public class ClsParsingUtil {
       return new ClsBinaryExpressionImpl(parent, sign, left, right);
     }
 
-    if (((ClsFileImpl)parent.getContainingFile()).isForDecompiling()) {
+    PsiFile file = parent.getContainingFile();
+    if (file instanceof ClsFileImpl && ((ClsFileImpl)file).isForDecompiling()) {
       return new ClsLiteralExpressionImpl(parent, expr.getText(), PsiType.NULL, null);
     }
 

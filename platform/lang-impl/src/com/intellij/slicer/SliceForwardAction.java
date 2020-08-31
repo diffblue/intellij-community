@@ -23,15 +23,12 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author cdr
- */
 public class SliceForwardAction extends CodeInsightAction {
 
   @NotNull
   @Override
   protected CodeInsightActionHandler getHandler() {
-    return new SliceForwardHandler();
+    return SliceHandler.create(false);
   }
 
   @Override

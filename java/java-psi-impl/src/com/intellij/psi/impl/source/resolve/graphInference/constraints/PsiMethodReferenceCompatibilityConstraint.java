@@ -40,7 +40,7 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
   }
 
   @Override
-  public boolean reduce(InferenceSession session, List<ConstraintFormula> constraints) {
+  public boolean reduce(InferenceSession session, List<? super ConstraintFormula> constraints) {
     if (!LambdaUtil.isFunctionalType(myT)) {
       session.registerIncompatibleErrorMessage(session.getPresentableText(myT) + " is not a functional interface");
       return false;
@@ -139,7 +139,7 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
       }
     }
 
-    JavaResolveResult resolve = LambdaUtil.performWithTargetType(myExpression, session.startWithFreshVars(groundTargetType), () -> myExpression.advancedResolve(true));
+    JavaResolveResult resolve = myExpression.advancedResolve(false);
     final PsiElement element = resolve.getElement();
     if (element == null || resolve instanceof MethodCandidateInfo && !((MethodCandidateInfo)resolve).isApplicable()) {
       session.registerIncompatibleErrorMessage("No compile-time declaration for the method reference is found");
@@ -202,7 +202,7 @@ public class PsiMethodReferenceCompatibilityConstraint implements ConstraintForm
       if (qContainingClass != null && PsiUtil.isRawSubstitutor(qContainingClass, qualifierResolveResult.getSubstitutor())) {
         //15.13.1 If there exist a parameterization, then it would be used to search, the *raw type* would be used otherwise
         if (getParameterization(signature, qualifierResolveResult, method, myExpression, qContainingClass) == null) {
-          session.initBounds(myExpression, qContainingClass.getTypeParameters());
+          referencedMethodReturnType = TypeConversionUtil.erasure(referencedMethodReturnType);
         }
       }
 

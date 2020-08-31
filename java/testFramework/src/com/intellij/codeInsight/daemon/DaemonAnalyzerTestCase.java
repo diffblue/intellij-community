@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon;
 
 import com.intellij.codeHighlighting.Pass;
@@ -14,14 +14,13 @@ import com.intellij.codeInspection.InspectionToolProvider;
 import com.intellij.codeInspection.LocalInspectionTool;
 import com.intellij.codeInspection.ex.InspectionProfileImpl;
 import com.intellij.ide.highlighter.JavaFileType;
-import com.intellij.ide.startup.StartupManagerEx;
 import com.intellij.ide.startup.impl.StartupManagerImpl;
 import com.intellij.lang.ExternalAnnotatorsFilter;
 import com.intellij.lang.LanguageAnnotators;
-import com.intellij.lang.StdLanguages;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.lang.java.JavaLanguage;
+import com.intellij.lang.xml.XMLLanguage;
 import com.intellij.openapi.application.ex.PathManagerEx;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
@@ -48,7 +47,7 @@ import com.intellij.testFramework.InspectionsKt;
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.xml.XmlSchemaProvider;
-import gnu.trove.TIntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -76,18 +75,15 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
 
     DaemonCodeAnalyzerImpl daemonCodeAnalyzer = (DaemonCodeAnalyzerImpl)DaemonCodeAnalyzer.getInstance(getProject());
     daemonCodeAnalyzer.prepareForTest();
-    StartupManagerImpl startupManager = (StartupManagerImpl)StartupManagerEx.getInstanceEx(getProject());
-    startupManager.runStartupActivities();
-    startupManager.runPostStartupActivities();
     DaemonCodeAnalyzerSettings.getInstance().setImportHintEnabled(false);
 
     if (isStressTest()) {
-      IntentionManager.getInstance().getAvailableIntentionActions();  // hack to avoid slowdowns in PyExtensionFactory
+      IntentionManager.getInstance().getAvailableIntentions();  // hack to avoid slowdowns in PyExtensionFactory
       PathManagerEx.getTestDataPath(); // to cache stuff
       ReferenceProvidersRegistry.getInstance(); // pre-load tons of classes
       InjectedLanguageManager.getInstance(getProject()); // zillion of Dom Sem classes
       LanguageAnnotators.INSTANCE.allForLanguage(JavaLanguage.INSTANCE); // pile of annotator classes loads
-      LanguageAnnotators.INSTANCE.allForLanguage(StdLanguages.XML);
+      LanguageAnnotators.INSTANCE.allForLanguage(XMLLanguage.INSTANCE);
       ProblemHighlightFilter.EP_NAME.getExtensions();
       ImplicitUsageProvider.EP_NAME.getExtensionList();
       XmlSchemaProvider.EP_NAME.getExtensionList();
@@ -101,7 +97,7 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
   protected void tearDown() throws Exception {
     try {
       DaemonCodeAnalyzerSettings.getInstance().setImportHintEnabled(true); // return default value to avoid unnecessary save
-      final Project project = getProject();
+      Project project = getProject();
       if (project != null) {
         ((StartupManagerImpl)StartupManager.getInstance(project)).checkCleared();
         ((DaemonCodeAnalyzerImpl)DaemonCodeAnalyzer.getInstance(project)).cleanupAfterTest();
@@ -113,14 +109,13 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
     finally {
       super.tearDown();
     }
-    //((VirtualFilePointerManagerImpl)VirtualFilePointerManager.getInstance()).assertPointersDisposed();
   }
 
-  protected void enableInspectionTool(@NotNull InspectionProfileEntry tool) {
+  protected final void enableInspectionTool(@NotNull InspectionProfileEntry tool) {
     InspectionsKt.enableInspectionTool(getProject(), tool, getTestRootDisposable());
   }
 
-  protected void enableInspectionTools(@NotNull InspectionProfileEntry... tools) {
+  protected void enableInspectionTools(InspectionProfileEntry @NotNull ... tools) {
     InspectionsKt.enableInspectionTools(getProject(), getTestRootDisposable(), tools);
   }
 
@@ -147,9 +142,9 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
   }
 
   protected static LocalInspectionTool[] createLocalInspectionTools(final InspectionToolProvider... provider) {
-    final ArrayList<LocalInspectionTool> result = new ArrayList<>();
+    List<LocalInspectionTool> result = new ArrayList<>();
     for (InspectionToolProvider toolProvider : provider) {
-      for (Class aClass : toolProvider.getInspectionClasses()) {
+      for (Class<?> aClass : toolProvider.getInspectionClasses()) {
         try {
           final Object tool = aClass.newInstance();
           assertTrue(tool instanceof LocalInspectionTool);
@@ -178,13 +173,13 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
   }
 
   @NotNull
-  protected HighlightTestInfo testFile(@NonNls @NotNull String... filePath) {
+  protected HighlightTestInfo testFile(@NonNls String @NotNull ... filePath) {
     return new HighlightTestInfo(getTestRootDisposable(), filePath) {
       @Override
       public HighlightTestInfo doTest() {
         try { configureByFiles(projectRoot, filePaths); }
         catch (Exception e) { throw new RuntimeException(e); }
-        ExpectedHighlightingData data = new JavaExpectedHighlightingData(myEditor.getDocument(), checkWarnings, checkWeakWarnings, checkInfos, myFile);
+        ExpectedHighlightingData data = new JavaExpectedHighlightingData(myEditor.getDocument(), checkWarnings, checkWeakWarnings, checkInfos);
         if (checkSymbolNames) data.checkSymbolNames();
         checkHighlighting(data);
         return this;
@@ -196,12 +191,12 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
     doTest(new VirtualFile[] { vFile }, checkWarnings, checkInfos );
   }
 
-  protected void doTest(@NotNull VirtualFile[] vFile, boolean checkWarnings, boolean checkInfos) throws Exception {
+  protected void doTest(VirtualFile @NotNull [] vFile, boolean checkWarnings, boolean checkInfos) throws Exception {
     configureByFiles(null, vFile);
     doDoTest(checkWarnings, checkInfos);
   }
 
-  protected void doTest(boolean checkWarnings, boolean checkInfos, @NotNull String ... files) throws Exception {
+  protected void doTest(boolean checkWarnings, boolean checkInfos, String @NotNull ... files) throws Exception {
     configureByFiles(null, files);
     doDoTest(checkWarnings, checkInfos);
   }
@@ -213,7 +208,7 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
 
   protected Collection<HighlightInfo> doDoTest(final boolean checkWarnings, final boolean checkInfos, final boolean checkWeakWarnings) {
     return ContainerUtil.filter(
-      checkHighlighting(new ExpectedHighlightingData(myEditor.getDocument(), checkWarnings, checkWeakWarnings, checkInfos, myFile)),
+      checkHighlighting(new ExpectedHighlightingData(myEditor.getDocument(), checkWarnings, checkWeakWarnings, checkInfos)),
       info -> info.getSeverity() == HighlightSeverity.INFORMATION && checkInfos ||
               info.getSeverity() == HighlightSeverity.WARNING && checkWarnings ||
               info.getSeverity() == HighlightSeverity.WEAK_WARNING && checkWeakWarnings ||
@@ -242,8 +237,9 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
   protected void doCheckResult(@NotNull ExpectedHighlightingData data,
                              Collection<HighlightInfo> infos,
                              String text) {
-    data.checkLineMarkers(DaemonCodeAnalyzerImpl.getLineMarkers(getDocument(getFile()), getProject()), text);
-    data.checkResult(infos, text);
+    PsiFile file = getFile();
+    data.checkLineMarkers(file, DaemonCodeAnalyzerImpl.getLineMarkers(getDocument(file), getProject()), text);
+    data.checkResult(file, infos, text);
   }
 
   @Override
@@ -282,7 +278,7 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
   protected List<HighlightInfo> doHighlighting() {
     PsiDocumentManager.getInstance(myProject).commitAllDocuments();
 
-    TIntArrayList toIgnore = new TIntArrayList();
+    IntArrayList toIgnore = new IntArrayList();
     if (!doTestLineMarkers()) {
       toIgnore.add(Pass.LINE_MARKERS);
     }
@@ -299,7 +295,7 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
     }
 
     boolean canChange = canChangeDocumentDuringHighlighting();
-    List<HighlightInfo> infos = CodeInsightTestFixtureImpl.instantiateAndRun(getFile(), getEditor(), toIgnore.toNativeArray(), canChange);
+    List<HighlightInfo> infos = CodeInsightTestFixtureImpl.instantiateAndRun(getFile(), getEditor(), toIgnore.toIntArray(), canChange);
 
     if (!canChange) {
       Document document = getDocument(getFile());
@@ -343,13 +339,11 @@ public abstract class DaemonAnalyzerTestCase extends JavaCodeInsightTestCase {
     IntentionAction intentionAction = LightQuickFixTestCase.findActionWithText(actions, intentionActionName);
 
     if (intentionAction == null) {
-      fail(String.format("Could not find action by name %s.\n" +
-                         "Actions: [%s]\n" +
-                         "HighlightInfos: [%s]", intentionActionName,
-                         StringUtil.join(ContainerUtil.map(actions, c -> c.getText()), ", "),
-                         StringUtil.join(infos, ", ")));
+      fail("Could not find action '" + intentionActionName+
+           "'.\nAvailable actions: [" +StringUtil.join(ContainerUtil.map(actions, c -> c.getText()), ", ")+ "]\n" +
+           "HighlightInfos: [" +StringUtil.join(infos, ", ")+"]");
     }
-    CodeInsightTestFixtureImpl.invokeIntention(intentionAction, file, editor, intentionActionName);
+    CodeInsightTestFixtureImpl.invokeIntention(intentionAction, file, editor);
   }
 
   @Nullable

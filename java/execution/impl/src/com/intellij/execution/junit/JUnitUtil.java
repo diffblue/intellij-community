@@ -1,4 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.junit;
 
 import com.intellij.codeInsight.AnnotationUtil;
@@ -35,6 +35,7 @@ public class JUnitUtil {
   private static final String TEST_INTERFACE = "junit.framework.Test";
   private static final String TEST_SUITE_CLASS = "junit.framework.TestSuite";
   public static final String TEST_ANNOTATION = "org.junit.Test";
+  public static final String RULE_ANNOTATION = "org.junit.Rule";
   public static final String TEST5_PACKAGE_FQN = "org.junit.jupiter.api";
   public static final String TEST5_ANNOTATION = "org.junit.jupiter.api.Test";
   public static final String CUSTOM_TESTABLE_ANNOTATION = "org.junit.platform.commons.annotation.Testable";
@@ -77,7 +78,7 @@ public class JUnitUtil {
 
   private static final Collection<String> CONFIGURATIONS_ANNOTATION_NAME = ContainerUtil
     .immutableList(DATA_POINT, AFTER_ANNOTATION_NAME, BEFORE_ANNOTATION_NAME, AFTER_CLASS_ANNOTATION_NAME, BEFORE_CLASS_ANNOTATION_NAME,
-                   BEFORE_ALL_ANNOTATION_NAME, AFTER_ALL_ANNOTATION_NAME);
+                   BEFORE_ALL_ANNOTATION_NAME, AFTER_ALL_ANNOTATION_NAME, RULE_ANNOTATION);
 
   public static final String PARAMETERIZED_CLASS_NAME = "org.junit.runners.Parameterized";
   public static final String SUITE_CLASS_NAME = "org.junit.runners.Suite";
@@ -96,7 +97,11 @@ public class JUnitUtil {
     "org.junit.runners.Parameterized",
     "org.junit.runners.BlockJUnit4ClassRunner",
     "org.junit.runners.JUnit4",
-    "org.junit.internal.runners.JUnit4ClassRunner"
+    "org.junit.internal.runners.JUnit4ClassRunner",
+    "org.mockito.junit.MockitoJUnitRunner",
+    "org.mockito.junit.MockitoJUnitRunner.StrictStubs",
+    "org.mockito.junit.MockitoJUnitRunner.Silent",
+    "org.mockito.junit.MockitoJUnitRunner.Strict"
   };
 
   public static boolean isSuiteMethod(@NotNull PsiMethod psiMethod) {
@@ -155,8 +160,14 @@ public class JUnitUtil {
     return testCaseClass != null && aClass.isInheritor(testCaseClass, true);
   }
 
-  public static boolean isTestClass(final PsiClass psiClass) {
+  public static boolean isTestClass(@NotNull final PsiClass psiClass) {
     return isTestClass(psiClass, true, true);
+  }
+
+  private static boolean hasTestableMetaAnnotation(@NotNull PsiClass psiClass) {
+    return JavaPsiFacade.getInstance(psiClass.getProject())
+          .findClass(CUSTOM_TESTABLE_ANNOTATION, psiClass.getResolveScope()) != null &&
+           MetaAnnotationUtil.hasMetaAnnotatedMethods(psiClass,Collections.singleton(CUSTOM_TESTABLE_ANNOTATION));
   }
 
   public static boolean isTestClass(@NotNull PsiClass psiClass, boolean checkAbstract, boolean checkForTestCaseInheritance) {
@@ -166,7 +177,8 @@ public class JUnitUtil {
         return true;
       }
     }
-    else if (MetaAnnotationUtil.isMetaAnnotatedInHierarchy(psiClass, Collections.singleton(CUSTOM_TESTABLE_ANNOTATION))) {
+    else if (MetaAnnotationUtil.isMetaAnnotatedInHierarchy(psiClass, Collections.singleton(CUSTOM_TESTABLE_ANNOTATION))
+    || hasTestableMetaAnnotation(psiClass)) {
       //no jupiter engine in the classpath
       return true;
     }
@@ -192,7 +204,7 @@ public class JUnitUtil {
     if (checkForTestCaseInheritance && isTestCaseInheritor(psiClass)) return true;
 
     return CachedValuesManager.getCachedValue(psiClass, () ->
-      CachedValueProvider.Result.create(hasTestOrSuiteMethods(psiClass), PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT));
+      CachedValueProvider.Result.create(hasTestOrSuiteMethods(psiClass), PsiModificationTracker.MODIFICATION_COUNT));
   }
 
   private static boolean hasTestOrSuiteMethods(@NotNull PsiClass psiClass) {
@@ -277,16 +289,15 @@ public class JUnitUtil {
 
     if (psiClass.isAnnotationType()) return false;
 
-    if (JavaPsiFacade.getInstance(psiClass.getProject())
-          .findClass(CUSTOM_TESTABLE_ANNOTATION, psiClass.getResolveScope()) == null) {
-      return false;
-    }
-
     if (psiClass.getContainingClass() != null && MetaAnnotationUtil.isMetaAnnotated(psiClass, Collections.singleton(JUNIT5_NESTED))) {
       return true;
     }
 
     if (MetaAnnotationUtil.isMetaAnnotatedInHierarchy(psiClass, Collections.singleton(CUSTOM_TESTABLE_ANNOTATION))) {
+      return true;
+    }
+
+    if (MetaAnnotationUtil.isMetaAnnotated(psiClass, TEST5_ANNOTATIONS)) {
       return true;
     }
 
@@ -310,7 +321,7 @@ public class JUnitUtil {
           }
         }
       }
-      return CachedValueProvider.Result.create(hasAnnotation, PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT);
+      return CachedValueProvider.Result.create(hasAnnotation, PsiModificationTracker.MODIFICATION_COUNT);
     });
   }
 

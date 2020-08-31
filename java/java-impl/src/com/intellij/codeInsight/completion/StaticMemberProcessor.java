@@ -3,9 +3,11 @@ package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.daemon.impl.quickfix.StaticImportMemberFix;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.java.stubs.index.JavaStaticMemberNameIndex;
@@ -44,7 +46,7 @@ public abstract class StaticMemberProcessor {
   public void processStaticMethodsGlobally(final PrefixMatcher matcher, Consumer<? super LookupElement> consumer) {
     final GlobalSearchScope scope = myPosition.getResolveScope();
     Collection<String> memberNames = JavaStaticMemberNameIndex.getInstance().getAllKeys(myProject);
-    for (final String memberName : CompletionUtil.sortMatching(matcher, memberNames)) {
+    for (final String memberName : matcher.sortMatching(memberNames)) {
       Set<PsiClass> classes = new THashSet<>();
       for (final PsiMember member : JavaStaticMemberNameIndex.getInstance().getStaticMembers(memberName, myProject, scope)) {
         if (isStaticallyImportable(member)) {
@@ -87,24 +89,25 @@ public abstract class StaticMemberProcessor {
     if (!myHintShown && !shouldImport) {
       final String shortcut = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_SHOW_INTENTION_ACTIONS);
       if (StringUtil.isNotEmpty(shortcut)) {
-        CompletionService.getCompletionService().setAdvertisementText("To import a method statically, press " + shortcut);
+        CompletionService.getCompletionService().setAdvertisementText(
+          JavaBundle.message("to.import.a.method.statically.press.0", shortcut));
       }
       myHintShown = true;
     }
   }
 
-  public List<PsiMember> processMembersOfRegisteredClasses(final PrefixMatcher matcher, PairConsumer<? super PsiMember, ? super PsiClass> consumer) {
+  public List<PsiMember> processMembersOfRegisteredClasses(Condition<? super String> nameCondition, PairConsumer<? super PsiMember, ? super PsiClass> consumer) {
     final ArrayList<PsiMember> result = new ArrayList<>();
     for (final PsiClass psiClass : myStaticImportedClasses) {
       for (final PsiMethod method : psiClass.getAllMethods()) {
-        if (matcher.prefixMatches(method.getName())) {
+        if (nameCondition.value(method.getName())) {
           if (isStaticallyImportable(method)) {
             consumer.consume(method, psiClass);
           }
         }
       }
       for (final PsiField field : psiClass.getAllFields()) {
-        if (matcher.prefixMatches(field. getName())) {
+        if (nameCondition.value(field. getName())) {
           if (isStaticallyImportable(field)) {
             consumer.consume(field, psiClass);
           }

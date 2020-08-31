@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileChooser.impl;
 
 import com.intellij.ide.util.treeView.AbstractTreeBuilder;
@@ -23,7 +23,7 @@ import java.util.Comparator;
  *
  * @deprecated use {@link com.intellij.ui.tree.AsyncTreeModel} and {@link com.intellij.ui.tree.StructureTreeModel} instead.
  */
-@ApiStatus.ScheduledForRemoval
+@ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
 @Deprecated
 public class FileTreeBuilder extends AbstractTreeBuilder {
   private final FileChooserDescriptor myChooserDescriptor;
@@ -31,7 +31,7 @@ public class FileTreeBuilder extends AbstractTreeBuilder {
   public FileTreeBuilder(JTree tree,
                          DefaultTreeModel treeModel,
                          AbstractTreeStructure treeStructure,
-                         Comparator<? super NodeDescriptor> comparator,
+                         Comparator<? super NodeDescriptor<?>> comparator,
                          FileChooserDescriptor chooserDescriptor,
                          @SuppressWarnings("UnusedParameters") Runnable onInitialized) {
     super(tree, treeModel, treeStructure, comparator, false);

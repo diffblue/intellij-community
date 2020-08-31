@@ -44,6 +44,11 @@ public class GitContentRevision implements ByteBackedContentRevision {
     myCharset = charset;
   }
 
+  @Nullable
+  public Charset getCharset() {
+    return myCharset;
+  }
+
   @Override
   @Nullable
   public String getContent() throws VcsException {
@@ -52,9 +57,8 @@ public class GitContentRevision implements ByteBackedContentRevision {
     return ContentRevisionCache.getAsString(bytes, myFile, myCharset);
   }
 
-  @Nullable
   @Override
-  public byte[] getContentAsBytes() throws VcsException {
+  public byte @Nullable [] getContentAsBytes() throws VcsException {
     if (myFile.isDirectory()) {
       return null;
     }
@@ -66,9 +70,8 @@ public class GitContentRevision implements ByteBackedContentRevision {
     }
   }
 
-  @NotNull
-  private byte[] loadContent() throws VcsException {
-    VirtualFile root = GitUtil.getRepositoryForFile(myProject, myFile).getRoot();
+  private byte @NotNull [] loadContent() throws VcsException {
+    VirtualFile root = GitUtil.getRootForFile(myProject, myFile);
     return GitFileUtils.getFileContent(myProject, root, myRevision.getRev(), VcsFileUtil.relativePath(root, myFile));
   }
 
@@ -109,7 +112,7 @@ public class GitContentRevision implements ByteBackedContentRevision {
     }
 
     GitRepositoryManager repositoryManager = GitRepositoryManager.getInstance(project);
-    GitRepository candidate = repositoryManager.getRepositoryForRoot(file);
+    GitRepository candidate = repositoryManager.getRepositoryForRootQuick(file);
     if (candidate == null) { // not a root
       return null;
     }
@@ -141,8 +144,13 @@ public class GitContentRevision implements ByteBackedContentRevision {
 
   @NotNull
   public static FilePath createPath(@NotNull VirtualFile vcsRoot, @NotNull String unescapedPath) {
+    return createPath(vcsRoot, unescapedPath, false);
+  }
+
+  @NotNull
+  public static FilePath createPath(@NotNull VirtualFile vcsRoot, @NotNull String unescapedPath, boolean isDirectory) {
     String absolutePath = makeAbsolutePath(vcsRoot, unescapedPath);
-    return VcsUtil.getFilePath(absolutePath, false);
+    return VcsUtil.getFilePath(absolutePath, isDirectory);
   }
 
   @NotNull

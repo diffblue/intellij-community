@@ -9,12 +9,12 @@ import com.intellij.codeInsight.hints.presentation.MenuOnClickPresentation
 import com.intellij.codeInsight.hints.presentation.PresentationFactory
 import com.intellij.codeInsight.hints.presentation.SequencePresentation
 import com.intellij.codeInsight.javadoc.JavaDocInfoGenerator
+import com.intellij.java.JavaBundle
 import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ApplicationBundle
-import com.intellij.openapi.components.ServiceManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.BlockInlayPriority
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.ex.util.EditorUtil
 import com.intellij.openapi.project.DumbService
@@ -22,11 +22,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.ui.layout.*
 import com.intellij.util.SmartList
-import com.intellij.util.ui.JBUI
-import java.awt.GridLayout
-import javax.swing.JCheckBox
 import javax.swing.JComponent
-import javax.swing.JPanel
 import kotlin.reflect.KMutableProperty0
 
 class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Settings> {
@@ -66,14 +62,14 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
               val prevSibling = element.prevSibling
               when {
                 // element is first in line
-                prevSibling is PsiWhiteSpace && prevSibling.textContains('\n') && document != null -> {
+                prevSibling is PsiWhiteSpace && element !is PsiParameter && prevSibling.textContains('\n') && document != null -> {
                   val width = EditorUtil.getPlainSpaceWidth(editor)
                   val line = document.getLineNumber(offset)
                   val startOffset = document.getLineStartOffset(line)
                   val column = offset - startOffset
                   val shifted = factory.inset(presentation, left = column * width)
 
-                  sink.addBlockElement(offset, false, true, 0, shifted)
+                  sink.addBlockElement(offset, false, true, BlockInlayPriority.ANNOTATIONS, shifted)
                 }
                 else -> {
                   sink.addInlineElement(offset, false, factory.inset(presentation, left = 1, right = 1))
@@ -94,8 +90,8 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
           val makeExplicit = InsertAnnotationAction(project, file, element)
           listOf(
             makeExplicit,
-            ToggleSettingsAction("Turn off external annotations", settings::showExternal, settings),
-            ToggleSettingsAction("Turn off inferred annotations", settings::showInferred, settings)
+            ToggleSettingsAction(JavaBundle.message("settings.inlay.java.turn.off.external.annotations"), settings::showExternal, settings),
+            ToggleSettingsAction(JavaBundle.message("settings.inlay.java.turn.off.inferred.annotations"), settings::showInferred, settings)
           )
         }
       }
@@ -103,17 +99,22 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
       private fun annotationPresentation(annotation: PsiAnnotation): InlayPresentation = with(factory) {
         val nameReferenceElement = annotation.nameReferenceElement
         val parameterList = annotation.parameterList
-        roundWithBackground(seq(
+
+        val presentations = mutableListOf(
           smallText("@"),
-          psiSingleReference(smallText(nameReferenceElement?.referenceName ?: "")) { nameReferenceElement?.resolve() },
-          parametersPresentation(parameterList)
-        ))
+          psiSingleReference(smallText(nameReferenceElement?.referenceName ?: "")) { nameReferenceElement?.resolve() }
+        )
+
+        parametersPresentation(parameterList)?.let {
+          presentations.add(it)
+        }
+        roundWithBackground(SequencePresentation(presentations))
       }
 
       private fun parametersPresentation(parameterList: PsiAnnotationParameterList) = with(factory) {
         val attributes = parameterList.attributes
         when {
-          attributes.isEmpty() -> smallText("()")
+          attributes.isEmpty() -> null
           else -> insideParametersPresentation(attributes, collapsed = parameterList.textLength > 60)
         }
       }
@@ -152,7 +153,7 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
   override fun createSettings(): Settings = Settings()
 
   override val name: String
-    get() = "Annotations"
+    get() = JavaBundle.message("settings.inlay.java.annotations")
   override val key: SettingsKey<Settings>
     get() = ourKey
   override val previewText: String?
@@ -169,12 +170,12 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
       override fun createComponent(listener: ChangeListener): JComponent = panel {}
 
       override val mainCheckboxText: String
-        get() = "Show hints for:"
+        get() = JavaBundle.message("settings.inlay.java.show.hints.for")
 
       override val cases: List<ImmediateConfigurable.Case>
         get() = listOf(
-          ImmediateConfigurable.Case("Inferred annotations", settings::showInferred),
-          ImmediateConfigurable.Case("External annotations", settings::showExternal)
+          ImmediateConfigurable.Case(JavaBundle.message("settings.inlay.java.inferred.annotations"), "inferred.annotations", settings::showInferred),
+          ImmediateConfigurable.Case(JavaBundle.message("settings.inlay.java.external.annotations"), "external.annotations", settings::showExternal)
         )
     }
   }
@@ -209,7 +210,7 @@ class InsertAnnotationAction(
   private val element: PsiModifierListOwner
 ) : AnAction() {
   override fun update(e: AnActionEvent) {
-    e.presentation.text = "Insert annotation"
+    e.presentation.text = JavaBundle.message("settings.inlay.java.insert.annotation")
   }
 
   override fun actionPerformed(e: AnActionEvent) {

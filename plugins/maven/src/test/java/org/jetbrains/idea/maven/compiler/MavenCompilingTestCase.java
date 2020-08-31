@@ -8,6 +8,7 @@ import com.intellij.openapi.compiler.CompilerMessage;
 import com.intellij.openapi.compiler.CompilerMessageCategory;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.projectRoots.Sdk;
+import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl;
 import com.intellij.openapi.roots.JdkOrderEntry;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.util.io.FileUtil;
@@ -31,9 +32,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * @author nik
- */
 public abstract class MavenCompilingTestCase extends MavenImportingTestCase {
   protected void compileModules(final String... moduleNames) {
     compile(createModulesCompileScope(moduleNames));
@@ -105,7 +103,7 @@ public abstract class MavenCompilingTestCase extends MavenImportingTestCase {
   }
 
   @Nullable
-  protected static String extractJdkVersion(@NotNull Module module) {
+  protected static String extractJdkVersion(@NotNull Module module, boolean fallbackToInternal) {
     String jdkVersion = null;
     Optional<Sdk> sdk = Optional.ofNullable(ModuleRootManager.getInstance(module).getSdk());
 
@@ -122,6 +120,11 @@ public abstract class MavenCompilingTestCase extends MavenImportingTestCase {
     else {
       jdkVersion = sdk.get().getVersionString();
     }
+
+    if (jdkVersion == null && fallbackToInternal) {
+      jdkVersion = JavaAwareProjectJdkTableImpl.getInstanceEx().getInternalJdk().getVersionString();
+    }
+
     if (jdkVersion != null) {
       final int quoteIndex = jdkVersion.indexOf('"');
       if (quoteIndex != -1) {

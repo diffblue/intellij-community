@@ -2,6 +2,7 @@
 package org.jetbrains.plugins.gradle.importing
 
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.util.Consumer
 import java.io.File
 
 class GradleBuildScriptBuilderEx : GradleBuildScriptBuilder() {
@@ -15,7 +16,7 @@ class GradleBuildScriptBuilderEx : GradleBuildScriptBuilder() {
     if (!localDirWithJar.exists()) throw RuntimeException("Directory $localDirWithJar not found")
     if (!localDirWithJar.isDirectory) throw RuntimeException("File $localDirWithJar is not directory")
     val template = "gradle-idea-ext-.+-SNAPSHOT\\.jar".toRegex()
-    val jarFile = localDirWithJar.listFiles().find { it.name.matches(template) }
+    val jarFile = localDirWithJar.listFiles()?.find { it.name.matches(template) }
     if (jarFile == null) throw RuntimeException("Jar with gradle-idea-ext plugin not found")
     if (!jarFile.isFile) throw RuntimeException("Invalid jar file $jarFile")
     withLocalGradleIdeaExtPlugin(jarFile)
@@ -32,6 +33,32 @@ class GradleBuildScriptBuilderEx : GradleBuildScriptBuilder() {
 
   fun withGradleIdeaExtPlugin(version: String) = apply {
     addPlugin("id 'org.jetbrains.gradle.plugin.idea-ext' version '$version'")
+  }
+
+  fun withTask(name: String, vararg types: String, content: String = "") = apply {
+    addPostfix("""
+      tasks.register("$name"${types.joinToString("") { ", $it" }}) {
+        $content
+      }
+    """.trimIndent())
+  }
+
+  fun withPrefix(configure: Consumer<GroovyBuilder>) =
+    withPrefix(configure::consume)
+
+  fun withTaskConfiguration(name: String, configure: Consumer<GroovyBuilder>) =
+    withTaskConfiguration(name, configure::consume)
+
+  fun withPrefix(configure: GroovyBuilder.() -> Unit) = apply {
+    addPrefix(GroovyBuilder.generate(configure = configure))
+  }
+
+  fun withTaskConfiguration(name: String, configure: GroovyBuilder.() -> Unit) = apply {
+    addPostfix("""
+      $name {
+      ${GroovyBuilder.generate("  ", configure)}
+      }
+    """.trimIndent())
   }
 
   fun withJavaPlugin() = apply {
@@ -69,18 +96,22 @@ class GradleBuildScriptBuilderEx : GradleBuildScriptBuilder() {
   }
 }
 
-fun GradleBuildScriptBuilder.withBuildScriptMavenCentral() = apply {
+@JvmOverloads
+fun GradleBuildScriptBuilder.withBuildScriptMavenCentral(useOldStyleMetadata: Boolean = false) = apply {
   addBuildScriptRepository("""
     maven {
-      url 'http://maven.labs.intellij.net/repo1'
+      url 'https://repo.labs.intellij.net/repo1'
+      ${if (useOldStyleMetadata) { "metadataSources { mavenPom(); artifact(); } " } else {""}}
     }
   """.trimIndent())
 }
 
-fun GradleBuildScriptBuilder.withMavenCentral() = apply {
+@JvmOverloads
+fun GradleBuildScriptBuilder.withMavenCentral(useOldStyleMetadata: Boolean = false) = apply {
   addRepository("""
     maven {
-      url 'http://maven.labs.intellij.net/repo1'
+      url 'https://repo.labs.intellij.net/repo1'
+      ${if (useOldStyleMetadata) { "metadataSources { mavenPom(); artifact(); } " } else {""}}
     }
   """.trimIndent())
 }

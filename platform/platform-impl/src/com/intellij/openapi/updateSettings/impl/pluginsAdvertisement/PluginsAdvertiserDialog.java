@@ -1,13 +1,17 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.updateSettings.impl.pluginsAdvertisement;
 
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.plugins.*;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.extensions.PluginDescriptor;
+import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.updateSettings.impl.DetectedPluginsPanel;
 import com.intellij.openapi.updateSettings.impl.PluginDownloader;
 import com.intellij.ui.TableUtil;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -17,37 +21,37 @@ import java.util.*;
 /**
  * @author anna
  */
-public class PluginsAdvertiserDialog extends DialogWrapper {
+public final class PluginsAdvertiserDialog extends DialogWrapper {
   private static final Logger LOG = Logger.getInstance(PluginsAdvertiserDialog.class);
 
   @Nullable private final Project myProject;
-  private final PluginDownloader[] myUploadedPlugins;
-  private final List<? extends IdeaPluginDescriptor> myAllPlugins;
-  private final Set<String> mySkippedPlugins = new HashSet<>();
+  private final PluginDownloader[] myToInstallPlugins;
+  private final List<? extends IdeaPluginDescriptor> myCustomPlugins;
+  private final Set<PluginId> mySkippedPlugins = new HashSet<>();
 
   private final PluginManagerMain.PluginEnabler.HEADLESS pluginHelper = new PluginManagerMain.PluginEnabler.HEADLESS();
 
-  PluginsAdvertiserDialog(@Nullable Project project, PluginDownloader[] plugins, List<? extends IdeaPluginDescriptor> allPlugins) {
+  PluginsAdvertiserDialog(@Nullable Project project, PluginDownloader[] plugins, List<? extends IdeaPluginDescriptor> customPlugins) {
     super(project);
     myProject = project;
     Arrays.sort(plugins, (o1, o2) -> o1.getPluginName().compareToIgnoreCase(o2.getPluginName()));
-    myUploadedPlugins = plugins;
-    myAllPlugins = allPlugins;
-    setTitle("Choose Plugins to Install or Enable");
+    myToInstallPlugins = plugins;
+    myCustomPlugins = customPlugins;
+    setTitle(IdeBundle.message("dialog.title.choose.plugins.to.install.or.enable"));
     init();
   }
 
-  @Nullable
+  @NotNull
   @Override
   protected JComponent createCenterPanel() {
     final DetectedPluginsPanel foundPluginsPanel = new DetectedPluginsPanel() {
       @Override
-      protected Set<String> getSkippedPlugins() {
+      protected Set<PluginId> getSkippedPlugins() {
         return mySkippedPlugins;
       }
     };
 
-    for (PluginDownloader uploadedPlugin : myUploadedPlugins) {
+    for (PluginDownloader uploadedPlugin : myToInstallPlugins) {
       foundPluginsPanel.add(uploadedPlugin);
     }
     TableUtil.ensureSelectionExists(foundPluginsPanel.getEntryTable());
@@ -56,31 +60,39 @@ public class PluginsAdvertiserDialog extends DialogWrapper {
 
   @Override
   protected void doOKAction() {
-    final Set<String> pluginsToEnable = new HashSet<>();
-    final List<PluginNode> nodes = new ArrayList<>();
-    for (PluginDownloader downloader : myUploadedPlugins) {
-      String pluginId = downloader.getPluginId();
-      if (!mySkippedPlugins.contains(pluginId)) {
-        pluginsToEnable.add(pluginId);
-        if (!pluginHelper.isDisabled(pluginId)) {
+    if (doInstallPlugins()) {
+      super.doOKAction();
+    }
+  }
+
+  public boolean doInstallPlugins() {
+    Set<PluginDescriptor> pluginsToEnable = new HashSet<>();
+    List<PluginNode> nodes = new ArrayList<>();
+    for (PluginDownloader downloader : myToInstallPlugins) {
+      PluginDescriptor plugin = downloader.getDescriptor();
+      if (!mySkippedPlugins.contains(plugin.getPluginId())) {
+        pluginsToEnable.add(plugin);
+        if (plugin.isEnabled()) {
           nodes.add(PluginDownloader.createPluginNode(null, downloader));
         }
       }
     }
 
     if (!PluginManagerMain.checkThirdPartyPluginsAllowed(nodes)) {
-      return;
+      return false;
     }
 
     PluginManagerMain.suggestToEnableInstalledDependantPlugins(pluginHelper, nodes);
 
-    final Runnable notifyRunnable = () -> PluginManagerMain.notifyPluginsUpdated(myProject);
-    for (String pluginId : pluginsToEnable) {
-      PluginManagerCore.enablePlugin(pluginId);
-    }
+    Runnable notifyRunnable = () -> {
+      if (nodes.stream().anyMatch(o -> PluginManagerCore.getPlugin(o.getPluginId()) == null)) {
+        PluginManagerMain.notifyPluginsUpdated(myProject);
+      }
+    };
+    DisabledPluginsState.enablePlugins(pluginsToEnable, true);
     if (!nodes.isEmpty()) {
       try {
-        PluginManagerMain.downloadPlugins(nodes, myAllPlugins, notifyRunnable, pluginHelper, null);
+        PluginManagerMain.downloadPlugins(nodes, myCustomPlugins, true, notifyRunnable, pluginHelper, null);
       }
       catch (IOException e) {
         LOG.error(e);
@@ -91,6 +103,6 @@ public class PluginsAdvertiserDialog extends DialogWrapper {
         notifyRunnable.run();
       }
     }
-    super.doOKAction();
+    return true;
   }
 }

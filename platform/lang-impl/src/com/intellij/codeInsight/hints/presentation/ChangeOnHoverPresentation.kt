@@ -9,8 +9,8 @@ import java.awt.event.MouseEvent
  * Preserves hover state between passes.
  * @param onHoverPredicate predicate, that considers state is hovered (additional to fact, that it is in bounds)
  */
-class ChangeOnHoverPresentation(
-  val noHover: InlayPresentation,
+open class ChangeOnHoverPresentation(
+  private val noHover: InlayPresentation,
   private val hover: () -> InlayPresentation,
   private val onHoverPredicate: (MouseEvent) -> Boolean = { true }
 ) : StatefulPresentation<ChangeOnHoverPresentation.State>(State(false), STATE_MARK) {
@@ -38,10 +38,10 @@ class ChangeOnHoverPresentation(
   }
 
   override fun mouseExited() {
-    super.mouseExited()
     if (state.isInside) {
       state = State(false)
     }
+    super.mouseExited()
   }
 
   data class State(val isInside: Boolean)

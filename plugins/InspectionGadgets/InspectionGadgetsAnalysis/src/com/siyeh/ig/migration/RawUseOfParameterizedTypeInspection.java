@@ -56,12 +56,6 @@ public class RawUseOfParameterizedTypeInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("raw.use.of.parameterized.type.display.name");
-  }
-
-  @Override
-  @NotNull
   protected String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("raw.use.of.parameterized.type.problem.descriptor");
   }
@@ -114,9 +108,18 @@ public class RawUseOfParameterizedTypeInspection extends BaseInspection {
         return;
       }
       super.visitTypeElement(typeElement);
+      PsiElement directParent = typeElement.getParent();
+      if (ignoreUncompilable && directParent instanceof PsiTypeElement) {
+        PsiType parentType = ((PsiTypeElement)directParent).getType();
+        if (parentType instanceof PsiArrayType) {
+          if (PsiTreeUtil.skipParentsOfType(directParent, PsiTypeElement.class) instanceof PsiMethodReferenceExpression) {
+            return;
+          }
+        }
+      }
       final PsiElement parent = PsiTreeUtil.skipParentsOfType(
         typeElement, PsiTypeElement.class, PsiReferenceParameterList.class, PsiJavaCodeReferenceElement.class);
-      if (parent instanceof PsiInstanceOfExpression || parent instanceof PsiClassObjectAccessExpression) {
+      if (parent instanceof PsiTypeTestPattern || parent instanceof PsiClassObjectAccessExpression) {
         return;
       }
       if (ignoreTypeCasts && parent instanceof PsiTypeCastExpression) {
@@ -128,7 +131,7 @@ public class RawUseOfParameterizedTypeInspection extends BaseInspection {
       if (ignoreUncompilable && parent instanceof PsiAnnotationMethod) {
         // type of class type parameter cannot be parameterized if annotation method has default value
         final PsiAnnotationMemberValue defaultValue = ((PsiAnnotationMethod)parent).getDefaultValue();
-        if (defaultValue != null && typeElement.getParent() instanceof PsiTypeElement) {
+        if (defaultValue != null && directParent instanceof PsiTypeElement) {
           return;
         }
       }
@@ -162,6 +165,9 @@ public class RawUseOfParameterizedTypeInspection extends BaseInspection {
       final PsiReferenceList referenceList = (PsiReferenceList)referenceParent;
       final PsiElement listParent = referenceList.getParent();
       if (!(listParent instanceof PsiClass)) {
+        return;
+      }
+      if (referenceList.equals(((PsiClass)listParent).getPermitsList())) {
         return;
       }
       checkReferenceElement(reference);

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import java.io.*;
@@ -57,9 +57,17 @@ public class Patch {
 
     File olderDir = new File(spec.getOldFolder());
     File newerDir = new File(spec.getNewFolder());
-    Map<String, Long> oldChecksums = digestFiles(olderDir, spec.getIgnoredFiles(), isNormalized());
-    Map<String, Long> newChecksums = digestFiles(newerDir, spec.getIgnoredFiles(), false);
-    DiffCalculator.Result diff = DiffCalculator.calculate(oldChecksums, newChecksums, spec.getCriticalFiles(), spec.getOptionalFiles(), true);
+
+    Set<String> ignored = new HashSet<>(spec.getIgnoredFiles());
+    Set<String> critical = new HashSet<>(spec.getCriticalFiles());
+    Set<String> optional = new HashSet<>(spec.getOptionalFiles());
+
+    Map<String, Long> oldChecksums = digestFiles(olderDir, ignored, isNormalized());
+    Map<String, Long> newChecksums = digestFiles(newerDir, ignored, false);
+    DiffCalculator.Result diff = DiffCalculator.calculate(oldChecksums, newChecksums, critical, optional, true);
+
+    Runner.logger().info("Preparing actions...");
+    ui.startProcess("Preparing actions...");
 
     List<PatchAction> tempActions = new ArrayList<>();
 
@@ -89,16 +97,13 @@ public class Patch {
       }
     }
 
-    Runner.logger().info("Preparing actions...");
-    ui.startProcess("Preparing actions...");
-
     List<PatchAction> actions = new ArrayList<>();
     for (PatchAction action : tempActions) {
       Runner.logger().info(action.getPath());
       if (action.calculate(olderDir, newerDir)) {
         actions.add(action);
-        action.setCritical(spec.getCriticalFiles().contains(action.getPath()));
-        action.setOptional(spec.getOptionalFiles().contains(action.getPath()));
+        action.setCritical(critical.contains(action.getPath()));
+        action.setOptional(optional.contains(action.getPath()));
       }
     }
     return actions;
@@ -220,8 +225,7 @@ public class Patch {
     File toDir = toBaseDir(rootDir);
     boolean checkWarnings = true;
     while (checkWarnings) {
-      // always collect files and folders - to avoid cases such as IDEA-152249
-      files = Utils.collectRelativePaths(toDir);
+      files = Utils.collectRelativePaths(toDir.toPath());
       checkWarnings = false;
       for (String file : files) {
         String warning = myWarnings.get(file);
@@ -245,19 +249,22 @@ public class Patch {
 
     List<ValidationResult> results = new ArrayList<>();
 
-    Set<String> deletedPaths = new HashSet<>();
+    Set<String> deletedPaths = new HashSet<>(), deletedLinks = new HashSet<>();
     forEach(myActions, "Validating installation...", ui, action -> {
       ValidationResult result = action.validate(toDir);
 
       if (action instanceof DeleteAction) {
-        deletedPaths.add(mapPath(action.getPath()));
+        String path = mapPath(action.getPath());
+        deletedPaths.add(path);
+        if (Digester.isSymlink(action.getChecksum())) {
+          deletedLinks.add(path);
+        }
       }
-      else if (action instanceof CreateAction &&
-               result != null &&
+      else if (result != null &&
+               action instanceof CreateAction &&
                ValidationResult.ALREADY_EXISTS_MESSAGE.equals(result.message) &&
-               deletedPaths.contains(mapPath(action.getPath()))) {
-        // do not warn about files going to be deleted
-        result = null;
+               toBeDeleted(mapPath(action.getPath()), deletedPaths, deletedLinks)) {
+        result = null;  // do not warn about files going to be deleted
       }
 
       if (result != null) results.add(result);
@@ -267,7 +274,24 @@ public class Patch {
   }
 
   private static String mapPath(String path) {
-    return Runner.isCaseSensitiveFs() ? path : path.toLowerCase(Locale.getDefault());
+    if (!Runner.isCaseSensitiveFs()) {
+      path = path.toLowerCase(Locale.getDefault());
+    }
+    if (path.endsWith("/")) {
+      path = path.substring(0, path.length() - 1);
+    }
+    return path;
+  }
+
+  private static boolean toBeDeleted(String path, Set<String> deletedPaths, Set<String> deletedLinks) {
+    if (deletedPaths.contains(path)) return true;
+    if (!deletedLinks.isEmpty()) {
+      int p = path.length();
+      while ((p = path.lastIndexOf('/', p - 1)) > 0) {
+        if (deletedLinks.contains(path.substring(0, p))) return true;
+      }
+    }
+    return false;
   }
 
   public PatchFileCreator.ApplicationResult apply(ZipFile patchFile,
@@ -312,8 +336,6 @@ public class Patch {
     }
 
     List<PatchAction> appliedActions = new ArrayList<>(actionsToApply.size());
-    List<File> createdDirectories = new ArrayList<>();
-    Set<File> createdOptionalFiles = new HashSet<>();
 
     try {
       File _backupDir = backupDir;
@@ -327,16 +349,6 @@ public class Patch {
         else {
           appliedActions.add(action);
           action.apply(patchFile, _backupDir, toDir);
-
-          if (action instanceof CreateAction) {
-            File file = action.getFile(toDir);
-            if (file.isDirectory()) {
-              createdDirectories.add(0, file);
-            }
-            else if (action.isOptional()) {
-              createdOptionalFiles.add(file);
-            }
-          }
         }
       });
     }
@@ -349,24 +361,6 @@ public class Patch {
       return new PatchFileCreator.ApplicationResult(false, appliedActions, t);
     }
 
-    File jre64 = new File(toDir.getAbsolutePath() + "/jre64");
-    File jbr = new File(toDir.getAbsolutePath() + "/jbr");
-    if (jbr.exists())  Runner.logger().info("jbr bundled: " + jbr.getAbsolutePath());
-    if (jre64.exists())  Runner.logger().info("jre64 bundled: " + jre64.getAbsolutePath());
-    for (File directory : createdDirectories) {
-      File[] children = directory.listFiles();
-      if (children != null && pruningEmptyDir(toDir, directory, jre64, jbr) &&
-          createdOptionalFiles.containsAll(Arrays.asList(children))) {
-        Runner.logger().info("Pruning empty directory: " + directory);
-        try {
-          Utils.delete(directory);
-        }
-        catch (IOException e) {
-          Runner.logger().warn("pruning: " + directory, e);
-        }
-      }
-    }
-
     try {
       // on macOS, we need to update bundle timestamp to reset Info.plist caches
       Files.setLastModifiedTime(toDir.toPath(), FileTime.from(Instant.now()));
@@ -376,13 +370,6 @@ public class Patch {
     }
 
     return new PatchFileCreator.ApplicationResult(true, appliedActions);
-  }
-
-  private boolean pruningEmptyDir(File toDir, File directory, File jre64, File jbr) {
-    return ((!directory.getAbsolutePath().contains("jre64") ||
-             (directory.getAbsolutePath().contains("jre64") && !jre64.exists())) &&
-            (!directory.getAbsolutePath().contains("jbr") ||
-             (directory.getAbsolutePath().contains("jbr") && !jbr.exists())));
   }
 
   public void revert(List<? extends PatchAction> actions, File backupDir, File rootDir, UpdaterUI ui) throws IOException {
@@ -426,15 +413,19 @@ public class Patch {
     }
   }
 
-  public Map<String, Long> digestFiles(File dir, List<String> ignoredFiles, boolean normalize) throws IOException {
+  public Map<String, Long> digestFiles(File dir, Set<String> ignoredFiles, boolean normalize) throws IOException {
     Map<String, Long> result = new LinkedHashMap<>();
-    //always collect files and folders to avoid cases such as IDEA-152249
-    LinkedHashSet<String> paths = Utils.collectRelativePaths(dir);
-    for (String each : paths) {
-      if (!ignoredFiles.contains(each)) {
-        result.put(each, digestFile(new File(dir, each), normalize));
+    Utils.collectRelativePaths(dir.toPath()).parallelStream().forEachOrdered(path -> {
+      if (!ignoredFiles.contains(path)) {
+        try {
+          long hash = digestFile(new File(dir, path), normalize);
+          synchronized (result) {
+            result.put(path, hash);
+          }
+        }
+        catch (IOException e) { throw new UncheckedIOException(e); }
       }
-    }
+    });
     return result;
   }
 

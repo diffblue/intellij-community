@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.dom.impl;
 
 import com.intellij.codeInsight.daemon.EmptyResolveMessageProvider;
@@ -14,20 +12,25 @@ import com.intellij.openapi.options.ConfigurableEP;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.util.Iconable;
-import com.intellij.patterns.*;
+import com.intellij.patterns.DomPatterns;
+import com.intellij.patterns.PatternCondition;
+import com.intellij.patterns.XmlAttributeValuePattern;
+import com.intellij.patterns.XmlTagPattern;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScopesCore;
 import com.intellij.psi.util.InheritanceUtil;
+import com.intellij.ui.IconDescriptionBundleEP;
 import com.intellij.util.ProcessingContext;
+import com.intellij.util.xml.DomElement;
+import com.intellij.util.xml.DomUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.idea.devkit.dom.Extension;
-import org.jetbrains.idea.devkit.dom.ExtensionPoint;
-import org.jetbrains.idea.devkit.dom.IdeaPlugin;
+import org.jetbrains.idea.devkit.dom.*;
 
 import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.intellij.patterns.XmlPatterns.xmlAttributeValue;
 import static com.intellij.patterns.XmlPatterns.xmlTag;
 
 public class I18nReferenceContributor extends PsiReferenceContributor {
@@ -35,10 +38,15 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
   private static final String INTENTION_ACTION_TAG = "intentionAction";
   private static final String INTENTION_ACTION_BUNDLE_TAG = "bundleName";
 
-  private static final String CONFIGURABLE_EP = ConfigurableEP.class.getName();
-  private static final String INSPECTION_EP = InspectionEP.class.getName();
+  private static final String SEPARATOR_TAG = "separator";
 
-  private static final String TYPE_NAME_EP = TypeNameEP.class.getName();
+  private static class Holder {
+    private static final String CONFIGURABLE_EP = ConfigurableEP.class.getName();
+    private static final String INSPECTION_EP = InspectionEP.class.getName();
+
+    private static final String ICON_DESCRIPTION_BUNDLE_EP = IconDescriptionBundleEP.class.getName();
+    private static final String TYPE_NAME_EP = TypeNameEP.class.getName();
+  }
 
   @Override
   public void registerReferenceProviders(@NotNull PsiReferenceRegistrar registrar) {
@@ -49,12 +57,24 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
 
   private static void registerKeyProviders(PsiReferenceRegistrar registrar) {
     registrar.registerReferenceProvider(extensionAttributePattern(new String[]{"key", "groupKey"},
-                                                                  CONFIGURABLE_EP, INSPECTION_EP),
+                                                                  Holder.CONFIGURABLE_EP, Holder.INSPECTION_EP),
                                         new PropertyKeyReferenceProvider(false, "groupKey", "groupBundle"));
 
     registrar.registerReferenceProvider(extensionAttributePattern(new String[]{"resourceKey"},
-                                                                  TYPE_NAME_EP),
+                                                                  Holder.TYPE_NAME_EP),
                                         new PropertyKeyReferenceProvider(false, "resourceKey", "resourceBundle"));
+
+    final XmlAttributeValuePattern separatorKeyPattern =
+      xmlAttributeValue("key")
+        .withSuperParent(2, DomPatterns.tagWithDom(SEPARATOR_TAG, Separator.class));
+    registrar.registerReferenceProvider(separatorKeyPattern,
+                                        new PropertyKeyReferenceProvider(tag -> {
+                                          final DomElement domElement = DomUtil.getDomElement(tag);
+                                          if (domElement == null) return null;
+
+                                          final Actions actions = DomUtil.getParentOfType(domElement, Actions.class, true);
+                                          return actions != null ? actions.getResourceBundle().getStringValue() : null;
+                                        }));
 
     final XmlTagPattern.Capture intentionActionKeyTagPattern =
       xmlTag().withLocalName("categoryKey").
@@ -65,9 +85,8 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
 
   private static void registerBundleNameProviders(PsiReferenceRegistrar registrar) {
     final PsiReferenceProvider bundleReferenceProvider = new PsiReferenceProvider() {
-      @NotNull
       @Override
-      public PsiReference[] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
+      public PsiReference @NotNull [] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
         return new PsiReference[]{new MyResourceBundleReference(element)};
       }
     };
@@ -77,12 +96,17 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
         withParent(DomPatterns.tagWithDom(IdeaPlugin.TAG_NAME, IdeaPlugin.class));
     registrar.registerReferenceProvider(resourceBundleTagPattern, bundleReferenceProvider);
 
+    final XmlAttributeValuePattern actionsResourceBundlePattern =
+      xmlAttributeValue("resource-bundle")
+        .withSuperParent(2, DomPatterns.tagWithDom("actions", Actions.class));
+    registrar.registerReferenceProvider(actionsResourceBundlePattern, bundleReferenceProvider);
+
     registrar.registerReferenceProvider(extensionAttributePattern(new String[]{"bundle"}, "groupBundle",
-                                                                  CONFIGURABLE_EP, INSPECTION_EP),
+                                                                  Holder.CONFIGURABLE_EP, Holder.INSPECTION_EP),
                                         bundleReferenceProvider);
 
     registrar.registerReferenceProvider(extensionAttributePattern(new String[]{"resourceBundle"},
-                                                                  TYPE_NAME_EP),
+                                                                  Holder.TYPE_NAME_EP, Holder.ICON_DESCRIPTION_BUNDLE_EP),
                                         bundleReferenceProvider);
 
     final XmlTagPattern.Capture intentionActionBundleTagPattern =
@@ -94,7 +118,7 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
   private static XmlAttributeValuePattern extensionAttributePattern(String[] attributeNames,
                                                                     String... extensionPointClassNames) {
     //noinspection deprecation
-    return XmlPatterns.xmlAttributeValue(attributeNames)
+    return xmlAttributeValue(attributeNames)
       .inFile(DomPatterns.inDomFile(IdeaPlugin.class))
       .withSuperParent(2, xmlTag()
         .and(DomPatterns.withDom(DomPatterns.domElement(Extension.class).with(new PatternCondition<Extension>("relevantEP") {
@@ -118,9 +142,8 @@ public class I18nReferenceContributor extends PsiReferenceContributor {
       super(element, false);
     }
 
-    @NotNull
     @Override
-    public Object[] getVariants() {
+    public Object @NotNull [] getVariants() {
       final Project project = myElement.getProject();
       PropertiesReferenceManager referenceManager = PropertiesReferenceManager.getInstance(project);
       final List<LookupElement> variants = new ArrayList<>();

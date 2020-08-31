@@ -1,8 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.text;
 
 import com.intellij.util.Function;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -14,7 +16,7 @@ import java.util.regex.Pattern;
  * This versions comparator is much smarter than StringUtil.compareVersionNumbers
  * E.g: is used for TeamCity plugins and Ruby gems versions
  */
-public class VersionComparatorUtil {
+public final class VersionComparatorUtil {
   private static final Pattern WORDS_SPLITTER = Pattern.compile("\\d+|[^\\d]+");
   private static final VersionTokenType[] VALUES = VersionTokenType.values();
 
@@ -117,11 +119,11 @@ public class VersionComparatorUtil {
    * Examples: 1.0rc1 < 1.0release, 1.0 < 1.0.1, 1.1 > 1.02
    * @return 0 if ver1 equals ver2, positive value if ver1 > ver2, negative value if ver1 < ver2
    */
-  public static int compare(String ver1, String ver2) {
+  public static int compare(@Nullable @NonNls String ver1, @Nullable @NonNls String ver2) {
     return compare(ver1, ver2, DEFAULT_TOKEN_PRIORITY_PROVIDER);
   }
 
-  public static int compare(String ver1, String ver2, Function<? super String, Integer> tokenPriorityProvider) {
+  public static int compare(@Nullable @NonNls String ver1, @Nullable @NonNls String ver2, Function<? super String, Integer> tokenPriorityProvider) {
     // todo duplicates com.intellij.openapi.util.text.StringUtil.compareVersionNumbers()
     // todo please refactor next time you make changes here
     if (ver1 == null) {
@@ -161,7 +163,7 @@ public class VersionComparatorUtil {
     return 0;
   }
 
-  public static int comparePriorities(String ver1, String ver2, Function<? super String, Integer> tokenPriorityProvider) {
+  public static int comparePriorities(@NonNls String ver1, @NonNls String ver2, Function<? super String, Integer> tokenPriorityProvider) {
     int priority1 = tokenPriorityProvider.fun(ver1);
     int priority2 = tokenPriorityProvider.fun(ver2);
 

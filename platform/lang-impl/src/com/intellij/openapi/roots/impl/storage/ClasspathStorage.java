@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl.storage;
 
 import com.intellij.ProjectTopics;
@@ -14,9 +14,10 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.ModuleListener;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectBundle;
 import com.intellij.openapi.roots.ModifiableRootModel;
+import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ModuleRootModel;
-import com.intellij.openapi.roots.impl.ModuleRootManagerImpl;
 import com.intellij.openapi.roots.impl.ModuleRootManagerImpl.ModuleRootManagerState;
 import com.intellij.openapi.roots.impl.RootModelImpl;
 import com.intellij.openapi.util.Key;
@@ -57,8 +58,9 @@ public final class ClasspathStorage extends StateStorageBase<Boolean> {
     ClasspathStorageProvider provider = getProvider(storageType);
     if (provider == null) {
       if (module.getUserData(ERROR_NOTIFIED_KEY) == null) {
-        Notification n = new Notification(StorageUtilKt.NOTIFICATION_GROUP_ID, "Cannot load module '" + module.getName() + "'",
-                                          "Support for " + storageType + " format is not installed.", NotificationType.ERROR);
+        Notification n = new Notification(StorageUtilKt.NOTIFICATION_GROUP_ID,
+                                          ProjectBundle.message("notification.title.cannot.load.module.0", module.getName()),
+                                          ProjectBundle.message("notification.content.support.for.0.format.is.not.installed", storageType), NotificationType.ERROR);
         n.notify(module.getProject());
         module.putUserData(ERROR_NOTIFIED_KEY, Boolean.TRUE);
         LOG.info("Classpath storage provider " + storageType + " not found");
@@ -145,7 +147,7 @@ public final class ClasspathStorage extends StateStorageBase<Boolean> {
     ApplicationManager.getApplication().runReadAction(() -> {
       ModifiableRootModel model = null;
       try {
-        model = ((ModuleRootManagerImpl)component).getModifiableModel();
+        model = ((ModuleRootManager)component).getModifiableModel();
         // IDEA-137969 Eclipse integration: external remove of classpathentry is not synchronized
         model.clear();
         try {
@@ -191,7 +193,7 @@ public final class ClasspathStorage extends StateStorageBase<Boolean> {
   }
 
   @Override
-  public void analyzeExternalChangesAndUpdateIfNeeded(@NotNull Set<? super String> componentNames) {
+  public void analyzeExternalChangesAndUpdateIfNeeded(@NotNull Set<String> componentNames) {
     // if some file changed, so, changed
     componentNames.add("NewModuleRootManager");
     getStorageDataRef().set(false);

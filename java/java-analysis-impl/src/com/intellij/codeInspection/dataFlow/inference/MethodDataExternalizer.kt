@@ -90,10 +90,12 @@ internal object MethodDataExternalizer : DataExternalizer<Map<Int, MethodData>> 
   private fun readRange(input: DataInput) = ExpressionRange(readINT(input), readINT(input))
 
   private fun writePurity(out: DataOutput, purity: PurityInferenceResult) {
+    out.writeBoolean(purity.mutatesThis)
     writeRanges(out, purity.mutatedRefs)
     writeNullable(out, purity.singleCall) { writeRange(out, it) }
   }
   private fun readPurity(input: DataInput) = PurityInferenceResult(
+    input.readBoolean(),
     readRanges(input),
     readNullable(input) { readRange(input) })
 
@@ -137,9 +139,9 @@ internal object MethodDataExternalizer : DataExternalizer<Map<Int, MethodData>> 
 
   private fun writeContractArguments(out: DataOutput, arguments: List<ValueConstraint>) =
       writeSeq(out, arguments) { out.writeByte(it.ordinal) }
-  private fun readContractArguments(input: DataInput) = readSeq(input, {
+  private fun readContractArguments(input: DataInput) = readSeq(input) {
     readValueConstraint(input)
-  })
+  }
 
   private fun readValueConstraint(input: DataInput) = ValueConstraint.values()[input.readByte().toInt()]
 

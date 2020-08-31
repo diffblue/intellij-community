@@ -61,6 +61,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 class PathMatcher:
     def __init__(self, patterns: Sequence[str]) -> None:
+        patterns = [re.escape(os.path.join(*x.split("/"))) for x in patterns]
         self.matcher = re.compile(r"({})$".format("|".join(patterns))) if patterns else None
 
     def search(self, path: str) -> Optional[Match[str]]:
@@ -85,15 +86,12 @@ def load_blacklist(typeshed_location: str) -> List[str]:
 
 def run_pytype(*, filename: str, python_version: str, python_exe: str, typeshed_location: str) -> Optional[str]:
     """Runs pytype, returning the stderr if any."""
-    options = pytype_config.Options(
-        [
-            "--module-name={}".format(_get_module_name(filename)),
-            "--parse-pyi",
-            "-V {}".format(python_version),
-            "--python_exe={}".format(python_exe),
-            filename,
-        ]
-    )
+    options = pytype_config.Options.create(
+        filename,
+        module_name=_get_module_name(filename),
+        parse_pyi=True,
+        python_version=python_version,
+        python_exe=python_exe)
     old_typeshed_home = os.environ.get(TYPESHED_HOME, UNSET)
     os.environ[TYPESHED_HOME] = typeshed_location
     try:
@@ -136,7 +134,7 @@ def can_run(exe: str, *, args: List[str]) -> bool:
 
 
 def _is_version(path: str, version: str) -> bool:
-    return any("{}/{}".format(d, version) in path for d in TYPESHED_SUBDIRS)
+    return any("{}{}{}".format(d, os.path.sep, version) in path for d in TYPESHED_SUBDIRS)
 
 
 def check_subdirs_discoverable(subdir_paths: List[str]) -> None:

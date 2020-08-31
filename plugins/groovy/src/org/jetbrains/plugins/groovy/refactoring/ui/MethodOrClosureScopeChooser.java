@@ -1,15 +1,18 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.refactoring.ui;
 
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.*;
+import com.intellij.openapi.editor.colors.TextAttributesKey;
+import com.intellij.openapi.editor.markup.HighlighterLayer;
+import com.intellij.openapi.editor.markup.HighlighterTargetArea;
+import com.intellij.openapi.editor.markup.MarkupModel;
+import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.ui.popup.JBPopup;
-import com.intellij.openapi.ui.popup.JBPopupAdapter;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.ui.popup.JBPopupListener;
 import com.intellij.openapi.ui.popup.LightweightWindowEvent;
 import com.intellij.openapi.util.Iconable;
 import com.intellij.openapi.util.Pair;
@@ -49,7 +52,7 @@ import java.util.List;
 /**
  * @author Max Medvedev
  */
-public class MethodOrClosureScopeChooser {
+public final class MethodOrClosureScopeChooser {
   private static final Logger LOG = Logger.getInstance(MethodOrClosureScopeChooser.class);
 
   @NonNls private static final String USE_SUPER_METHOD_OF = "Change base method";
@@ -102,18 +105,16 @@ public class MethodOrClosureScopeChooser {
     list.getSelectionModel().setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     list.setSelectedIndex(0);
     final List<RangeHighlighter> highlighters = new ArrayList<>();
-    final TextAttributes attributes =
-      EditorColorsManager.getInstance().getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     list.addListSelectionListener(new ListSelectionListener() {
       @Override
       public void valueChanged(final ListSelectionEvent e) {
         final GrParameterListOwner selectedMethod = (GrParameterListOwner)list.getSelectedValue();
         if (selectedMethod == null) return;
         dropHighlighters(highlighters);
-        updateView(selectedMethod, editor, attributes, highlighters, superMethod);
+        updateView(selectedMethod, editor, EditorColors.SEARCH_RESULT_ATTRIBUTES, highlighters, superMethod);
       }
     });
-    updateView(scopes.get(0), editor, attributes, highlighters, superMethod);
+    updateView(scopes.get(0), editor, EditorColors.SEARCH_RESULT_ATTRIBUTES, highlighters, superMethod);
     final JScrollPane scrollPane = ScrollPaneFactory.createScrollPane(list);
     scrollPane.setBorder(null);
     panel.add(scrollPane, BorderLayout.CENTER);
@@ -147,7 +148,7 @@ public class MethodOrClosureScopeChooser {
       .setMovable(false)
       .setResizable(false)
       .setRequestFocus(true)
-      .setKeyboardActions(keyboardActions).addListener(new JBPopupAdapter() {
+      .setKeyboardActions(keyboardActions).addListener(new JBPopupListener() {
         @Override
         public void onClosed(@NotNull LightweightWindowEvent event) {
           dropHighlighters(highlighters);
@@ -158,13 +159,13 @@ public class MethodOrClosureScopeChooser {
 
   public static void updateView(GrParameterListOwner selectedMethod,
                                 Editor editor,
-                                TextAttributes attributes,
+                                TextAttributesKey attributesKey,
                                 List<? super RangeHighlighter> highlighters,
                                 JCheckBox superMethod) {
     final MarkupModel markupModel = editor.getMarkupModel();
     final TextRange textRange = selectedMethod.getTextRange();
     final RangeHighlighter rangeHighlighter =
-      markupModel.addRangeHighlighter(textRange.getStartOffset(), textRange.getEndOffset(), HighlighterLayer.SELECTION - 1, attributes,
+      markupModel.addRangeHighlighter(attributesKey, textRange.getStartOffset(), textRange.getEndOffset(), HighlighterLayer.SELECTION - 1,
                                       HighlighterTargetArea.EXACT_RANGE);
     highlighters.add(rangeHighlighter);
     if (selectedMethod instanceof GrMethod) {

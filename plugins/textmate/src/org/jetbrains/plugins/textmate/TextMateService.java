@@ -8,15 +8,12 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.textmate.bundles.Bundle;
-import org.jetbrains.plugins.textmate.language.SnippetsRegistry;
 import org.jetbrains.plugins.textmate.language.TextMateLanguageDescriptor;
-import org.jetbrains.plugins.textmate.language.preferences.Preferences;
+import org.jetbrains.plugins.textmate.language.preferences.PreferencesRegistry;
+import org.jetbrains.plugins.textmate.language.preferences.SnippetsRegistry;
 import org.jetbrains.plugins.textmate.language.preferences.TextMateShellVariable;
-import org.jetbrains.plugins.textmate.language.syntax.highlighting.TextMateCustomTextAttributes;
-import org.jetbrains.plugins.textmate.language.syntax.selector.TextMateSelectorWeigher;
-import org.jetbrains.plugins.textmate.plist.PlistReader;
+import org.jetbrains.plugins.textmate.language.syntax.highlighting.TextMateTextAttributesAdapter;
 
-import java.util.List;
 import java.util.Map;
 
 public abstract class TextMateService {
@@ -40,7 +37,7 @@ public abstract class TextMateService {
    * 1. read all enabled bundles
    * 2. prepare syntax table of supported languages
    * 3. prepare preferences table of enabled bundles
-   * 4. fill the extensions mapping for {@link org.jetbrains.plugins.textmate.language.TextMateFileType}
+   * 4. fill the extensions mapping for {@link TextMateFileType}
    */
   public abstract void reloadEnabledBundles();
 
@@ -62,23 +59,16 @@ public abstract class TextMateService {
   @NotNull
   public abstract SnippetsRegistry getSnippetsRegistry();
 
+  @NotNull
+  public abstract PreferencesRegistry getPreferencesRegistry();
+
   @Nullable
   public abstract TextMateLanguageDescriptor getLanguageDescriptorByFileName(@NotNull CharSequence fileName);
-
-  /**
-   * @param selector scope of current context
-   * @return preferences that matched to current context.
-   *         Sorted by weigh matching {@link TextMateSelectorWeigher}
-   */
-  @NotNull
-  public abstract List<Preferences> getPreferencesForSelector(CharSequence selector);
 
   /**
    * @return custom highlighting colors defined inside bundles (not in themes). 
    * Note that background color in text attributes is stored in raw format and isn't merged with default background.
    */
   @NotNull
-  public abstract Map<CharSequence, TextMateCustomTextAttributes> getCustomHighlightingColors();
-
-  public abstract PlistReader getPlistReader();
+  public abstract Map<CharSequence, TextMateTextAttributesAdapter> getCustomHighlightingColors();
 }

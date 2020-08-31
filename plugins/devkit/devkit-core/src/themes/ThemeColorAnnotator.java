@@ -1,12 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.themes;
 
 import com.intellij.codeInsight.daemon.LineMarkerSettings;
 import com.intellij.json.psi.*;
 import com.intellij.json.psi.impl.JsonPsiImplUtils;
-import com.intellij.lang.annotation.Annotation;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
+import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -22,10 +22,10 @@ import com.intellij.ui.ColorChooser;
 import com.intellij.ui.ColorLineMarkerProvider;
 import com.intellij.ui.ColorPicker;
 import com.intellij.ui.ColorUtil;
+import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.ColorIcon;
 import com.intellij.util.ui.EmptyIcon;
-import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.devkit.DevKitBundle;
@@ -47,9 +47,9 @@ public class ThemeColorAnnotator implements Annotator {
   public void annotate(@NotNull PsiElement element, @NotNull AnnotationHolder holder) {
     if (!isColorLineMarkerProviderEnabled() || !isTargetElement(element, holder.getCurrentAnnotationSession().getFile())) return;
 
-    Annotation annotation = holder.createInfoAnnotation(element, null);
     JsonStringLiteral literal = (JsonStringLiteral)element;
-    annotation.setGutterIconRenderer(new MyRenderer(literal.getValue(), literal));
+    holder.newSilentAnnotation(HighlightSeverity.INFORMATION)
+    .gutterIconRenderer(new MyRenderer(literal.getValue(), literal)).create();
   }
 
   private static boolean isColorLineMarkerProviderEnabled() {
@@ -98,9 +98,9 @@ public class ThemeColorAnnotator implements Annotator {
     public Icon getIcon() {
       Color color = getColor(myColorText);
       if (color != null) {
-        return JBUI.scale(new ColorIcon(ICON_SIZE, color));
+        return JBUIScale.scaleIcon(new ColorIcon(ICON_SIZE, color));
       }
-      return JBUI.scale(EmptyIcon.create(ICON_SIZE));
+      return JBUIScale.scaleIcon(EmptyIcon.create(ICON_SIZE));
     }
 
     @Override
@@ -119,7 +119,7 @@ public class ThemeColorAnnotator implements Annotator {
     public AnAction getClickAction() {
       if (!canChooseColor()) return null;
 
-      return new AnAction("Choose Color...") {
+      return new AnAction(DevKitBundle.messagePointer("action.Anonymous.text.choose.color")) {
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
           Editor editor = e.getData(CommonDataKeys.EDITOR);

@@ -6,10 +6,7 @@ import com.intellij.codeInsight.TargetElementUtil
 import com.intellij.codeInsight.completion.*
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
-import com.intellij.codeInsight.lookup.Lookup
-import com.intellij.codeInsight.lookup.LookupElementPresentation
-import com.intellij.codeInsight.lookup.LookupManager
-import com.intellij.codeInsight.lookup.PsiTypeLookupItem
+import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.impl.LookupImpl
 import com.intellij.codeInsight.template.JavaCodeContextType
 import com.intellij.codeInsight.template.Template
@@ -38,21 +35,23 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.impl.CurrentEditorProvider
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.Computable
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.NavigatablePsiElement
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiJavaFile
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.statistics.StatisticsManager
+import com.intellij.psi.statistics.impl.StatisticsManagerImpl
+import com.intellij.psi.util.InheritanceUtil
 import com.intellij.testFramework.TestModeFlags
 import com.intellij.testFramework.fixtures.CodeInsightTestUtil
 import com.intellij.util.ThrowableRunnable
 import com.intellij.util.containers.ContainerUtil
 import org.jetbrains.annotations.NotNull
-
-import java.awt.event.KeyEvent
 /**
  * @author peter
  */
-class JavaAutoPopupTest extends CompletionAutoPopupTestCase {
+class JavaAutoPopupTest extends JavaCompletionAutoPopupTestCase {
   void testNewItemsOnLongerPrefix() {
     myFixture.configureByText("a.java", """
       class Foo {
@@ -471,7 +470,7 @@ class Foo {
     assert !lookup
   }
 
-  void testArrows(String toType, LookupImpl.FocusDegree focusDegree, int indexDown, int indexUp) {
+  void testArrows(String toType, LookupFocusDegree focusDegree, int indexDown, int indexUp) {
     Closure checkArrow = { String action, int expectedIndex ->
       myFixture.configureByText("a.java", """
       class A {
@@ -484,7 +483,7 @@ class Foo {
 
       type toType
       assert lookup
-      lookup.focusDegree = focusDegree
+      lookup.lookupFocusDegree = focusDegree
 
       edt { myFixture.performEditorAction(action) }
       if (lookup) {
@@ -504,15 +503,10 @@ class Foo {
 
   void "test vertical arrows in non-focused lookup"() {
     String toType = "ArrayIndexOutOfBoundsException ind"
-    testArrows toType, LookupImpl.FocusDegree.UNFOCUSED, 0, 2
+    testArrows toType, LookupFocusDegree.UNFOCUSED, 0, 2
 
-    UISettings.instance.cycleScrolling = false
-    try {
-      testArrows toType, LookupImpl.FocusDegree.UNFOCUSED, 0, -1
-    }
-    finally {
-      UISettings.instance.cycleScrolling = true
-    }
+    Registry.get("ide.cycle.scrolling").setValue(false, getTestRootDisposable())
+    testArrows toType, LookupFocusDegree.UNFOCUSED, 0, -1
   }
 
   void "test vertical arrows in semi-focused lookup"() {
@@ -520,15 +514,10 @@ class Foo {
     UISettings.getInstance()setSortLookupElementsLexicographically(true)
 
     String toType = "fo"
-    testArrows toType, LookupImpl.FocusDegree.SEMI_FOCUSED, 2, 0
+    testArrows toType, LookupFocusDegree.SEMI_FOCUSED, 2, 0
 
-    UISettings.instance.cycleScrolling = false
-    try {
-      testArrows toType, LookupImpl.FocusDegree.SEMI_FOCUSED, 2, 0
-    }
-    finally {
-      UISettings.instance.cycleScrolling = true
-    }
+    Registry.get("ide.cycle.scrolling").setValue(false, getTestRootDisposable())
+    testArrows toType, LookupFocusDegree.SEMI_FOCUSED, 2, 0
   }
 
   void testHideOnOnePrefixVariant() {
@@ -641,9 +630,9 @@ public interface Test {
   }
 
   static def registerCompletionContributor(Class contributor, Disposable parentDisposable, LoadingOrder order) {
-    def extension = new CompletionContributorEP(language: 'JAVA', implementationClass: contributor.name)
+    def extension = new CompletionContributorEP(language: 'any', implementationClass: contributor.name)
     extension.setPluginDescriptor(new DefaultPluginDescriptor("registerCompletionContributor"))
-    CompletionContributor.EP.getPoint(null).registerExtension(extension, order, parentDisposable)
+    CompletionContributor.EP.getPoint().registerExtension(extension, order, parentDisposable)
   }
 
   void testLeftRightMovements() {
@@ -1712,7 +1701,7 @@ class Cls {
     myFixture.configureByText "a.properties", "myprop=ja<caret>"
     type 'v'
     myFixture.assertPreferredCompletionItems 0, 'java'
-    lookup.focusDegree = LookupImpl.FocusDegree.FOCUSED
+    lookup.lookupFocusDegree = LookupFocusDegree.FOCUSED
     type '.'
     myFixture.checkResult 'myprop=java.<caret>'
     assert lookup
@@ -1738,9 +1727,7 @@ class Foo {
 
     LookupElementPresentation p = LookupElementPresentation.renderElement(myFixture.lookupElements[0])
     assert p.itemText == 'tpl'
-    assert !p.tailText
-    def tabKeyPresentation = KeyEvent.getKeyText(TemplateSettings.TAB_CHAR as int)
-    assert p.typeText == "  [$tabKeyPresentation] "
+    assert !p.tailText && !p.typeText
   }
 
   void "test autopopup after package completion"() {
@@ -1814,6 +1801,39 @@ ita<caret>
     myFixture.configureByText 'a.java', 'class Foo {{ int a42; a<caret> }}'
     type '4'
     assert lookup
+  }
+
+  void "test autopopup after new"() {
+    myFixture.configureByText('a.java', 'class Foo { { java.util.List<String> l = new<caret> }}')
+    type ' '
+    assert lookup
+    def firstItems = myFixture.lookupElements[0..<4]
+    assert firstItems.each { InheritanceUtil.isInheritor(it.object as PsiClass, List.name) }
+  }
+
+  void "test prefer previously selected despite many namesakes"() {
+    ((StatisticsManagerImpl)StatisticsManager.getInstance()).enableStatistics(myFixture.getTestRootDisposable())
+
+    def count = 400
+    def toSelect = 390
+    for (i in 0..<count) {
+      myFixture.addClass("package p$i; public class MyClass {}")
+    }
+    myFixture.configureByText "a.java", "class C extends <caret>"
+    type 'MyCla'
+    myFixture.assertPreferredCompletionItems 0, Collections.nCopies(count, 'MyClass') as String[]
+
+    edt {
+      assert LookupElementPresentation.renderElement(myFixture.lookup.items[toSelect]).tailText == " p$toSelect"
+      CompletionSortingTestCase.imitateItemSelection(myFixture.lookup, toSelect)
+      myFixture.lookup.hideLookup(true)
+    }
+
+    type 's'
+    myFixture.assertPreferredCompletionItems 0, Collections.nCopies(count, 'MyClass') as String[]
+    edt {
+      assert LookupElementPresentation.renderElement(myFixture.lookup.items[0]).tailText == " p$toSelect"
+    }
   }
 
 }

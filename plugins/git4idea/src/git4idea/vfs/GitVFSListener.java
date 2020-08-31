@@ -8,7 +8,9 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vcs.*;
+import com.intellij.openapi.vcs.FilePath;
+import com.intellij.openapi.vcs.VcsException;
+import com.intellij.openapi.vcs.VcsVFSListener;
 import com.intellij.openapi.vcs.changes.ChangeListManagerImpl;
 import com.intellij.openapi.vcs.update.RefreshVFsSynchronously;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -74,13 +76,13 @@ public class GitVFSListener extends VcsVFSListener {
                                           @NotNull Map<VirtualFile, VirtualFile> copyFromMap,
                                           @NotNull ExecuteAddCallback executeAddCallback) {
     saveUnsavedVcsIgnoreFiles();
-    // Filter added files before further processing
-    Map<VirtualFile, List<VirtualFile>> sortedFiles = GitUtil.sortFilesByGitRootIgnoringMissing(myProject, addedFiles);
-    final HashSet<VirtualFile> retainedFiles = new HashSet<>();
     final ProgressManager progressManager = ProgressManager.getInstance();
     progressManager.run(new Task.Backgroundable(myProject, GitBundle.getString("vfs.listener.checking.ignored"), true) {
       @Override
       public void run(@NotNull ProgressIndicator pi) {
+        // Filter added files before further processing
+        Map<VirtualFile, List<VirtualFile>> sortedFiles = GitUtil.sortFilesByGitRootIgnoringMissing(myProject, addedFiles);
+        final HashSet<VirtualFile> retainedFiles = new HashSet<>();
         for (Map.Entry<VirtualFile, List<VirtualFile>> e : sortedFiles.entrySet()) {
           VirtualFile root = e.getKey();
           List<VirtualFile> files = e.getValue();
@@ -112,7 +114,7 @@ public class GitVFSListener extends VcsVFSListener {
   @Override
   protected void performAdding(@NotNull final Collection<VirtualFile> addedFiles, @NotNull final Map<VirtualFile, VirtualFile> copyFromMap) {
     // copied files (copyFromMap) are ignored, because they are included into added files.
-    performAdding(ObjectsConvertor.vf2fp(new ArrayList<>(addedFiles)));
+    performAdding(map(addedFiles, VcsUtil::getFilePath));
   }
 
   private void performAdding(Collection<? extends FilePath> filesToAdd) {
@@ -185,7 +187,7 @@ public class GitVFSListener extends VcsVFSListener {
       }
     }
     LOG.debug("performMoveRename. \ntoAdd: " + toAdd + "\ntoRemove: " + toRemove + "\ntoForceMove: " + toForceMove);
-    GitVcs.runInBackground(new Task.Backgroundable(myProject, "Moving Files...") {
+    GitVcs.runInBackground(new Task.Backgroundable(myProject, GitBundle.getString("progress.title.moving.files")) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
         try {
@@ -225,12 +227,12 @@ public class GitVFSListener extends VcsVFSListener {
   private void executeAdding(@NotNull VirtualFile root, @NotNull List<? extends FilePath> files)
     throws VcsException {
     LOG.debug("Git: adding files: " + files);
-    GitFileUtils.addPaths(myProject, root, files);
+    GitFileUtils.addPaths(myProject, root, files, false, false);
   }
 
   private Set<File> executeDeletion(@NotNull VirtualFile root, @NotNull List<? extends FilePath> files)
     throws VcsException {
-    GitFileUtils.deletePaths(myProject, root, files, "--ignore-unmatch", "--cached");
+    GitFileUtils.deletePaths(myProject, root, files, "--ignore-unmatch", "--cached", "-r");
     Set<File> filesToRefresh = new HashSet<>();
     File rootFile = new File(root.getPath());
     for (FilePath p : files) {
@@ -261,6 +263,16 @@ public class GitVFSListener extends VcsVFSListener {
 
   @Override
   protected boolean isDirectoryVersioningSupported() {
+    return false;
+  }
+
+  @Override
+  protected boolean isRecursiveDeleteSupported() {
+    return true;
+  }
+
+  @Override
+  protected boolean isFileCopyingFromTrackingSupported() {
     return false;
   }
 

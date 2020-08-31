@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vcs.Executor.cd
 import com.intellij.openapi.vcs.Executor.echo
+import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vcs.update.UpdatedFiles
 import com.intellij.openapi.vfs.VfsUtil
 import git4idea.config.UpdateMethod.MERGE
@@ -28,8 +29,12 @@ class GitSubmoduleTest : GitSubmoduleTestBase() {
   private lateinit var main2: RepositoryAndParent
   private lateinit var sub2: File
 
+  private lateinit var dirtyScopeManager: VcsDirtyScopeManager
+
   override fun setUp() {
     super.setUp()
+
+    dirtyScopeManager = VcsDirtyScopeManager.getInstance(project)
 
     // prepare second clone & parent.git
     main2 = createPlainRepo("main")
@@ -62,7 +67,7 @@ class GitSubmoduleTest : GitSubmoduleTestBase() {
     git("push")
 
     insertLogMarker("update process")
-    val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), false, true).update(MERGE)
+    val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), null, false, true).update(MERGE)
 
     assertEquals("Update result is incorrect", GitUpdateResult.SUCCESS, result)
     assertEquals("Last commit in submodule is incorrect", submoduleHash, sub.last())
@@ -83,7 +88,7 @@ class GitSubmoduleTest : GitSubmoduleTestBase() {
       git("push")
 
       insertLogMarker("update process")
-      val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), false, true).update(MERGE)
+      val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), null, false, true).update(MERGE)
 
       assertEquals("Update result is incorrect", GitUpdateResult.SUCCESS, result)
       assertEquals("Last commit in submodule is incorrect", submoduleHash, sub.last())
@@ -109,7 +114,7 @@ class GitSubmoduleTest : GitSubmoduleTestBase() {
     addCommit("msg")
 
     insertLogMarker("update process")
-    val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), false, true).update(REBASE)
+    val result = GitUpdateProcess(project, EmptyProgressIndicator(), listOf(main, sub), UpdatedFiles.create(), null, false, true).update(REBASE)
 
     assertEquals("Update result is incorrect", GitUpdateResult.SUCCESS, result)
     assertEquals("Submodule should be on branch", "master", sub.currentBranchName)
@@ -151,6 +156,24 @@ class GitSubmoduleTest : GitSubmoduleTestBase() {
     }
     finally {
       settings.setUpdateAllRootsIfPushRejected(updateAllRootsIfPushRejected)
+    }
+  }
+
+  // IDEA-234159
+  fun `test modified submodule is visible in local changes`() {
+    dirtyScopeManager.markEverythingDirty()
+    changeListManager.waitUntilRefreshed()
+    assertNoChanges()
+
+    cd(sub)
+    echo("a", "content\n")
+    addCommit("in submodule")
+
+    dirtyScopeManager.markEverythingDirty()
+    changeListManager.waitUntilRefreshed()
+    cd(projectPath)
+    assertChanges {
+      modified("sub")
     }
   }
 

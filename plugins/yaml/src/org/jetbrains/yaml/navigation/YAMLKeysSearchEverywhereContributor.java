@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.yaml.navigation;
 
 import com.intellij.ide.actions.searcheverywhere.SearchEverywhereContributor;
@@ -21,8 +21,12 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.ProjectScope;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
-import com.intellij.util.containers.MultiMap;
+import com.intellij.util.SmartList;
 import com.intellij.util.indexing.FileBasedIndex;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntListIterator;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.YAMLBundle;
@@ -32,10 +36,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class YAMLKeysSearchEverywhereContributor implements SearchEverywhereContributor<YAMLKeyNavigationItem> {
-  final Project myProject;
+  private final Project myProject;
 
   public YAMLKeysSearchEverywhereContributor(Project project) {
     myProject = project;
@@ -75,9 +78,10 @@ public class YAMLKeysSearchEverywhereContributor implements SearchEverywhereCont
 
     Runnable task = () -> findKeys(consumer, pattern, progressIndicator);
     Application application = ApplicationManager.getApplication();
-    if (application.isDispatchThread()) {
+    if (application.isUnitTestMode()) {
       application.runReadAction(task);
     } else {
+      if (application.isDispatchThread()) throw new IllegalStateException("This method must not be called from EDT");
       ProgressIndicatorUtils.yieldToPendingWriteActions();
       ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(task, progressIndicator);
     }
@@ -128,15 +132,9 @@ public class YAMLKeysSearchEverywhereContributor implements SearchEverywhereCont
           continue;
         }
 
-        List<Integer> positions =
-          FileBasedIndex.getInstance().getValues(YAMLKeysIndex.KEY, name, GlobalSearchScope.fileScope(myProject, file));
-        if (positions.size() > 1) {
-          // should be seldom case
-          positions = new ArrayList<>(positions);
-          Collections.sort(positions);
-        }
-        for (int pos : positions) {
-          Navigatable navigatable = PsiNavigationSupport.getInstance().createNavigatable(myProject, file, pos);
+        Integer position = FileBasedIndex.getInstance().getFileData(YAMLKeysIndex.KEY, file, myProject).get(name);
+        if (position != null) {
+          Navigatable navigatable = PsiNavigationSupport.getInstance().createNavigatable(myProject, file, position);
           if (!consumer.process(new YAMLKeyNavigationItem(navigatable, name, file))) {
             return;
           }
@@ -150,8 +148,7 @@ public class YAMLKeysSearchEverywhereContributor implements SearchEverywhereCont
   private static List<String> applyPattern(@NotNull Collection<String> keys,
                                            @NotNull String pattern,
                                            ProgressIndicator progressIndicator) {
-    MultiMap<Integer, String> priority = MultiMap.create();
-
+    Int2ObjectMap<List<String>> priority = new Int2ObjectOpenHashMap<>();
     for (String key : keys) {
       progressIndicator.checkCanceled();
       int start = key.indexOf(pattern);
@@ -166,18 +163,21 @@ public class YAMLKeysSearchEverywhereContributor implements SearchEverywhereCont
         continue;
       }
       int dots = countDots(key, start);
-      priority.putValue(dots, key);
+      priority.computeIfAbsent(dots, __ -> new SmartList<>()).add(key);
     }
 
     progressIndicator.checkCanceled();
-    return priority
-      .keySet()
-      .stream()
-      .sorted()
-      .map(idx -> priority.get(idx))
-      .map(found -> found.stream().sorted())
-      .flatMap(s -> s)
-      .collect(Collectors.toList());
+    IntArrayList listToSort = new IntArrayList(priority.keySet());
+    listToSort.sort(null);
+    List<String> result = new ArrayList<>();
+    for (IntListIterator iterator = listToSort.iterator(); iterator.hasNext(); ) {
+      int index = iterator.nextInt();
+      List<String> found = priority.get(index);
+      List<String> toSort = new ArrayList<>(found);
+      toSort.sort(null);
+      result.addAll(toSort);
+    }
+    return result;
   }
 
 

@@ -26,13 +26,10 @@ import org.jetbrains.jps.model.serialization.JpsGlobalLoader
 import org.jetbrains.jps.model.serialization.JpsProjectLoader
 import java.nio.file.Paths
 
-/**
- * @author nik
- */
 class UnloadedModuleDescriptionImpl(val modulePath: ModulePath,
                                     private val dependencyModuleNames: List<String>,
                                     private val contentRoots: List<VirtualFilePointer>) : UnloadedModuleDescription {
-  override fun getGroupPath(): List<String> = modulePath.group?.split(ModuleManagerImpl.MODULE_GROUP_SEPARATOR) ?: emptyList()
+  override fun getGroupPath(): List<String> = modulePath.group?.split(ModuleManagerEx.MODULE_GROUP_SEPARATOR) ?: emptyList()
 
   override fun getName(): String = modulePath.moduleName
 

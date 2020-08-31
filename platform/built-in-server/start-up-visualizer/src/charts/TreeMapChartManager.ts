@@ -1,7 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 import * as am4charts from "@amcharts/amcharts4/charts"
 import {DataManager} from "@/state/DataManager"
-import {IconData, Item} from "@/state/data"
+import {IconData, InputDataV11AndLess, ItemV0} from "@/state/data"
 import {getShortName} from "@/charts/ActivityChartDescriptor"
 import {BaseTreeMapChartManager} from "@/charts/BaseTreeMapChartManager"
 
@@ -41,35 +41,36 @@ export class TreeMapChartManager extends BaseTreeMapChartManager {
 
     this.addServicesOrComponents(data, items, "component", "appComponents", "projectComponents")
     this.addServicesOrComponents(data, items, "service", "appServices", "projectServices")
-    this.addIcons(data, items)
+    TreeMapChartManager.addIcons(data, items)
 
     this.chart.data = items
   }
 
-  private addServicesOrComponents(data: DataManager, items: Array<any>, statName: "component" | "service", appFieldName: "appServices" | "appComponents", projectFieldName: "projectComponents" | "projectServices") {
+  private addServicesOrComponents(dataManager: DataManager, items: Array<any>, statName: "component" | "service", appFieldName: "appServices" | "appComponents", projectFieldName: "projectComponents" | "projectServices") {
     const components: Array<any> = []
+    const data = dataManager.data as InputDataV11AndLess
     components.push({
       name: "app",
-      children: toTreeMapItem(data.data[appFieldName]),
+      children: toTreeMapItem(data[appFieldName]),
     })
     components.push({
       name: "project",
-      children: toTreeMapItem(data.data[projectFieldName]),
+      children: toTreeMapItem(data[projectFieldName]),
     })
 
     let duration = 0
-    const durationComputer = (it: Item) => duration += it.duration
-    const v = data.data[appFieldName]
+    const durationComputer = (it: ItemV0) => duration += it.duration
+    const v = data[appFieldName]
     if (v != null) {
       v.forEach(durationComputer)
     }
 
-    const p = data.data[projectFieldName]
+    const p = data[projectFieldName]
     if (p != null) {
       p.forEach(durationComputer)
     }
 
-    const stats = data.data.stats[statName]
+    const stats = data.stats[statName]
     items.push({
       name: statName + "s",
       children: components,
@@ -78,7 +79,7 @@ export class TreeMapChartManager extends BaseTreeMapChartManager {
     })
   }
 
-  private addIcons(data: DataManager, items: Array<any>) {
+  private static addIcons(data: DataManager, items: Array<any>) {
     const icons = data.data.icons
     if (icons != null) {
       const iconList: Array<any> = []
@@ -111,7 +112,7 @@ export class TreeMapChartManager extends BaseTreeMapChartManager {
   }
 }
 
-function toTreeMapItem(items: Array<Item> | null | undefined) {
+function toTreeMapItem(items: Array<ItemV0> | null | undefined) {
   return items == null ? [] : items.map(it => {
     return {...it, name: getShortName(it)}
   })

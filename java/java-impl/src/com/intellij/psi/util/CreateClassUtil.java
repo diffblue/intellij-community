@@ -18,9 +18,9 @@ package com.intellij.psi.util;
 import com.intellij.ide.fileTemplates.FileTemplate;
 import com.intellij.ide.fileTemplates.FileTemplateManager;
 import com.intellij.ide.fileTemplates.JavaCreateFromTemplateHandler;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.ide.util.PackageUtil;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
@@ -33,14 +33,13 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.Properties;
 
 /**
  * author: lesya
  */
 public class CreateClassUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.j2ee.CreateClassUtil");
+  private static final Logger LOG = Logger.getInstance(CreateClassUtil.class);
 
   @NonNls public static final String DEFAULT_CLASS_TEMPLATE = "#DEFAULT_CLASS_TEMPLATE";
   @NonNls private static final String DO_NOT_CREATE_CLASS_TEMPLATE = "#DO_NOT_CREATE_CLASS_TEMPLATE";
@@ -59,7 +58,7 @@ public class CreateClassUtil {
     final Project project = directoryRoot.getProject();
     try {
       final PsiDirectory directory = createParentDirectories(directoryRoot, className);
-      final PsiFile psiFile = directory.findFile(className + "." + StdFileTypes.JAVA.getDefaultExtension());
+      final PsiFile psiFile = directory.findFile(className + "." + JavaFileType.INSTANCE.getDefaultExtension());
       if (psiFile != null) {
         psiFile.delete();
       }
@@ -135,7 +134,8 @@ public class CreateClassUtil {
   }
 
   @Nullable
-  public static PsiClass createClassNamed(String newClassName, Map classProperties, String templateName, @NotNull PsiDirectory directory)
+  public static PsiClass createClassWithDefaultProperties(String newClassName, Properties classProperties, String templateName, 
+                                                          @NotNull PsiDirectory directory)
     throws IncorrectOperationException {
     Properties defaultProperties = FileTemplateManager.getInstance(directory.getProject()).getDefaultProperties();
     Properties properties = new Properties(defaultProperties);

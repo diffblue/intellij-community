@@ -17,7 +17,6 @@ package org.jetbrains.jps.incremental.storage;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.io.FileUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.jps.incremental.relativizer.PathRelativizerService;
 
 import java.io.File;
@@ -27,11 +26,12 @@ import java.io.IOException;
  * @author Eugene Zhuravlev
  */
 public class ProjectStamps {
-  public static final boolean PORTABLE_CACHES = Boolean.getBoolean("org.jetbrains.jps.portable.caches");
+  public static final String PORTABLE_CACHES_PROPERTY = "org.jetbrains.jps.portable.caches";
+  public static final boolean PORTABLE_CACHES = Boolean.getBoolean(PORTABLE_CACHES_PROPERTY);
 
-  private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.incremental.storage.ProjectStamps");
+  private static final Logger LOG = Logger.getInstance(ProjectStamps.class);
 
-  private final TimestampStorage<? extends StampsStorage.Stamp> myStampsStorage;
+  private final StampsStorage<? extends StampsStorage.Stamp> myStampsStorage;
 
   public ProjectStamps(File dataStorageRoot,
                        BuildTargetsState targetsState,
@@ -39,15 +39,6 @@ public class ProjectStamps {
     myStampsStorage = PORTABLE_CACHES
                       ? new FileStampStorage(dataStorageRoot, relativizer, targetsState)
                       : new FileTimestampStorage(dataStorageRoot, targetsState);
-  }
-
-  /**
-   * @deprecated use {@link #getStampStorage()} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
-  public TimestampStorage<? extends StampsStorage.Stamp> getStorage() {
-    return myStampsStorage;
   }
 
   public StampsStorage<? extends StampsStorage.Stamp> getStampStorage() {

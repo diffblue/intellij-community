@@ -34,7 +34,7 @@ import java.util.List;
 
 public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<FunctionalExpressionStub<PsiMethodReferenceExpression>>
   implements PsiMethodReferenceExpression {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.tree.java.PsiMethodReferenceExpressionImpl");
+  private static final Logger LOG = Logger.getInstance(PsiMethodReferenceExpressionImpl.class);
   private static final MethodReferenceResolver RESOLVER = new MethodReferenceResolver();
 
   public PsiMethodReferenceExpressionImpl(@NotNull FunctionalExpressionStub<PsiMethodReferenceExpression> stub) {
@@ -69,8 +69,8 @@ public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<Functio
 
     final MethodReferenceResolver resolver = new MethodReferenceResolver() {
       @Override
-      protected PsiConflictResolver createResolver(PsiMethodReferenceExpressionImpl referenceExpression,
-                                                   PsiMethodReferenceUtil.QualifierResolveResult qualifierResolveResult,
+      protected PsiConflictResolver createResolver(@NotNull PsiMethodReferenceExpressionImpl referenceExpression,
+                                                   @NotNull PsiMethodReferenceUtil.QualifierResolveResult qualifierResolveResult,
                                                    PsiMethod interfaceMethod,
                                                    MethodSignature signature) {
         return DuplicateConflictResolver.INSTANCE;
@@ -117,7 +117,7 @@ public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<Functio
   @Override
   public PsiMember getPotentiallyApplicableMember() {
     return CachedValuesManager.getCachedValue(this, () -> CachedValueProvider.Result
-      .create(getPotentiallyApplicableMemberInternal(), PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT, this));
+      .create(getPotentiallyApplicableMemberInternal(), PsiModificationTracker.MODIFICATION_COUNT, this));
   }
 
   private PsiMember getPotentiallyApplicableMemberInternal() {
@@ -238,9 +238,8 @@ public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<Functio
     }
   }
 
-  @NotNull
   @Override
-  public JavaResolveResult[] multiResolve(boolean incompleteCode) {
+  public JavaResolveResult @NotNull [] multiResolve(boolean incompleteCode) {
     return PsiImplUtil.multiResolveImpl(this, incompleteCode, RESOLVER);
   }
 
@@ -423,9 +422,8 @@ public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<Functio
     return advancedResolve(false).getElement();
   }
 
-  @NotNull
   @Override
-  public Object[] getVariants() {
+  public Object @NotNull [] getVariants() {
     // this reference's variants are rather obtained with processVariants()
     return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
   }
@@ -458,9 +456,8 @@ public class PsiMethodReferenceExpressionImpl extends JavaStubPsiElement<Functio
     return PsiTreeUtil.getChildOfType(this, PsiReferenceParameterList.class);
   }
 
-  @NotNull
   @Override
-  public PsiType[] getTypeParameters() {
+  public PsiType @NotNull [] getTypeParameters() {
     final PsiReferenceParameterList parameterList = getParameterList();
     return parameterList != null ? parameterList.getTypeArguments() : PsiType.EMPTY_ARRAY;
   }

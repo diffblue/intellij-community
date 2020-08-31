@@ -71,7 +71,7 @@ public abstract class VirtualFileVisitor<T> {
   private Stack<T> myValueStack;
   private T myValue;
 
-  protected VirtualFileVisitor(@NotNull Option... options) {
+  protected VirtualFileVisitor(Option @NotNull ... options) {
     for (Option option : options) {
       if (option == NO_FOLLOW_SYMLINKS) {
         myFollowSymLinks = false;
@@ -163,7 +163,7 @@ public abstract class VirtualFileVisitor<T> {
     }
 
     // ignore invalid or recursive link or the link with circular path (e.g. "/.../link1/.../link1") - to avoid visiting files twice
-    return !file.isRecursiveOrCircularSymLink();
+    return !file.isRecursiveOrCircularSymlink();
   }
 
   final boolean depthLimitReached() {

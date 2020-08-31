@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.svn;
 
 import com.intellij.openapi.vcs.FileStatus;
@@ -10,8 +10,8 @@ import org.junit.Test;
 
 import java.io.File;
 import java.util.List;
+import java.util.Objects;
 
-import static com.intellij.util.ObjectUtils.notNull;
 import static com.intellij.util.containers.ContainerUtil.ar;
 import static com.intellij.util.containers.ContainerUtil.map;
 import static org.hamcrest.Matchers.*;
@@ -91,7 +91,7 @@ public class SvnExternalCommitNoticedTest extends SvnTestCase {
 
     refreshVfs();
     changeListManager.ensureUpToDate();
-    vcs.getCopiesRefreshManager().waitCurrentRequest();
+    refreshSvnMappingsSynchronously();
     infos = vcs.getSvnFileUrlMapping().getAllWcInfos();
     assertThat(map(infos, RootUrlInfo::getUrl), containsInAnyOrder(ar(parseUrl(branchUrl, false))));
   }
@@ -101,8 +101,8 @@ public class SvnExternalCommitNoticedTest extends SvnTestCase {
     prepareExternal();
     final File sourceDir = new File(myWorkingCopyDir.getPath(), "source");
     final File externalDir = new File(myWorkingCopyDir.getPath(), "source/external");
-    final VirtualFile vf = notNull(myWorkingCopyDir.findFileByRelativePath("source/external/t11.txt"));
-    final VirtualFile vfMain = notNull(myWorkingCopyDir.findFileByRelativePath("source/s1.txt"));
+    final VirtualFile vf = Objects.requireNonNull(myWorkingCopyDir.findFileByRelativePath("source/external/t11.txt"));
+    final VirtualFile vfMain = Objects.requireNonNull(myWorkingCopyDir.findFileByRelativePath("source/s1.txt"));
     renameFileInCommand(vf, "tt11.txt");
     renameFileInCommand(vfMain, "ss11.txt");
     refreshChanges();

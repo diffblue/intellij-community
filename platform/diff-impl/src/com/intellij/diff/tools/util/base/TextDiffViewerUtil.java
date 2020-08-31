@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.tools.util.base;
 
 import com.intellij.diff.DiffContext;
@@ -13,11 +13,12 @@ import com.intellij.diff.util.DiffUserDataKeysEx;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.ex.ActionUtil;
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.diff.DiffBundle;
 import com.intellij.openapi.diff.impl.DiffUsageTriggerCollector;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.editor.EditorBundle;
 import com.intellij.openapi.editor.EditorModificationUtil;
 import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -38,7 +39,7 @@ import java.util.*;
 
 import static com.intellij.diff.util.DiffUtil.isUserDataFlagSet;
 
-public class TextDiffViewerUtil {
+public final class TextDiffViewerUtil {
   private static final Logger LOG = Logger.getInstance(TextDiffViewerUtil.class);
 
   @NotNull
@@ -71,8 +72,7 @@ public class TextDiffViewerUtil {
     return settings;
   }
 
-  @NotNull
-  public static boolean[] checkForceReadOnly(@NotNull DiffContext context, @NotNull ContentDiffRequest request) {
+  public static boolean @NotNull [] checkForceReadOnly(@NotNull DiffContext context, @NotNull ContentDiffRequest request) {
     List<DiffContent> contents = request.getContents();
     int contentCount = contents.size();
     boolean[] result = new boolean[contentCount];
@@ -206,9 +206,9 @@ public class TextDiffViewerUtil {
   }
 
   private static abstract class EnumPolicySettingAction<T extends Enum> extends TextDiffViewerUtil.ComboBoxSettingAction<T> {
-    @NotNull private final T[] myPolicies;
+    private final T @NotNull [] myPolicies;
 
-    EnumPolicySettingAction(@NotNull T[] policies) {
+    EnumPolicySettingAction(T @NotNull [] policies) {
       assert policies.length > 0;
       myPolicies = policies;
     }
@@ -251,7 +251,7 @@ public class TextDiffViewerUtil {
     @NotNull protected final TextDiffSettings mySettings;
 
     public HighlightPolicySettingAction(@NotNull TextDiffSettings settings,
-                                        @NotNull HighlightPolicy... policies) {
+                                        HighlightPolicy @NotNull ... policies) {
       super(policies);
       mySettings = settings;
     }
@@ -292,7 +292,7 @@ public class TextDiffViewerUtil {
     @NotNull protected final TextDiffSettings mySettings;
 
     public IgnorePolicySettingAction(@NotNull TextDiffSettings settings,
-                                     @NotNull IgnorePolicy... policies) {
+                                     IgnorePolicy @NotNull ... policies) {
       super(policies);
       mySettings = settings;
     }
@@ -333,7 +333,7 @@ public class TextDiffViewerUtil {
     @NotNull protected final TextDiffSettings mySettings;
 
     public ToggleAutoScrollAction(@NotNull TextDiffSettings settings) {
-      super("Synchronize Scrolling", AllIcons.Actions.SynchronizeScrolling);
+      super(DiffBundle.message("synchronize.scrolling"), AllIcons.Actions.SynchronizeScrolling);
       mySettings = settings;
     }
 
@@ -352,7 +352,7 @@ public class TextDiffViewerUtil {
     @NotNull protected final TextDiffSettings mySettings;
 
     public ToggleExpandByDefaultAction(@NotNull TextDiffSettings settings) {
-      super("Collapse Unchanged Fragments", AllIcons.Actions.Collapseall);
+      super(DiffBundle.message("collapse.unchanged.fragments"), AllIcons.Actions.Collapseall);
       mySettings = settings;
     }
 
@@ -382,7 +382,7 @@ public class TextDiffViewerUtil {
     @NotNull protected final TextDiffSettings mySettings;
 
     public ReadOnlyLockAction(@NotNull DiffContext context) {
-      super("Disable Editing", null, AllIcons.Diff.Lock);
+      super(DiffBundle.message("disable.editing"), null, AllIcons.Diff.Lock);
       myContext = context;
       mySettings = getTextSettings(context);
     }
@@ -432,7 +432,7 @@ public class TextDiffViewerUtil {
 
     protected void putEditorHint(@NotNull EditorEx editor, boolean readOnly) {
       if (readOnly) {
-        EditorModificationUtil.setReadOnlyHint(editor, EditorBundle.message("editing.viewer.hint") + ". <a href=\"\">Enable editing</a>",
+        EditorModificationUtil.setReadOnlyHint(editor, DiffBundle.message("editing.viewer.hint.enable.editing.text"),
                                                (e) -> {
                                                  if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
                                                    setSelected(false);
@@ -520,7 +520,9 @@ public class TextDiffViewerUtil {
       myEditorPopupActions = editorPopupActions;
     }
 
-    public void install(@NotNull List<? extends EditorEx> editors) {
+    public void install(@NotNull List<? extends EditorEx> editors, @NotNull JComponent component) {
+      ActionUtil.recursiveRegisterShortcutSet(new DefaultActionGroup(myEditorPopupActions), component, null);
+
       EditorPopupHandler handler = new ContextMenuPopupHandler.Simple(
         myEditorPopupActions.isEmpty() ? null : new DefaultActionGroup(myEditorPopupActions)
       );

@@ -19,7 +19,7 @@ public class LightUnusedHighlightingFixtureTest extends LightJavaCodeInsightFixt
   protected void setUp() throws Exception {
     super.setUp();
     myFixture.enableInspections(new UnusedDeclarationInspection(true));
-    ImplicitUsageProvider.EP_NAME.getPoint(null).registerExtension(new ImplicitUsageProvider() {
+    ImplicitUsageProvider.EP_NAME.getPoint().registerExtension(new ImplicitUsageProvider() {
       @Override
       public boolean isImplicitUsage(@NotNull PsiElement element) {
         return false;
@@ -32,7 +32,11 @@ public class LightUnusedHighlightingFixtureTest extends LightJavaCodeInsightFixt
 
       @Override
       public boolean isImplicitWrite(@NotNull PsiElement element) {
-        return element instanceof PsiField && "implicitWrite".equals(((PsiNamedElement)element).getName());
+        return element instanceof PsiField && (
+          "implicitWritePublic".equals(((PsiNamedElement)element).getName()) ||
+          "implicitWriteProtected".equals(((PsiNamedElement)element).getName()) ||
+          "implicitWritePackagePrivate".equals(((PsiNamedElement)element).getName())
+        );
       }
     }, getTestRootDisposable());
   }

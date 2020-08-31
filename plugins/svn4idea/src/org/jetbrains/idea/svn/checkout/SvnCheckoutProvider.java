@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.svn.checkout;
 
 import com.intellij.openapi.application.ModalityState;
@@ -17,6 +17,7 @@ import com.intellij.openapi.vcs.VcsConfiguration;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.ex.ProjectLevelVcsManagerEx;
 import com.intellij.openapi.vcs.ui.VcsCloneComponent;
+import com.intellij.openapi.vcs.ui.cloneDialog.VcsCloneDialogComponentStateListener;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.StatusBar;
@@ -163,16 +164,14 @@ public class SvnCheckoutProvider implements CheckoutProvider {
     ProgressManager.getInstance().run(checkoutBackgroundTask);
   }
 
-  private static void notifyRootManagerIfUnderProject(final Project project, final File directory) {
+  private static void notifyRootManagerIfUnderProject(@NotNull Project project, @NotNull File directory) {
     if (project.isDefault()) return;
-    final ProjectLevelVcsManagerEx plVcsManager = ProjectLevelVcsManagerEx.getInstanceEx(project);
-    final SvnVcs vcs = (SvnVcs)plVcsManager.findVcsByName(SvnVcs.VCS_NAME);
 
-    final VirtualFile[] files = vcs.getSvnFileUrlMapping().getNotFilteredRoots();
+    VirtualFile[] files = SvnVcs.getInstance(project).getSvnFileUrlMapping().getNotFilteredRoots();
     for (VirtualFile file : files) {
       if (FileUtil.isAncestor(virtualToIoFile(file), directory, false)) {
         // todo: should be done like auto detection
-        plVcsManager.fireDirectoryMappingsChanged();
+        ProjectLevelVcsManagerEx.getInstanceEx(project).fireDirectoryMappingsChanged();
         return;
       }
     }
@@ -344,7 +343,7 @@ public class SvnCheckoutProvider implements CheckoutProvider {
 
   @NotNull
   @Override
-  public VcsCloneComponent buildVcsCloneComponent(@NotNull Project project) {
+  public VcsCloneComponent buildVcsCloneComponent(@NotNull Project project, @NotNull ModalityState modalityState, @NotNull VcsCloneDialogComponentStateListener dialogStateListener) {
     return new SvnCloneDialogExtension(project);
   }
 }

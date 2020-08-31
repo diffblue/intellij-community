@@ -295,6 +295,9 @@
     <keyboard-shortcut first-keystroke="ENTER"/>
     <keyboard-shortcut first-keystroke="control M"/>
   </action>
+  <action id="SelectVirtualTemplateElement">
+    <keyboard-shortcut first-keystroke="TAB"/>
+  </action>
   <action id="NextTemplateVariable">
     <keyboard-shortcut first-keystroke="TAB"/>
     <keyboard-shortcut first-keystroke="ENTER"/>
@@ -318,6 +321,7 @@
   <action id="IntroduceField"/>
   <action id="RecentFiles"/>
   <action id="SwitcherRecentEditedChangedToggleCheckBox"/>
+  <action id="SwitcherIterateItems"/>
   <action id="EditorTab"/>
   <action id="EditorDeleteLine"/>
   <action id="PreviousProjectWindow"/>
@@ -330,4 +334,6 @@
   <action id="ChangesView.Move"/>
   <action id="MoveStatementUp"/>
   <action id="MoveStatementDown"/>
+  <action id="ToggleRenderedDocPresentation"/>
+  <action id="EditorAddCaretPerSelectedLine"/>
 </keymap>

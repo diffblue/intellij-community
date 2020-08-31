@@ -36,7 +36,8 @@ public final class VcsConfiguration implements PersistentStateComponent<VcsConfi
   @NonNls public static final String DIFF = "diff";
 
   public boolean OFFER_MOVE_TO_ANOTHER_CHANGELIST_ON_PARTIAL_COMMIT = false;
-  public boolean CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT = !PlatformUtils.isPyCharm() && !PlatformUtils.isRubyMine();
+  public boolean CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT =
+    !PlatformUtils.isPyCharm() && !PlatformUtils.isRubyMine() && !PlatformUtils.isCLion();
   public boolean CHECK_CODE_CLEANUP_BEFORE_PROJECT_COMMIT = false;
   public boolean CHECK_NEW_TODO = true;
   public TodoPanelSettings myTodoPanelSettings = new TodoPanelSettings();
@@ -71,7 +72,6 @@ public final class VcsConfiguration implements PersistentStateComponent<VcsConfi
   public boolean SHOW_UNVERSIONED_FILES_WHILE_COMMIT = true;
   public boolean LOCAL_CHANGES_DETAILS_PREVIEW_SHOWN = true;
   public boolean SHELVE_DETAILS_PREVIEW_SHOWN = false;
-  public boolean VCS_LOG_DETAILS_PREVIEW_SHOWN = false;
   public boolean RELOAD_CONTEXT = true;
   public boolean MARK_IGNORED_AS_EXCLUDED = false;
 

@@ -34,17 +34,15 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.Consumer;
-import com.intellij.util.ObjectUtils;
-import com.intellij.util.ProcessingContext;
 import com.intellij.util.containers.JBIterable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class FunctionalExpressionCompletionProvider extends CompletionProvider<CompletionParameters> {
+public class FunctionalExpressionCompletionProvider {
   static final Key<Boolean> LAMBDA_ITEM = Key.create("LAMBDA_ITEM");
-  static final Key<Boolean> METHOD_REF_ITEM = Key.create("METHOD_REF_ITEM");
+  static final Key<Boolean> METHOD_REF_PREFERRED = Key.create("METHOD_REF_ITEM");
 
   private static boolean isLambdaContext(@NotNull PsiElement element) {
     final PsiElement rulezzRef = element.getParent();
@@ -54,14 +52,7 @@ public class FunctionalExpressionCompletionProvider extends CompletionProvider<C
   }
 
   static boolean isFunExprItem(LookupElement item) {
-    return item.getUserData(LAMBDA_ITEM) != null || item.getUserData(METHOD_REF_ITEM) != null;
-  }
-
-  @Override
-  protected void addCompletions(@NotNull CompletionParameters parameters,
-                                @NotNull ProcessingContext context,
-                                @NotNull CompletionResultSet result) {
-    addFunctionalVariants(parameters, true, result.getPrefixMatcher(), result);
+    return item.getUserData(LAMBDA_ITEM) != null || item.getUserData(METHOD_REF_PREFERRED) != null;
   }
 
   static void addFunctionalVariants(@NotNull CompletionParameters parameters, boolean addInheritors, PrefixMatcher matcher, Consumer<? super LookupElement> result) {
@@ -110,7 +101,8 @@ public class FunctionalExpressionCompletionProvider extends CompletionProvider<C
               new MethodReferenceCompletion(addInheritors, parameters, matcher, functionalInterfaceType, params, originalPosition,
                                             substitutor, expectedReturnType);
             completion.suggestMethodReferences(element -> {
-                element.putUserData(METHOD_REF_ITEM, true);
+              Object object = element.getObject();
+              element.putUserData(METHOD_REF_PREFERRED, object instanceof PsiMethod && completion.hasExactReturnType((PsiMethod)object));
                 result.consume(parameters.getCompletionType() == CompletionType.SMART
                                ? JavaSmartCompletionContributor.decorate(element, Arrays.asList(expectedTypes))
                                : element);
@@ -124,7 +116,7 @@ public class FunctionalExpressionCompletionProvider extends CompletionProvider<C
 
   private static String getParamName(PsiParameter param, PsiElement originalPosition) {
     return JavaCodeStyleManager.getInstance(originalPosition.getProject()).suggestUniqueVariableName(
-      ObjectUtils.assertNotNull(param.getName()), originalPosition, false);
+      param.getName(), originalPosition, false);
   }
 
 }
@@ -326,6 +318,10 @@ class MethodReferenceCompletion {
   private boolean hasAppropriateReturnType(PsiMethod psiMethod) {
     PsiType returnType = psiMethod.getReturnType();
     return returnType != null && TypeConversionUtil.isAssignable(myExpectedReturnType, mySubstitutor.substitute(returnType));
+  }
+
+  boolean hasExactReturnType(PsiMethod psiMethod) {
+    return myExpectedReturnType.equals(mySubstitutor.substitute(psiMethod.getReturnType()));
   }
 
   private boolean isSignatureAppropriate(PsiMethod psiMethod, int offset, PsiClass accessObjectClass) {

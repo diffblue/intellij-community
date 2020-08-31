@@ -17,17 +17,20 @@ package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.daemon.QuickFixBundle;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
+import com.intellij.codeInsight.intention.FileModifier;
 import com.intellij.codeInsight.intention.HighPriorityAction;
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction;
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
 import com.intellij.psi.infos.CandidateInfo;
 import com.intellij.psi.util.InheritanceUtil;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
@@ -39,7 +42,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Predicate;
 
-public class WrapWithAdapterMethodCallFix extends LocalQuickFixAndIntentionActionOnPsiElement implements HighPriorityAction {
+import static com.intellij.pom.java.LanguageLevel.JDK_11;
+
+public final class WrapWithAdapterMethodCallFix extends LocalQuickFixAndIntentionActionOnPsiElement implements HighPriorityAction {
   static class Wrapper extends ArgumentFixerActionFactory {
     final Predicate<? super PsiType> myInTypeFilter;
     final Predicate<? super PsiType> myOutTypeFilter;
@@ -145,9 +150,12 @@ public class WrapWithAdapterMethodCallFix extends LocalQuickFixAndIntentionActio
     new Wrapper("new java.io.File({0})",
                 inType -> inType.equalsToText(CommonClassNames.JAVA_LANG_STRING),
                 outType -> outType.equalsToText(CommonClassNames.JAVA_IO_FILE)),
+    new Wrapper("java.nio.file.Path.of({0})",
+                inType -> inType.equalsToText(CommonClassNames.JAVA_LANG_STRING),
+                outType -> outType.equalsToText("java.nio.file.Path") && isAppropriateLanguageLevel(outType, level -> level.isAtLeast(JDK_11))),
     new Wrapper("java.nio.file.Paths.get({0})",
                 inType -> inType.equalsToText(CommonClassNames.JAVA_LANG_STRING),
-                outType -> outType.equalsToText("java.nio.file.Path")),
+                outType -> outType.equalsToText("java.nio.file.Path") && isAppropriateLanguageLevel(outType, level -> level.isLessThan(JDK_11))),
     new Wrapper("java.util.Arrays.asList({0})",
                 inType -> inType instanceof PsiArrayType && ((PsiArrayType)inType).getComponentType() instanceof PsiClassType,
                 outType -> InheritanceUtil.isInheritor(outType, CommonClassNames.JAVA_LANG_ITERABLE)),
@@ -166,13 +174,24 @@ public class WrapWithAdapterMethodCallFix extends LocalQuickFixAndIntentionActio
                 outType -> InheritanceUtil.isInheritor(outType, CommonClassNames.JAVA_UTIL_STREAM_BASE_STREAM))
   };
 
+  private static boolean isAppropriateLanguageLevel(@NotNull PsiType psiType, @NotNull Predicate<LanguageLevel> level) {
+    if (!(psiType instanceof PsiClassType)) return true;
+    return level.test(((PsiClassType)psiType).getLanguageLevel());
+  }
+
+  @SafeFieldForPreview
   @Nullable private final PsiType myType;
+  @SafeFieldForPreview
   @Nullable private final Wrapper myWrapper;
 
   public WrapWithAdapterMethodCallFix(@Nullable PsiType type, @NotNull PsiExpression expression) {
+    this(type, expression, ContainerUtil.find(WRAPPERS, w -> w.isApplicable(expression, expression.getType(), type)));
+  }
+  
+  private WrapWithAdapterMethodCallFix(@Nullable PsiType type, @NotNull PsiExpression expression, @Nullable Wrapper wrapper) {
     super(expression);
     myType = type;
-    myWrapper = ContainerUtil.find(WRAPPERS, w -> w.isApplicable(expression, expression.getType(), type));
+    myWrapper = wrapper;
   }
 
   @Nls
@@ -232,9 +251,15 @@ public class WrapWithAdapterMethodCallFix extends LocalQuickFixAndIntentionActio
              ? QuickFixBundle.message("wrap.with.adapter.parameter.single.text", myArgumentFixerActionFactory)
              : QuickFixBundle.message("wrap.with.adapter.parameter.multiple.text", myIndex + 1, myArgumentFixerActionFactory);
     }
+
+    @Override
+    public @Nullable FileModifier getFileModifierForPreview(@NotNull PsiFile target) {
+      return new MyMethodArgumentFix(PsiTreeUtil.findSameElementInCopy(myArgList, target), myIndex, myToType,
+                                     (Wrapper)myArgumentFixerActionFactory);
+    }
   }
 
-  public static void registerCastActions(@NotNull CandidateInfo[] candidates,
+  public static void registerCastActions(CandidateInfo @NotNull [] candidates,
                                          @NotNull PsiCall call,
                                          HighlightInfo highlightInfo,
                                          final TextRange fixRange) {

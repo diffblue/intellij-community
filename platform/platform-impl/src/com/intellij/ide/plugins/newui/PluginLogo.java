@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins.newui;
 
 import com.intellij.icons.AllIcons;
@@ -6,6 +6,7 @@ import com.intellij.ide.plugins.IdeaPluginDescriptor;
 import com.intellij.ide.plugins.InstalledPluginsState;
 import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.ide.ui.LafManagerListener;
+import com.intellij.ide.ui.UIThemeProvider;
 import com.intellij.openapi.application.*;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.diagnostic.Logger;
@@ -17,6 +18,7 @@ import com.intellij.ui.JBColor;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.Url;
 import com.intellij.util.Urls;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.io.HttpRequests;
 import com.intellij.util.io.URLUtil;
 import org.jetbrains.annotations.NotNull;
@@ -28,8 +30,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.*;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -37,7 +41,7 @@ import java.util.zip.ZipFile;
  * @author Alexander Lobas
  */
 public final class PluginLogo {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.plugins.newui.PluginLogo");
+  private static final Logger LOG = Logger.getInstance(PluginLogo.class);
 
   private static final String CACHE_DIR = "imageCache";
   private static final String PLUGIN_ICON = "pluginIcon.svg";
@@ -45,7 +49,7 @@ public final class PluginLogo {
   private static final int PLUGIN_ICON_SIZE = 40;
   private static final int PLUGIN_ICON_SIZE_SCALED = 80;
 
-  private static final Map<String, Pair<PluginLogoIconProvider, PluginLogoIconProvider>> ICONS = new HashMap<>();
+  private static final Map<String, Pair<PluginLogoIconProvider, PluginLogoIconProvider>> ICONS = ContainerUtil.createWeakValueMap();
   private static PluginLogoIconProvider Default;
   private static List<Pair<IdeaPluginDescriptor, LazyPluginLogoIcon>> myPrepareToLoad;
 
@@ -59,10 +63,16 @@ public final class PluginLogo {
         return;
       }
 
-      ApplicationManager.getApplication().getMessageBus().connect().subscribe(LafManagerListener.TOPIC, source -> {
+      final Application application = ApplicationManager.getApplication();
+      application.getMessageBus().connect().subscribe(LafManagerListener.TOPIC, source -> {
         Default = null;
         HiDPIPluginLogoIcon.clearCache();
       });
+
+      UIThemeProvider.EP_NAME.addChangeListener(() -> {
+        Default = null;
+        HiDPIPluginLogoIcon.clearCache();
+      }, application);
     }
   }
 
@@ -94,7 +104,7 @@ public final class PluginLogo {
   }
 
   @NotNull
-  private static PluginLogoIconProvider getDefault() {
+  static PluginLogoIconProvider getDefault() {
     if (Default == null) {
       Default = new HiDPIPluginLogoIcon(AllIcons.Plugins.PluginLogo_40, AllIcons.Plugins.PluginLogoDisabled_40,
                                         AllIcons.Plugins.PluginLogo_80, AllIcons.Plugins.PluginLogoDisabled_80);

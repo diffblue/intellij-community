@@ -17,6 +17,7 @@
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
@@ -57,14 +58,14 @@ public abstract class QualifyThisOrSuperArgumentFix implements IntentionAction {
   public boolean isAvailable(@NotNull Project project, Editor editor, PsiFile file) {
     if (!myExpression.isValid()) return false;
     if (!myPsiClass.isValid()) return false;
-    myText = "Qualify " + getQualifierText() + " expression with \'" + myPsiClass.getQualifiedName() + "\'";
+    myText = "Qualify " + getQualifierText() + " expression with '" + myPsiClass.getQualifiedName() + "'";
     return true;
   }
 
   @NotNull
   @Override
   public String getFamilyName() {
-    return "Qualify " + getQualifierText();
+    return JavaAnalysisBundle.message("qualify.0", getQualifierText());
   }
 
   @Override

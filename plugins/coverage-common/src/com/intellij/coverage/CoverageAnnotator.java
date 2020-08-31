@@ -2,6 +2,7 @@ package com.intellij.coverage;
 
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiFile;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,21 +12,23 @@ import org.jetbrains.annotations.Nullable;
 public interface CoverageAnnotator {
   /**
    *
-   * @param directory  {@link com.intellij.psi.PsiDirectory} to obtain coverage information for
+   * @param directory  {@link PsiDirectory} to obtain coverage information for
    * @param manager
    * @return human-readable coverage information
    */
   @Nullable
+  @Nls
   String getDirCoverageInformationString(@NotNull PsiDirectory directory, @NotNull CoverageSuitesBundle currentSuite,
                                          @NotNull CoverageDataManager manager);
 
   /**
    *
-   * @param file {@link com.intellij.psi.PsiFile} to obtain coverage information for
+   * @param file {@link PsiFile} to obtain coverage information for
    * @param manager
    * @return human-readable coverage information
    */
   @Nullable
+  @Nls
   String getFileCoverageInformationString(@NotNull PsiFile file, @NotNull CoverageSuitesBundle currentSuite,
                                           @NotNull CoverageDataManager manager);
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -9,21 +9,19 @@ import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.util.PathUtil;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 
 @SuppressWarnings({"HardCodedStringLiteral", "ConstantConditions", "JUnitTestCaseInProductSource"})
-@NonNls public abstract class TestSourceBasedTestCase extends JavaProjectTestCase {
+public abstract class TestSourceBasedTestCase extends JavaProjectTestCase {
   private File myTempDirectory;
 
   @Override
   protected void setUp() throws Exception {
     super.setUp();
-    myTempDirectory = FileUtil.createTempDirectory(getTestName(true), "test",false);
-    myFilesToDelete.add(myTempDirectory);
+    myTempDirectory = createTempDirectoryWithSuffix("test").toFile();
     String testPath = getTestPath();
     if (testPath != null) {
       final File testRoot = new File(getTestDataPath(), testPath);
@@ -95,7 +93,7 @@ import java.io.File;
   protected PsiDirectory getContentDirectory() {
     return getPsiManager().findDirectory(getContentRoot());
   }
-  
+
   protected String getRootFiles() {
     return " " + PathUtil.getFileName(myModule.getModuleFilePath()) + "\n";
   }

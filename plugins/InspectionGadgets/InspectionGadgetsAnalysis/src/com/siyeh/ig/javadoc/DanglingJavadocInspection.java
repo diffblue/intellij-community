@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.siyeh.ig.javadoc;
 
 import com.intellij.codeInsight.javadoc.JavaDocUtil;
@@ -35,13 +21,6 @@ import org.jetbrains.annotations.NotNull;
  */
 public class DanglingJavadocInspection extends BaseInspection {
 
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("dangling.javadoc.display.name");
-  }
-
   @NotNull
   @Override
   protected String buildErrorString(Object... infos) {
@@ -53,9 +32,8 @@ public class DanglingJavadocInspection extends BaseInspection {
     return true;
   }
 
-  @NotNull
   @Override
-  protected InspectionGadgetsFix[] buildFixes(Object... infos) {
+  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
     return new InspectionGadgetsFix[] {
       new DeleteCommentFix(),
       new ConvertCommentFix()
@@ -126,7 +104,7 @@ public class DanglingJavadocInspection extends BaseInspection {
         return;
       }
       if (JavaDocUtil.isInsidePackageInfo(comment) &&
-          PsiTreeUtil.skipWhitespacesForward(comment) instanceof PsiPackageStatement &&
+          PsiTreeUtil.skipWhitespacesAndCommentsForward(comment) instanceof PsiPackageStatement &&
           "package-info.java".equals(comment.getContainingFile().getName())) {
         return;
       }

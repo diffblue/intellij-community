@@ -297,6 +297,7 @@
   <action id="RerunTests">
     <keyboard-shortcut first-keystroke="shift alt G"/>
   </action>
+  <action id="EditorAddCaretPerSelectedLine"/>
   <action id="Resume">
     <keyboard-shortcut first-keystroke="F8"/>
     <keyboard-shortcut first-keystroke="F9"/>
@@ -367,13 +368,16 @@
   <action id="Git.Reword.Commit">
     <keyboard-shortcut first-keystroke="shift alt R"/>
   </action>
+  <action id="Git.Rename.Local.Branch">
+    <keyboard-shortcut first-keystroke="shift alt R"/>
+  </action>
   <action id="ShelvedChanges.Rename">
     <keyboard-shortcut first-keystroke="shift alt R"/>
   </action>
   <action id="ChangesView.Rename">
     <keyboard-shortcut first-keystroke="shift alt R"/>
   </action>
-  <action id="RunDashboard.ShowConfigurations">
+  <action id="ServiceView.ShowServices">
     <keyboard-shortcut first-keystroke="shift alt H"/>
   </action>
   <action id="Vcs.MoveChangedLinesToChangelist"/>

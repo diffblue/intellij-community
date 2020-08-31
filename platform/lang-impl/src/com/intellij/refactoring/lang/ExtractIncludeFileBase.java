@@ -18,8 +18,6 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -43,8 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public abstract class ExtractIncludeFileBase<T extends PsiElement> implements RefactoringActionHandler, TitledHandler {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.refactoring.lang.ExtractIncludeFileBase");
-  private static final String REFACTORING_NAME = RefactoringBundle.message("extract.include.file.title");
+  private static final Logger LOG = Logger.getInstance(ExtractIncludeFileBase.class);
   protected PsiFile myIncludingFile;
   public static final String HELP_ID = "refactoring.extractInclude";
 
@@ -138,17 +135,15 @@ public abstract class ExtractIncludeFileBase<T extends PsiElement> implements Re
 
   private static void highlightInEditor(final Project project, final IncludeDuplicate pair, final Editor editor) {
     final HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-    TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     final int startOffset = pair.getStart().getTextRange().getStartOffset();
     final int endOffset = pair.getEnd().getTextRange().getEndOffset();
-    highlightManager.addRangeHighlight(editor, startOffset, endOffset, attributes, true, null);
+    highlightManager.addRangeHighlight(editor, startOffset, endOffset, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
     final LogicalPosition logicalPosition = editor.offsetToLogicalPosition(startOffset);
     editor.getScrollingModel().scrollTo(logicalPosition, ScrollType.MAKE_VISIBLE);
   }
 
   @Override
-  public void invoke(@NotNull Project project, @NotNull PsiElement[] elements, DataContext dataContext) {
+  public void invoke(@NotNull Project project, PsiElement @NotNull [] elements, DataContext dataContext) {
   }
 
   @NotNull
@@ -288,10 +283,14 @@ public abstract class ExtractIncludeFileBase<T extends PsiElement> implements Re
 
   @Override
   public String getActionTitle() {
-    return "Extract Include File...";
+    return RefactoringBundle.message("extract.include.file.action.title");
   }
 
   protected String getRefactoringName() {
-    return REFACTORING_NAME;
+    return getRefactoringNameText();
+  }
+
+  static String getRefactoringNameText() {
+    return RefactoringBundle.message("extract.include.file.title");
   }
 }

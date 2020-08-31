@@ -6,9 +6,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-/**
- * @author nik
- */
 public abstract class XSmartStepIntoVariant {
   @Nullable
   public Icon getIcon() {
@@ -22,6 +19,11 @@ public abstract class XSmartStepIntoVariant {
    */
   @Nullable
   public TextRange getHighlightRange() {
+    return null;
+  }
+
+  @Nullable
+  public String getDescription() {
     return null;
   }
 }

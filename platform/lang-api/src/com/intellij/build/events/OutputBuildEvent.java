@@ -15,15 +15,15 @@
  */
 package com.intellij.build.events;
 
-import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * @author Vladislav.Soroka
  */
-@ApiStatus.Experimental
 public interface OutputBuildEvent {
   @NotNull
+  @BuildEventsNls.Message
   String getMessage();
 
   boolean isStdOut();

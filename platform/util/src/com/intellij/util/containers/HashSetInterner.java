@@ -1,7 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.containers;
 
-import gnu.trove.TObjectHashingStrategy;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -14,34 +14,20 @@ import java.util.Set;
  * @see WeakInterner
  * @author peter
  */
-
 public class HashSetInterner<T> extends Interner<T> {
-  private final OpenTHashSet<T> mySet;
+  private final ObjectOpenHashSet<T> mySet;
 
   public HashSetInterner() {
-    mySet = new OpenTHashSet<>();
+    mySet = new ObjectOpenHashSet<>();
   }
 
   public HashSetInterner(@NotNull Collection<? extends T> initialItems) {
-    mySet = new OpenTHashSet<>(initialItems);
-  }
-
-  public HashSetInterner(@NotNull TObjectHashingStrategy<T> strategy) {
-    mySet = new OpenTHashSet<>(strategy);
+    mySet = new ObjectOpenHashSet<>(initialItems);
   }
 
   @Override
-  @NotNull
-  public T intern(@NotNull T name) {
-    T interned = mySet.get(name);
-    if (interned != null) {
-      return interned;
-    }
-
-    boolean added = mySet.add(name);
-    assert added;
-
-    return name;
+  public @NotNull T intern(@NotNull T name) {
+    return mySet.addOrGet(name);
   }
 
   @Override
@@ -50,9 +36,7 @@ public class HashSetInterner<T> extends Interner<T> {
   }
 
   @Override
-  @NotNull
-  public Set<T> getValues() {
+  public @NotNull Set<T> getValues() {
     return mySet;
   }
-
 }

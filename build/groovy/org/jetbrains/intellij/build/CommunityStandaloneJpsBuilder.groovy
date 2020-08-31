@@ -1,11 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build
 
 import org.jetbrains.intellij.build.impl.LayoutBuilder
+import org.jetbrains.intellij.build.impl.projectStructureMapping.ProjectStructureMapping
+
 /**
  * Creates JARs containing classes required to run the external build for IDEA project without IDE.
- *
- * @author nik
  */
 class CommunityStandaloneJpsBuilder {
   private final BuildContext buildContext
@@ -14,14 +14,19 @@ class CommunityStandaloneJpsBuilder {
     this.buildContext = buildContext
   }
 
-  void layoutJps(String targetDir, String buildNumber, @DelegatesTo(LayoutBuilder.LayoutSpec) Closure additionalJars) {
+  void processJpsLayout(String targetDir, String buildNumber, ProjectStructureMapping projectStructureMapping,
+                        boolean copyFiles, @DelegatesTo(LayoutBuilder.LayoutSpec) Closure additionalJars) {
     def context = buildContext
-    new LayoutBuilder(buildContext, false).layout(targetDir) {
-      zip("standalone-jps-${buildNumber}.zip") {
+    new LayoutBuilder(buildContext, false).process(targetDir, projectStructureMapping, copyFiles) {
+      zip(getZipName(buildNumber)) {
         jar("util.jar") {
           module("intellij.platform.util.rt")
           module("intellij.platform.util")
           module("intellij.platform.util.classLoader")
+          module("intellij.platform.util.text.matching")
+          module("intellij.platform.util.collections")
+          module("intellij.platform.util.strings")
+          module("intellij.platform.util.diagnostic")
         }
 
         jar("jps-launcher.jar") {
@@ -75,7 +80,7 @@ class CommunityStandaloneJpsBuilder {
         [
           "JDOM", "jna", "OroMatcher", "Trove4j", "ASM", "NanoXML", "protobuf", "cli-parser", "Log4J", "jgoodies-forms", "Eclipse",
           "netty-codec-http", "lz4-java", "commons-codec", "commons-logging", "http-client", "Slf4j", "Guava", "plexus-utils",
-          "jetbrains-annotations-java5", "maven-model"
+          "jetbrains-annotations-java5", "qdox-java-parser", "gson"
         ].each {
           projectLibrary(it)
         }
@@ -93,5 +98,9 @@ class CommunityStandaloneJpsBuilder {
       }
     }
     buildContext.notifyArtifactBuilt(targetDir)
+  }
+
+  static String getZipName(String buildNumber) {
+    "standalone-jps-${buildNumber}.zip"
   }
 }

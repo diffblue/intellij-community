@@ -26,6 +26,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.JBMenuItem;
 import com.intellij.openapi.ui.JBPopupMenu;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Trinity;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFrame;
@@ -37,7 +38,6 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import sun.swing.SwingUtilities2;
 
 import javax.accessibility.AccessibleContext;
 import javax.accessibility.AccessibleRole;
@@ -72,18 +72,10 @@ class StatusPanel extends JPanel {
     @Override
     protected String truncateText(String text, Rectangle bounds, FontMetrics fm, Rectangle textR, Rectangle iconR, int maxWidth) {
       if (myTimeText != null && text.endsWith(myTimeText)) {
-        int withoutTime = maxWidth - SwingUtilities2.stringWidth(this, fm, myTimeText);
-        int end = Math.min(text.length() - myTimeText.length() - 1, 1000);
-        while (end > 0) {
-          final String truncated = text.substring(0, end) + "... ";
-          if (SwingUtilities2.stringWidth(this, fm, truncated) < withoutTime) {
-            text = truncated + myTimeText;
-            break;
-          }
-          end--;
-        }
+        int withoutTime = maxWidth - fm.stringWidth(myTimeText);
+        Rectangle boundsForTrim = new Rectangle(withoutTime, bounds.height);
+        return super.truncateText(text, boundsForTrim, fm, textR, iconR, withoutTime) + myTimeText;
       }
-
       return super.truncateText(text, bounds, fm, textR, iconR, maxWidth);
     }
   };
@@ -175,7 +167,7 @@ class StatusPanel extends JPanel {
     if (myLogAlarm == null || myLogAlarm.isDisposed()) {
       myLogAlarm = null; //Welcome screen
       Project project = getActiveProject();
-      if (project != null) {
+      if (project != null && !project.isDisposed() && !Disposer.isDisposing(project)) {
         myLogAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, project);
       }
     }
@@ -202,9 +194,10 @@ class StatusPanel extends JPanel {
           assert statusMessage != null;
           String text = statusMessage.second;
           if (myDirty || System.currentTimeMillis() - statusMessage.third >= DateFormatUtil.MINUTE) {
-            myTimeText = "(" + StringUtil.decapitalize(DateFormatUtil.formatPrettyDateTime(statusMessage.third)) + ")";
-            text += " " + myTimeText;
-          } else {
+            myTimeText = " (" + StringUtil.decapitalize(DateFormatUtil.formatPrettyDateTime(statusMessage.third)) + ")";
+            text += myTimeText;
+          }
+          else {
             myTimeText = null;
           }
           setStatusText(text);

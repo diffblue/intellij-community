@@ -42,8 +42,6 @@ import java.util.List;
 public class ConvertStringToMultilineIntention extends Intention {
   private static final Logger LOG = Logger.getInstance(ConvertStringToMultilineIntention.class);
 
-  public static final String hint = GroovyIntentionsBundle.message("convert.string.to.multiline.intention.name");
-
   @Override
   protected void processIntention(@NotNull PsiElement element, @NotNull final Project project, final Editor editor) throws IncorrectOperationException {
     final List<GrExpression> expressions;
@@ -226,7 +224,7 @@ public class ConvertStringToMultilineIntention extends Intention {
       @Override
       public boolean satisfiedBy(@NotNull PsiElement element) {
         return element instanceof GrLiteral && ("\"".equals(GrStringUtil.getStartQuote(element.getText())) ||
-                                                "\'".equals(GrStringUtil.getStartQuote(element.getText())))
+                                                "'".equals(GrStringUtil.getStartQuote(element.getText())))
                || element instanceof GrBinaryExpression && isAppropriateBinary((GrBinaryExpression)element, null);
       }
     };
@@ -241,5 +239,9 @@ public class ConvertStringToMultilineIntention extends Intention {
   @Override
   public boolean startInWriteAction() {
     return false;
+  }
+
+  public static String getHint() {
+    return GroovyIntentionsBundle.message("convert.string.to.multiline.intention.name");
   }
 }

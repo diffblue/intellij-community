@@ -20,6 +20,7 @@ import com.intellij.openapi.vcs.changes.IgnoredBeanFactory
 import com.intellij.openapi.vcs.changes.IgnoredFileBean
 import com.intellij.openapi.vcs.changes.ignore.psi.util.addNewElements
 import com.intellij.openapi.vcs.changes.ui.ChangesListView
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
 import kotlin.streams.toList
@@ -29,8 +30,9 @@ class IgnoreFileAction(private val ignoreFile: VirtualFile) : DumbAwareAction() 
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.getRequiredData(CommonDataKeys.PROJECT)
     val vcs = VcsUtil.getVcsFor(project, ignoreFile) ?: return
+    val ignoreFileRoot = ignoreFile.parent ?: return
 
-    val ignored = getIgnoredFileBeans(e, vcs)
+    val ignored = getIgnoredFileBeans(e, ignoreFileRoot, vcs)
     if (ignored.isEmpty()) return
 
     writeIgnoreFileEntries(project, ignoreFile, ignored)
@@ -44,7 +46,7 @@ class CreateNewIgnoreFileAction(private val ignoreFileName: String, private val 
     val project = e.getRequiredData(CommonDataKeys.PROJECT)
     val ignoreFileRootVcs = VcsUtil.getVcsFor(project, ignoreFileRoot) ?: return
 
-    val ignored = getIgnoredFileBeans(e, ignoreFileRootVcs)
+    val ignored = getIgnoredFileBeans(e, ignoreFileRoot, ignoreFileRootVcs)
     if (ignored.isEmpty() || !confirmCreateIgnoreFile(project)) return
 
     val ignoreFile = runUndoTransparentWriteAction { ignoreFileRoot.createChildData(ignoreFileRoot, ignoreFileName) }
@@ -60,19 +62,31 @@ class CreateNewIgnoreFileAction(private val ignoreFileName: String, private val 
                                0, 1, getQuestionIcon())
 }
 
-private fun writeIgnoreFileEntries(project: Project,
-                                   ignoreFile: VirtualFile,
-                                   ignored: List<IgnoredFileBean>) {
-  addNewElements(project, ignoreFile, ignored)
+fun writeIgnoreFileEntries(project: Project,
+                           ignoreFile: VirtualFile,
+                           ignored: List<IgnoredFileBean>,
+                           vcs: AbstractVcs? = null,
+                           ignoreEntryRoot: VirtualFile? = null) {
+  addNewElements(project, ignoreFile, ignored, vcs?.keyInstanceMethod, ignoreEntryRoot)
   ChangeListManagerImpl.getInstanceImpl(project).scheduleUnversionedUpdate()
   OpenFileDescriptor(project, ignoreFile).navigate(true)
 }
 
-private fun getIgnoredFileBeans(e: AnActionEvent, vcs: AbstractVcs): List<IgnoredFileBean> {
+internal fun getIgnoredFileBeans(e: AnActionEvent, ignoreFileRoot: VirtualFile, vcs: AbstractVcs): List<IgnoredFileBean> {
   val project = e.getRequiredData(CommonDataKeys.PROJECT)
-  val unversionedFiles = e.getData(ChangesListView.EXACTLY_SELECTED_FILES_DATA_KEY)?.toList()
+  val selectedFiles = getSelectedFiles(e)
 
-  return (unversionedFiles ?: e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList() ?: emptyList())
+  return selectedFiles
+    .asSequence()
+    .filter { VfsUtil.isAncestor(ignoreFileRoot, it, false) }
     .filter { VcsUtil.getVcsFor(project, it) == vcs }
     .map { IgnoredBeanFactory.ignoreFile(it, project) }
+    .toList()
+}
+
+fun getSelectedFiles(e: AnActionEvent): List<VirtualFile> {
+  val exactlySelectedFiles = e.getData(ChangesListView.EXACTLY_SELECTED_FILES_DATA_KEY)?.toList()
+
+  return if (!exactlySelectedFiles.isNullOrEmpty()) exactlySelectedFiles
+  else e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList() ?: emptyList()
 }

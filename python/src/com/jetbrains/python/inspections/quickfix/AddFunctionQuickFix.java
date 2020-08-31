@@ -16,8 +16,10 @@ import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.jetbrains.python.PyBundle;
+import com.jetbrains.python.PyPsiBundle;
 import com.jetbrains.python.inspections.PyInspectionExtension;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.ParamHelper;
@@ -25,6 +27,7 @@ import com.jetbrains.python.psi.impl.PyFunctionBuilder;
 import com.jetbrains.python.psi.types.PyModuleType;
 import com.jetbrains.python.psi.types.PyType;
 import com.jetbrains.python.psi.types.TypeEvalContext;
+import com.jetbrains.python.ui.PyUiUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -50,13 +53,13 @@ public class AddFunctionQuickFix  implements LocalQuickFix {
   @Override
   @NotNull
   public String getName() {
-    return PyBundle.message("QFIX.NAME.add.function.$0.to.module.$1", myIdentifier, myModuleName);
+    return PyPsiBundle.message("QFIX.NAME.add.function.$0.to.module.$1", myIdentifier, myModuleName);
   }
 
   @Override
   @NotNull
   public String getFamilyName() {
-    return "Create function in module";
+    return PyBundle.message("QFIX.create.function.in.module");
   }
 
   @Override
@@ -69,7 +72,12 @@ public class AddFunctionQuickFix  implements LocalQuickFix {
     try {
       final PsiElement problemElement = descriptor.getPsiElement();
       if (!(problemElement instanceof PyQualifiedExpression)) return;
-      final PyExpression qualifier = ((PyQualifiedExpression)problemElement).getQualifier();
+      PyExpression qualifier = ((PyQualifiedExpression)problemElement).getQualifier();
+      if (qualifier == null) {
+        final PyFromImportStatement fromImport = PsiTreeUtil.getParentOfType(problemElement, PyFromImportStatement.class);
+        if (fromImport == null) return;
+        qualifier = fromImport.getImportSource();
+      }
       if (qualifier == null) return;
       final PyType type = TypeEvalContext.userInitiated(problemElement.getProject(), problemElement.getContainingFile()).getType(qualifier);
       if (!(type instanceof PyModuleType)) return;
@@ -120,7 +128,7 @@ public class AddFunctionQuickFix  implements LocalQuickFix {
     }
     catch (IncorrectOperationException ignored) {
       // we failed. tell about this
-      PyUtil.showBalloon(project, PyBundle.message("QFIX.failed.to.add.function"), MessageType.ERROR);
+      PyUiUtil.showBalloon(project, PyPsiBundle.message("QFIX.failed.to.add.function"), MessageType.ERROR);
     }
   }
 

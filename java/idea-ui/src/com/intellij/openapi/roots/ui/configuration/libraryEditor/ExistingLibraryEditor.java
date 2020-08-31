@@ -58,7 +58,7 @@ public class ExistingLibraryEditor extends LibraryEditorBase implements Disposab
 
   @Override
   public LibraryType<?> getType() {
-    final LibraryKind kind = ((LibraryEx)myLibrary).getKind();
+    final LibraryKind kind = myLibrary.getKind();
     if (kind != null) {
       return LibraryType.findByKind(kind);
     }
@@ -125,27 +125,24 @@ public class ExistingLibraryEditor extends LibraryEditorBase implements Disposab
     }
   }
 
-  @NotNull
   @Override
-  public String[] getUrls(@NotNull OrderRootType rootType) {
+  public String @NotNull [] getUrls(@NotNull OrderRootType rootType) {
     if (myModel != null) {
       return myModel.getUrls(rootType);
     }
     return myLibrary.getUrls(rootType);
   }
 
-  @NotNull
   @Override
-  public VirtualFile[] getFiles(@NotNull OrderRootType rootType) {
+  public VirtualFile @NotNull [] getFiles(@NotNull OrderRootType rootType) {
     if (myModel != null) {
       return myModel.getFiles(rootType);
     }
     return myLibrary.getFiles(rootType);
   }
 
-  @NotNull
   @Override
-  public String[] getExcludedRootUrls() {
+  public String @NotNull [] getExcludedRootUrls() {
     if (myModel != null) {
       return myModel.getExcludedRootUrls();
     }

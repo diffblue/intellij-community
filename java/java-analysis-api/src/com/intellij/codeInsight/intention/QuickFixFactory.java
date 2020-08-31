@@ -13,7 +13,6 @@ import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PropertyMemberType;
-import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -23,9 +22,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-/**
- * @author cdr
- */
 public abstract class QuickFixFactory {
   public static QuickFixFactory getInstance() {
     return ServiceManager.getService(QuickFixFactory.class);
@@ -72,7 +68,7 @@ public abstract class QuickFixFactory {
   @NotNull
   public abstract LocalQuickFixAndIntentionActionOnPsiElement createAddMethodFix(@NotNull String methodText,
                                                                                  @NotNull PsiClass toClass,
-                                                                                 @NotNull String... exceptions);
+                                                                                 String @NotNull ... exceptions);
 
   /**
    * @param psiElement psiClass or enum constant without class initializer
@@ -106,9 +102,6 @@ public abstract class QuickFixFactory {
                                                                                            boolean fixWholeHierarchy);
 
   @NotNull
-  public abstract LocalQuickFixAndIntentionActionOnPsiElement createMakeClassInterfaceFix(@NotNull PsiClass aClass);
-
-  @NotNull
   public abstract LocalQuickFixAndIntentionActionOnPsiElement createMakeClassInterfaceFix(@NotNull PsiClass aClass,
                                                                                           final boolean makeInterface);
 
@@ -140,10 +133,7 @@ public abstract class QuickFixFactory {
                                                                  @NotNull String name,
                                                                  @NotNull PsiType type,
                                                                  @NotNull PropertyMemberType targetMember,
-                                                                 @NotNull PsiAnnotation... annotations);
-
-  @NotNull
-  public abstract IntentionAction createSetupJDKFix();
+                                                                 PsiAnnotation @NotNull ... annotations);
 
   @NotNull
   public abstract IntentionAction createAddExceptionToCatchFix();
@@ -185,12 +175,9 @@ public abstract class QuickFixFactory {
    *
    * @param method method with return statement
    * @param returnStatement statement to remove
-   * @param returnValue statement value
    */
   @NotNull
-  public abstract IntentionAction createDeleteReturnFix(@NotNull PsiMethod method,
-                                                        @NotNull PsiReturnStatement returnStatement,
-                                                        @NotNull PsiExpression returnValue);
+  public abstract IntentionAction createDeleteReturnFix(@NotNull PsiMethod method, @NotNull PsiReturnStatement returnStatement);
 
   @NotNull
   public abstract IntentionAction createDeleteCatchFix(@NotNull PsiParameter parameter);
@@ -292,14 +279,14 @@ public abstract class QuickFixFactory {
 
   @NotNull
   public abstract IntentionAction createChangeMethodSignatureFromUsageFix(@NotNull PsiMethod targetMethod,
-                                                                          @NotNull PsiExpression[] expressions,
+                                                                          PsiExpression @NotNull [] expressions,
                                                                           @NotNull PsiSubstitutor substitutor,
                                                                           @NotNull PsiElement context,
                                                                           boolean changeAllUsages, int minUsagesNumberToShowDialog);
 
   @NotNull
   public abstract IntentionAction createChangeMethodSignatureFromUsageReverseOrderFix(@NotNull PsiMethod targetMethod,
-                                                                                      @NotNull PsiExpression[] expressions,
+                                                                                      PsiExpression @NotNull [] expressions,
                                                                                       @NotNull PsiSubstitutor substitutor,
                                                                                       @NotNull PsiElement context,
                                                                                       boolean changeAllUsages,
@@ -310,61 +297,13 @@ public abstract class QuickFixFactory {
     return Collections.emptyList();
   }
 
-  /**
-   * @deprecated use {@link #createCreateMethodFromUsageFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateMethodFromUsageFix(@NotNull PsiMethodCallExpression call);
-
   @NotNull
   public abstract IntentionAction createCreateMethodFromUsageFix(@NotNull PsiMethodReferenceExpression methodReferenceExpression);
-
-  /**
-   * @deprecated use {@link #createCreateMethodFromUsageFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateAbstractMethodFromUsageFix(@NotNull PsiMethodCallExpression call);
-
-  /**
-   * @deprecated use {@link #createCreateMethodFromUsageFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreatePropertyFromUsageFix(@NotNull PsiMethodCallExpression call);
-
-  /**
-   * @deprecated use {@link #createCreateConstructorFromCallExpressionFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateConstructorFromSuperFix(@NotNull PsiMethodCallExpression call);
-
-  /**
-   * @deprecated use {@link #createCreateConstructorFromCallExpressionFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateConstructorFromThisFix(@NotNull PsiMethodCallExpression call);
 
   @NotNull
   public List<IntentionAction> createCreateConstructorFromCallExpressionFixes(@NotNull PsiMethodCallExpression call) {
     return Collections.emptyList();
   }
-
-  /**
-   * @deprecated use {@link #createCreateMethodFromUsageFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateGetterSetterPropertyFromUsageFix(@NotNull PsiMethodCallExpression call);
 
   @NotNull
   public abstract IntentionAction createStaticImportMethodFix(@NotNull PsiMethodCallExpression call);
@@ -374,14 +313,6 @@ public abstract class QuickFixFactory {
 
   @NotNull
   public abstract IntentionAction createReplaceAddAllArrayToCollectionFix(@NotNull PsiMethodCallExpression call);
-
-  /**
-   * @deprecated use {@link #createCreateConstructorFromUsageFixes}
-   */
-  @Deprecated
-  @ScheduledForRemoval(inVersion = "2019.3")
-  @NotNull
-  public abstract IntentionAction createCreateConstructorFromCallFix(@NotNull PsiConstructorCall call);
 
   @NotNull
   public List<IntentionAction> createCreateConstructorFromUsageFixes(@NotNull PsiConstructorCall call) {
@@ -438,17 +369,6 @@ public abstract class QuickFixFactory {
 
   public abstract void registerFixesForUnusedParameter(@NotNull PsiParameter parameter, @NotNull Object highlightInfo);
 
-  /**
-   * @deprecated Use {@link #createAddToDependencyInjectionAnnotationsFix(Project, String)} instead
-   */
-  @Deprecated
-  @NotNull
-  public IntentionAction createAddToDependencyInjectionAnnotationsFix(@NotNull Project project,
-                                                                      @NotNull String qualifiedName,
-                                                                      @NotNull String element) {
-    return createAddToDependencyInjectionAnnotationsFix(project, qualifiedName);
-  }
-
   @NotNull
   public abstract IntentionAction createAddToDependencyInjectionAnnotationsFix(@NotNull Project project, @NotNull String qualifiedName);
 
@@ -463,6 +383,9 @@ public abstract class QuickFixFactory {
 
   @NotNull
   public abstract IntentionAction createEnableOptimizeImportsOnTheFlyFix();
+
+  @NotNull
+  public abstract IntentionAction createDeleteFix(@NotNull PsiElement @NotNull ... elements);
 
   @NotNull
   public abstract LocalQuickFixAndIntentionActionOnPsiElement createDeleteFix(@NotNull PsiElement element);
@@ -481,7 +404,7 @@ public abstract class QuickFixFactory {
 
   @NotNull
   public abstract IntentionAction createAddMissingRequiredAnnotationParametersFix(@NotNull PsiAnnotation annotation,
-                                                                                  @NotNull PsiMethod[] annotationMethods,
+                                                                                  PsiMethod @NotNull [] annotationMethods,
                                                                                   @NotNull Collection<String> missedElements);
 
   @NotNull
@@ -539,5 +462,16 @@ public abstract class QuickFixFactory {
   public abstract IntentionAction createChangeModifierFix();
 
   @NotNull
-  public abstract IntentionAction createWrapSwitchRuleStatementsIntoBlockFix(PsiSwitchLabeledRuleStatement rule);
+  public abstract IntentionAction createWrapSwitchRuleStatementsIntoBlockFix(@NotNull PsiSwitchLabeledRuleStatement rule);
+  
+  @NotNull
+  public abstract IntentionAction createAddParameterListFix(@NotNull PsiMethod method);
+
+  @NotNull
+  public abstract IntentionAction createAddEmptyRecordHeaderFix(@NotNull PsiClass record);
+
+  @NotNull
+  public abstract IntentionAction createCreateFieldFromParameterFix();
+  @NotNull
+  public abstract IntentionAction createAssignFieldFromParameterFix();
 }

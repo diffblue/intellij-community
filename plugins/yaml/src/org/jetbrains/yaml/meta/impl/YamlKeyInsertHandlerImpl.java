@@ -3,6 +3,7 @@
  */
 package org.jetbrains.yaml.meta.impl;
 
+import com.intellij.codeInsight.completion.InsertionContext;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.meta.model.Field;
@@ -10,7 +11,7 @@ import org.jetbrains.yaml.meta.model.YamlMetaType;
 import org.jetbrains.yaml.meta.model.YamlMetaType.ForcedCompletionPath;
 import org.jetbrains.yaml.meta.model.YamlMetaType.YamlInsertionMarkup;
 
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public class YamlKeyInsertHandlerImpl extends YamlKeyInsertHandler {
   private final Field myToBeInserted;
 
@@ -21,8 +22,9 @@ public class YamlKeyInsertHandlerImpl extends YamlKeyInsertHandler {
 
   @NotNull
   @Override
-  protected YamlInsertionMarkup computeInsertionMarkup(@NotNull ForcedCompletionPath forcedCompletionPath) {
-    YamlInsertionMarkup markup = new YamlInsertionMarkup();
+  protected YamlInsertionMarkup computeInsertionMarkup(@NotNull InsertionContext context,
+                                                       @NotNull ForcedCompletionPath forcedCompletionPath) {
+    YamlInsertionMarkup markup = new YamlInsertionMarkup(context);
     Field.Relation relation = myToBeInserted.getDefaultRelation();
     YamlMetaType defaultType = myToBeInserted.getType(relation);
     defaultType.buildInsertionSuffixMarkup(markup, relation, forcedCompletionPath.start());

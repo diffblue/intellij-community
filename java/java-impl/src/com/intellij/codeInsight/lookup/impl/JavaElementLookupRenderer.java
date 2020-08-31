@@ -16,10 +16,7 @@
 package com.intellij.codeInsight.lookup.impl;
 
 import com.intellij.codeInsight.completion.JavaCompletionUtil;
-import com.intellij.codeInsight.lookup.DefaultLookupItemRenderer;
-import com.intellij.codeInsight.lookup.LookupElement;
-import com.intellij.codeInsight.lookup.LookupElementPresentation;
-import com.intellij.codeInsight.lookup.LookupItem;
+import com.intellij.codeInsight.lookup.*;
 import com.intellij.psi.PsiDocCommentOwner;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
@@ -41,7 +38,7 @@ public class JavaElementLookupRenderer implements ElementLookupRenderer {
 
   @Override
   public void renderElement(final LookupItem item, final Object element, final LookupElementPresentation presentation) {
-    presentation.setIcon(DefaultLookupItemRenderer.getRawIcon(item, presentation.isReal()));
+    presentation.setIcon(DefaultLookupItemRenderer.getRawIcon(item));
 
     presentation.setItemText(PsiUtilCore.getName((PsiElement)element));
     presentation.setStrikeout(isToStrikeout(item));

@@ -4,6 +4,7 @@ package org.jetbrains.intellij.build.impl
 import com.intellij.execution.CommandLineWrapperUtil
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.util.SystemProperties
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import org.apache.tools.ant.AntClassLoader
@@ -12,6 +13,7 @@ import org.jetbrains.intellij.build.CompilationContext
 import org.jetbrains.intellij.build.CompilationTasks
 import org.jetbrains.intellij.build.TestingOptions
 import org.jetbrains.intellij.build.TestingTasks
+import org.jetbrains.intellij.build.impl.compilation.PortableCompilationCache
 import org.jetbrains.jps.model.java.JpsJavaClasspathKind
 import org.jetbrains.jps.model.java.JpsJavaDependenciesEnumerator
 import org.jetbrains.jps.model.java.JpsJavaExtensionService
@@ -24,9 +26,6 @@ import org.jetbrains.jps.util.JpsPathUtil
 import java.util.function.Predicate
 import java.util.jar.Manifest
 
-/**
- * @author nik
- */
 @CompileStatic
 class TestingTasksImpl extends TestingTasks {
   private final CompilationContext context
@@ -192,6 +191,7 @@ class TestingTasksImpl extends TestingTasks {
     if (options.testDiscoveryEnabled) {
       def file = getTestDiscoveryTraceFilePath()
       def serverUrl = System.getProperty("intellij.test.discovery.url")
+      def token = System.getProperty("intellij.test.discovery.token")
       context.messages.info("Trying to upload $file into $serverUrl.")
       if (file != null && new File(file).exists()) {
         if (serverUrl == null) {
@@ -199,7 +199,7 @@ class TestingTasksImpl extends TestingTasks {
                                    "Will not upload to remote server. Please set 'intellij.test.discovery.url' system property.")
           return
         }
-        def uploader = new TraceFileUploader(serverUrl) {
+        def uploader = new TraceFileUploader(serverUrl, token) {
           @Override
           protected void log(String message) {
             context.messages.info(message)
@@ -212,7 +212,7 @@ class TestingTasksImpl extends TestingTasks {
             'teamcity-build-configuration-name': System.getenv('TEAMCITY_BUILDCONF_NAME'),
             'teamcity-build-project-name'      : System.getenv('TEAMCITY_PROJECT_NAME'),
             'branch'                           : System.getProperty('intellij.platform.vcs.branch') ?: 'master',
-            'project'                          : 'intellij',
+            'project'                          : System.getProperty('intellij.test.discovery.project') ?: 'intellij',
             'checkout-root-prefix'             : System.getProperty("intellij.build.test.discovery.checkout.root.prefix"),
           ])
         }
@@ -264,6 +264,7 @@ class TestingTasksImpl extends TestingTasks {
     FileUtilRt.createParentDirs(classpathFile)
     classpathFile.text = testsClasspath.findAll({ new File(it).exists() }).join('\n')
 
+    def allSystemProperties = new HashMap<String, String>(systemProperties)
     [
       "classpath.file"                         : classpathFile.absolutePath,
       "intellij.build.test.patterns"           : testPatterns,
@@ -271,25 +272,27 @@ class TestingTasksImpl extends TestingTasks {
       "intellij.build.test.sorter"             : System.getProperty("intellij.build.test.sorter"),
       "bootstrap.testcases"                    : "com.intellij.AllTests",
       "idea.performance.tests"                 : System.getProperty("idea.performance.tests"),
-    ].each { k, v -> systemProperties.putIfAbsent(k, v) }
+    ].each { k, v -> allSystemProperties.putIfAbsent(k, v) }
 
-    prepareEnvForTestRun(jvmArgs, systemProperties, bootstrapClasspath, remoteDebugging)
+    def allJvmArgs = new ArrayList<String>(jvmArgs)
+
+    prepareEnvForTestRun(allJvmArgs, allSystemProperties, bootstrapClasspath, remoteDebugging)
 
     context.messages.info("Starting ${testGroups != null ? "test from groups '${testGroups}'" : "all tests"}")
     if (options.customJrePath != null) {
       context.messages.info("JVM: $options.customJrePath")
     }
-    context.messages.info("JVM options: $jvmArgs")
-    context.messages.info("System properties: $systemProperties")
+    context.messages.info("JVM options: $allJvmArgs")
+    context.messages.info("System properties: $allSystemProperties")
     context.messages.info("Bootstrap classpath: $bootstrapClasspath")
     context.messages.info("Tests classpath: $testsClasspath")
     if (!envVariables.isEmpty()) {
       context.messages.info("Environment variables: $envVariables")
     }
 
-    runJUnitTask(jvmArgs, systemProperties, envVariables, isBootstrapSuiteDefault() ? bootstrapClasspath : testsClasspath)
+    runJUnitTask(allJvmArgs, allSystemProperties, envVariables, isBootstrapSuiteDefault() ? bootstrapClasspath : testsClasspath)
 
-    notifySnapshotBuilt(jvmArgs)
+    notifySnapshotBuilt(allJvmArgs)
   }
 
   private void notifySnapshotBuilt(List<String> jvmArgs) {
@@ -323,6 +326,7 @@ class TestingTasksImpl extends TestingTasks {
     List<String> defaultJvmArgs = VmOptionsGenerator.COMMON_VM_OPTIONS + [
       '-XX:+HeapDumpOnOutOfMemoryError',
       '-XX:HeapDumpPath=' + hprofSnapshotFilePath,
+      '-Dkotlinx.coroutines.debug=on', // re-enable coroutine debugging in tests (its is explicitly disabled in VmOptionsGenerator)
     ]
     jvmArgs.addAll(0, defaultJvmArgs)
     if (options.jvmMemoryOptions != null) {
@@ -338,21 +342,21 @@ class TestingTasksImpl extends TestingTasks {
 
     String tempDir = System.getProperty("teamcity.build.tempDir", System.getProperty("java.io.tmpdir"))
     Map<String, String> defaultSystemProperties = [
-      "idea.platform.prefix"                   : options.platformPrefix,
-      "idea.home.path"                         : context.paths.projectHome,
-      "idea.config.path"                       : "$tempDir/config".toString(),
-      "idea.system.path"                       : "$tempDir/system".toString(),
+      "idea.platform.prefix"                              : options.platformPrefix,
+      "idea.home.path"                                    : context.paths.projectHome,
+      "idea.config.path"                                  : "$tempDir/config".toString(),
+      "idea.system.path"                                  : "$tempDir/system".toString(),
       "intellij.build.compiled.classes.archives.metadata" : System.getProperty("intellij.build.compiled.classes.archives.metadata"),
       "intellij.build.compiled.classes.archive"           : System.getProperty("intellij.build.compiled.classes.archive"),
-      "idea.coverage.enabled.build"            : System.getProperty("idea.coverage.enabled.build"),
-      "teamcity.buildConfName"                 : System.getProperty("teamcity.buildConfName"),
-      "java.io.tmpdir"                         : tempDir,
-      "teamcity.build.tempDir"                 : tempDir,
-      "teamcity.tests.recentlyFailedTests.file": System.getProperty("teamcity.tests.recentlyFailedTests.file"),
-      "teamcity.build.branch.is_default"       : System.getProperty("teamcity.build.branch.is_default"),
-      "jna.nosys"                              : "true",
-      "file.encoding"                          : "UTF-8",
-      "io.netty.leakDetectionLevel"            : "PARANOID",
+      "idea.coverage.enabled.build"                       : System.getProperty("idea.coverage.enabled.build"),
+      "teamcity.buildConfName"                            : System.getProperty("teamcity.buildConfName"),
+      "java.io.tmpdir"                                    : tempDir,
+      "teamcity.build.tempDir"                            : tempDir,
+      "teamcity.tests.recentlyFailedTests.file"           : System.getProperty("teamcity.tests.recentlyFailedTests.file"),
+      "teamcity.build.branch.is_default"                  : System.getProperty("teamcity.build.branch.is_default"),
+      "jna.nosys"                                         : "true",
+      "file.encoding"                                     : "UTF-8",
+      "io.netty.leakDetectionLevel"                       : "PARANOID",
     ] as Map<String, String>
     defaultSystemProperties.each { k, v -> systemProperties.putIfAbsent(k, v) }
 
@@ -361,6 +365,8 @@ class TestingTasksImpl extends TestingTasks {
         systemProperties[key.substring("pass.".length())] = value
       }
     }
+
+    PortableCompilationCache.PROPERTIES.each { systemProperties.putIfAbsent(it, System.getProperty(it)) }
 
     boolean suspendDebugProcess = options.suspendDebugProcess
     if (isPerformanceRun()) {
@@ -375,10 +381,7 @@ class TestingTasksImpl extends TestingTasks {
       }
     }
     else {
-      String debuggerParameter = "-agentlib:jdwp=transport=dt_socket,server=y,suspend=${suspendDebugProcess ? "y" : "n"}"
-      if (options.debugPort != -1) {
-        debuggerParameter += ",address=$options.debugPort"
-      }
+      String debuggerParameter = "-agentlib:jdwp=transport=dt_socket,server=y,suspend=${suspendDebugProcess ? "y" : "n"},address=localhost:$options.debugPort"
       jvmArgs.add(debuggerParameter)
     }
 
@@ -401,7 +404,7 @@ class TestingTasksImpl extends TestingTasks {
     List<String> teamCityFormatterClasspath = createTeamCityFormatterClasspath()
 
     String jvmExecutablePath = options.customJrePath != null ? "$options.customJrePath/bin/java" : ""
-    context.ant.junit(fork: true, showoutput: true, logfailedtests: false, tempdir: junitTemp, jvm: jvmExecutablePath, printsummary: (underTeamCity ? "off" : "on")) {
+    context.ant.junit(fork: true, showoutput: isShowAntJunitOutput(), logfailedtests: false, tempdir: junitTemp, jvm: jvmExecutablePath, printsummary: (underTeamCity ? "off" : "on")) {
       jvmArgs.each { jvmarg(value: it) }
       systemProperties.each { key, value ->
         if (value != null) {
@@ -447,6 +450,15 @@ class TestingTasksImpl extends TestingTasks {
   }
 
   /**
+   * Allows to disable duplicated lines in TeamCity build log (IDEA-240814).
+   *
+   * Note! Build statistics (and other TeamCity Service Message) can be reported only with this option enabled (IDEA-241221).
+   */
+  private static boolean isShowAntJunitOutput() {
+    return SystemProperties.getBooleanProperty("intellij.test.show.ant.junit.output", true)
+  }
+
+  /**
    * In simple cases when JUnit tests are started from Ant scripts TeamCity will automatically add its formatter to JUnit task. However it
    * doesn't work if JUnit task is called from Groovy code via a new instance of AntBuilder, so in such cases we need to add the formatter
    * explicitly.
@@ -480,7 +492,7 @@ class TestingTasksImpl extends TestingTasks {
   }
 
   private static boolean isUnderTeamCity() {
-    System.getProperty("teamcity.buildType.id") != null
+    System.getenv("TEAMCITY_VERSION") != null
   }
 
   static boolean dependenciesInstalled

@@ -1,11 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+@file:Suppress("JAVA_MODULE_DOES_NOT_EXPORT_PACKAGE")
 package com.intellij.openapi.wm.impl
 
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.wm.impl.FrameBoundsConverter.convertToDeviceSpace
 import com.intellij.openapi.wm.impl.FrameInfoHelper.Companion.isFullScreenSupportedInCurrentOs
-import com.intellij.openapi.wm.impl.WindowManagerImpl.FrameBoundsConverter.convertToDeviceSpace
 import com.intellij.ui.ScreenUtil
 import sun.awt.AWTAccessor
 import java.awt.Frame
@@ -13,12 +14,16 @@ import java.awt.Point
 import java.awt.Rectangle
 import java.awt.peer.FramePeer
 
-class FrameInfoHelper {
+internal class FrameInfoHelper {
   companion object {
     @JvmStatic
     fun isFullScreenSupportedInCurrentOs(): Boolean {
-      return SystemInfo.isMacOSLion || SystemInfo.isWindows || (SystemInfo.isXWindow && X11UiUtil.isFullScreenSupported())
+      return SystemInfo.isMac || SystemInfo.isWindows || (SystemInfo.isXWindow && X11UiUtil.isFullScreenSupported())
     }
+
+    @JvmStatic
+    val isFloatingMenuBarSupported: Boolean
+      get() = !SystemInfo.isMac && isFullScreenSupportedInCurrentOs()
 
     @JvmStatic
     fun isMaximized(state: Int): Boolean {
@@ -37,7 +42,7 @@ class FrameInfoHelper {
     this.info = info
   }
 
-  fun updateFrameInfo(frame: IdeFrameImpl) {
+  fun updateFrameInfo(frame: ProjectFrameHelper) {
     info = updateFrameInfo(frame, null, info)
   }
 
@@ -46,11 +51,11 @@ class FrameInfoHelper {
   }
 
   fun updateAndGetModificationCount(project: Project, lastNormalFrameBounds: Rectangle?, windowManager: WindowManagerImpl): Long {
-    val frame = windowManager.getFrame(project) ?: return getModificationCount()
+    val frame = windowManager.getFrameHelper(project) ?: return getModificationCount()
     return updateAndGetModificationCount(frame, lastNormalFrameBounds, windowManager)
   }
 
-  fun updateAndGetModificationCount(frame: IdeFrameImpl, lastNormalFrameBounds: Rectangle?, windowManager: WindowManagerImpl): Long {
+  fun updateAndGetModificationCount(frame: ProjectFrameHelper, lastNormalFrameBounds: Rectangle?, windowManager: WindowManagerImpl): Long {
     val newInfo = updateFrameInfo(frame, lastNormalFrameBounds, info)
     updateDefaultFrameInfoInDeviceSpace(windowManager, newInfo)
     info = newInfo
@@ -68,7 +73,8 @@ class FrameInfoHelper {
   }
 }
 
-private fun updateFrameInfo(frame: IdeFrameImpl, lastNormalFrameBounds: Rectangle?, oldFrameInfo: FrameInfo?): FrameInfo {
+private fun updateFrameInfo(frameHelper: ProjectFrameHelper, lastNormalFrameBounds: Rectangle?, oldFrameInfo: FrameInfo?): FrameInfo {
+  val frame = frameHelper.frame
   var extendedState = frame.extendedState
   if (SystemInfo.isMacOSLion) {
     val peer = AWTAccessor.getComponentAccessor().getPeer(frame)
@@ -78,7 +84,7 @@ private fun updateFrameInfo(frame: IdeFrameImpl, lastNormalFrameBounds: Rectangl
     }
   }
 
-  val isInFullScreen = isFullScreenSupportedInCurrentOs() && frame.isInFullScreen
+  val isInFullScreen = isFullScreenSupportedInCurrentOs() && frameHelper.isInFullScreen
   val isMaximized = FrameInfoHelper.isMaximized(extendedState) || isInFullScreen
 
   val oldBounds = oldFrameInfo?.bounds

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.configurations;
 
 import com.intellij.openapi.application.Application;
@@ -31,7 +31,7 @@ import java.util.Map;
  * On Windows, PTY is emulated by creating an invisible console window (see Pty4j and WinPty implementation).
  */
 public class PtyCommandLine extends GeneralCommandLine {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.execution.configurations.PtyCommandLine");
+  private static final Logger LOG = Logger.getInstance(PtyCommandLine.class);
   private static final String RUN_PROCESSES_WITH_PTY = "run.processes.with.pty";
 
   private static final String UNIX_PTY_INIT = "unix.pty.init";
@@ -134,33 +134,42 @@ public class PtyCommandLine extends GeneralCommandLine {
   @NotNull
   @Override
   protected Process startProcess(@NotNull List<String> commands) throws IOException {
-    try {
-      return startProcessWithPty(commands);
-    }
-    catch (Throwable t) {
-      File logFile = getPtyLogFile();
-      if (logFile != null && logFile.exists()) {
-        String logContent;
-        try {
-          logContent = FileUtil.loadFile(logFile);
-        }
-        catch (Exception e) {
-          logContent = "Unable to retrieve log: " + e.getMessage();
-        }
-
-        LOG.debug("Couldn't run process with PTY", t, logContent);
+    if (getInputFile() == null) {
+      try {
+        return startProcessWithPty(commands);
       }
-      else {
-        LOG.debug("Couldn't run process with PTY", t);
+      catch (Throwable t) {
+        String message = "Couldn't run process with PTY";
+        if (LOG.isDebugEnabled()) {
+          String logFileContent = loadLogFile();
+          if (logFileContent != null) {
+            LOG.debug(message, t, logFileContent);
+          }
+          else {
+            LOG.warn(message, t);
+          }
+        }
+        else {
+          LOG.warn(message, t);
+        }
       }
     }
-
     return super.startProcess(commands);
   }
 
-  private static File getPtyLogFile() {
+  @Nullable
+  private static String loadLogFile() {
     Application app = ApplicationManager.getApplication();
-    return app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null;
+    File logFile = app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null;
+    if (logFile != null && logFile.exists()) {
+      try {
+        return FileUtil.loadFile(logFile);
+      }
+      catch (Exception e) {
+        return "Unable to retrieve pty log: " + e.getMessage();
+      }
+    }
+    return null;
   }
 
   @NotNull
@@ -217,12 +226,13 @@ public class PtyCommandLine extends GeneralCommandLine {
     File workDirectory = getWorkDirectory();
     String directory = workDirectory != null ? workDirectory.getPath() : null;
     boolean cygwin = myUseCygwinLaunch && SystemInfo.isWindows;
+    Application app = ApplicationManager.getApplication();
     PtyProcessBuilder builder = new PtyProcessBuilder(command)
       .setEnvironment(env)
       .setDirectory(directory)
       .setConsole(myConsoleMode)
       .setCygwin(cygwin)
-      .setLogFile(getPtyLogFile())
+      .setLogFile(app != null && app.isEAP() ? new File(PathManager.getLogPath(), "pty.log") : null)
       .setRedirectErrorStream(isRedirectErrorStream())
       .setWindowsAnsiColorEnabled(myWindowsAnsiColorEnabled);
     return builder.start();

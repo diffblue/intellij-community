@@ -1,31 +1,19 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.util.text.DateFormatUtil
-import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReview
-import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReviewThread
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.GHPRTimelineEvent
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.GHPRTimelineItem
 import javax.swing.AbstractListModel
 import kotlin.math.max
 
-class GHPRTimelineMergingModel : AbstractListModel<GHPRTimelineItem>(), GHPRReviewsThreadsProvider {
+class GHPRTimelineMergingModel : AbstractListModel<GHPRTimelineItem>() {
   private val list = mutableListOf<GHPRTimelineItem>()
-  private var threadsByReview = mapOf<String, List<GHPullRequestReviewThread>>()
-  private val threadsModelsByReview = mutableMapOf<String, GHPRReviewThreadsModel>()
 
   override fun getElementAt(index: Int): GHPRTimelineItem = list[index]
 
   override fun getSize(): Int = list.size
-
-  override fun setReviewsThreads(threads: List<GHPullRequestReviewThread>) {
-    threadsByReview = threads.groupBy { it.reviewId }
-    for ((reviewId, model) in threadsModelsByReview) {
-      model.update(threadsByReview[reviewId].orEmpty())
-    }
-  }
-
-  override fun findReviewThreads(reviewId: String): GHPRReviewThreadsModel? = threadsModelsByReview[reviewId]
 
   fun add(items: List<GHPRTimelineItem>) {
     var lastListIdx = list.lastIndex
@@ -36,30 +24,45 @@ class GHPRTimelineMergingModel : AbstractListModel<GHPRTimelineItem>(), GHPRRevi
       lastListIdx--
     }
 
+    var added = false
+    val hideUnknown = ApplicationManager.getApplication().let { !it.isInternal && !it.isEAP }
     for (item in items) {
+      if (item is GHPRTimelineItem.Unknown && (hideUnknown || item.__typename in GHPRTimelineItem.IGNORED_TYPES)) continue
       val merged = mergeIfPossible(lastItem, item)
       if (merged != null) {
         lastItem = merged
       }
       else {
-        if (lastItem != null && !isCollapsedMerge(lastItem)) list.add(lastItem)
+        if (lastItem != null && !isCollapsedMerge(lastItem)) {
+          list.add(lastItem)
+          added = true
+        }
         lastItem = item
       }
-
-      if (item is GHPullRequestReview) {
-        threadsModelsByReview[item.id] = GHPRReviewThreadsModel(threadsByReview[item.id].orEmpty())
-      }
     }
-    if (lastItem != null && !isCollapsedMerge(lastItem)) list.add(lastItem)
-    fireIntervalAdded(this, lastListIdx + 1, list.lastIndex)
+    if (lastItem != null && !isCollapsedMerge(lastItem)) {
+      list.add(lastItem)
+      added = true
+    }
+    if (added) fireIntervalAdded(this, lastListIdx + 1, list.lastIndex)
+  }
+
+  fun update(item: GHPRTimelineItem) {
+    val idx = list.indexOf(item)
+    if (idx >= 0) list[idx] = item
+    fireContentsChanged(this, idx, idx)
+  }
+
+  fun remove(item: GHPRTimelineItem) {
+    val idx = list.indexOf(item)
+    if (idx >= 0) list.removeAt(idx)
+    fireIntervalRemoved(this, idx, idx)
   }
 
   fun removeAll() {
     val lastIdx = max(0, size - 1)
     list.clear()
     if (lastIdx > 0) fireIntervalRemoved(this, 0, lastIdx)
-
-    threadsModelsByReview.clear()
   }
 
   companion object {

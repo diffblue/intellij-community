@@ -1,5 +1,5 @@
 /*
- * Copyright 2003-2018 Dave Griffith, Bas Leijdekkers
+ * Copyright 2003-2020 Dave Griffith, Bas Leijdekkers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package com.siyeh.ig.dataflow;
 
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
+import com.intellij.psi.util.PsiUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,7 +28,8 @@ class ScopeUtils {
   private ScopeUtils() {}
 
   @Nullable
-  public static PsiElement findTighterDeclarationLocation(@NotNull PsiElement sibling, @NotNull PsiVariable variable) {
+  public static PsiElement findTighterDeclarationLocation(@NotNull PsiElement sibling, @NotNull PsiVariable variable,
+                                                          boolean skipDeclarationStatements) {
     PsiElement prevSibling = sibling.getPrevSibling();
     while (prevSibling instanceof PsiWhiteSpace || prevSibling instanceof PsiComment) {
       prevSibling = prevSibling.getPrevSibling();
@@ -37,7 +38,9 @@ class ScopeUtils {
       if (prevSibling.equals(variable.getParent())) {
         return null;
       }
-      return findTighterDeclarationLocation(prevSibling, variable);
+      if (skipDeclarationStatements) {
+        return findTighterDeclarationLocation(prevSibling, variable, true);
+      }
     }
     return prevSibling;
   }
@@ -90,7 +93,7 @@ class ScopeUtils {
           final PsiExpression expression = statement.getExpression();
           if (expression instanceof PsiAssignmentExpression) {
             final PsiAssignmentExpression assignmentExpression = (PsiAssignmentExpression)expression;
-            final PsiExpression lExpression = ParenthesesUtils.stripParentheses(assignmentExpression.getLExpression());
+            final PsiExpression lExpression = PsiUtil.skipParenthesizedExprDown(assignmentExpression.getLExpression());
             if (!lExpression.equals(referenceElement)) {
               commonParent = PsiTreeUtil.getParentOfType(commonParent, PsiCodeBlock.class);
             }

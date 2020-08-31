@@ -328,7 +328,7 @@ public abstract class FunctionHelper {
     public String tryLightTransform() {
       PsiLambdaExpression lambdaExpression = LambdaRefactoringUtil.createLambda(myMethodRef, true);
       if(lambdaExpression == null) return null;
-      String typedParamList = LambdaRefactoringUtil.createLambdaParameterListWithFormalTypes(myType, lambdaExpression, false);
+      String typedParamList = LambdaUtil.createLambdaParameterListWithFormalTypes(myType, lambdaExpression, false);
       if(typedParamList != null && lambdaExpression.getBody() != null) {
         lambdaExpression = (PsiLambdaExpression)JavaPsiFacade.getElementFactory(myMethodRef.getProject())
           .createExpressionFromText(typedParamList + "->" + lambdaExpression.getBody().getText(), myMethodRef);
@@ -385,9 +385,7 @@ public abstract class FunctionHelper {
       EntryStream.zip(lambda.getParameterList().getParameters(), argumentValues)
         .forKeyValue((param, newName) -> {
           String oldName = param.getName();
-          if (oldName != null) {
-            myExpression = replaceVarReference(myExpression, oldName, newName, context);
-          }
+          myExpression = replaceVarReference(myExpression, oldName, newName, context);
         });
     }
 
@@ -435,6 +433,7 @@ public abstract class FunctionHelper {
       myFnType = functionalInterface.getCanonicalText();
     }
 
+    @NotNull
     private String getNameCandidate(PsiType functionalInterface) {
       PsiElement parent = myExpression.getParent();
       if(parent instanceof PsiExpressionList) {

@@ -17,7 +17,7 @@ import java.util.Collection;
 public abstract class VcsDirtyScopeManager {
   @NotNull
   public static VcsDirtyScopeManager getInstance(@NotNull Project project) {
-    return project.getComponent(VcsDirtyScopeManager.class);
+    return project.getService(VcsDirtyScopeManager.class);
   }
 
   /**
@@ -47,11 +47,6 @@ public abstract class VcsDirtyScopeManager {
   public abstract void dirDirtyRecursively(@NotNull VirtualFile dir);
 
   public abstract void dirDirtyRecursively(@NotNull FilePath path);
-
-  @Nullable
-  public abstract VcsInvalidated retrieveScopes();
-
-  public abstract void changesProcessed();
 
   @NotNull
   public abstract Collection<FilePath> whatFilesDirty(@NotNull Collection<? extends FilePath> files);

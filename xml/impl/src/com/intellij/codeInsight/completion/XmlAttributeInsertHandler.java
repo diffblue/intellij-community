@@ -31,7 +31,7 @@ import java.util.Collections;
 * @author peter
 */
 public class XmlAttributeInsertHandler implements InsertHandler<LookupElement> {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.completion.XmlAttributeInsertHandler");
+  private static final Logger LOG = Logger.getInstance(XmlAttributeInsertHandler.class);
 
   public static final XmlAttributeInsertHandler INSTANCE = new XmlAttributeInsertHandler();
 
@@ -68,7 +68,7 @@ public class XmlAttributeInsertHandler implements InsertHandler<LookupElement> {
 
       if(fileContext != null) {
         if (fileContext.getText().startsWith("\"")) toInsert = "=''";
-        if (fileContext.getText().startsWith("\'")) toInsert = "=\"\"";
+        if (fileContext.getText().startsWith("'")) toInsert = "=\"\"";
       }
       if (toInsert == null) {
         toInsert = "=" + quote + quote;

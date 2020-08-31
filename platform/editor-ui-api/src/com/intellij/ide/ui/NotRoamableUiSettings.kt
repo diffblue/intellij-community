@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui
 
 import com.intellij.openapi.components.*
@@ -11,7 +11,7 @@ import com.intellij.util.xmlb.SerializationFilter
 import com.intellij.util.xmlb.annotations.Property
 import java.awt.Font
 
-@State(name = "NotRoamableUiSettings", storages = [(Storage(StoragePathMacros.NON_ROAMABLE_FILE))], reportStatistic = true)
+@State(name = "NotRoamableUiSettings", storages = [(Storage(StoragePathMacros.NON_ROAMABLE_FILE))])
 class NotRoamableUiSettings : PersistentStateComponent<NotRoamableUiOptions> {
   private var state = NotRoamableUiOptions()
 
@@ -33,7 +33,7 @@ class NotRoamableUiSettings : PersistentStateComponent<NotRoamableUiOptions> {
     var fontIsValid = FontUtil.isValidFont(Font(state.fontFace, Font.PLAIN, state.fontSize))
     if (!fontIsValid) {
       for (preferredFont in arrayOf("dialog", "Arial", "Tahoma")) {
-        if (UIUtil.isValidFont(Font(preferredFont, Font.PLAIN, state.fontSize))) {
+        if (FontUtil.isValidFont(Font(preferredFont, Font.PLAIN, state.fontSize))) {
           state.fontFace = preferredFont
           fontIsValid = true
           break

@@ -21,7 +21,6 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiReference;
-import com.intellij.psi.impl.source.tree.TreeElement;
 import com.intellij.psi.meta.PsiMetaData;
 import com.intellij.psi.meta.PsiMetaOwner;
 import com.intellij.psi.xml.XmlElement;
@@ -34,7 +33,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class TagNameReference implements PsiReference {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.xml.TagNameReference");
+  private static final Logger LOG = Logger.getInstance(TagNameReference.class);
 
   protected final boolean myStartTagFlag;
   private final ASTNode myNameElement;
@@ -69,7 +68,7 @@ public class TagNameReference implements PsiReference {
 
     int colon = getPrefixIndex(nameElement.getText()) + 1;
     if (myStartTagFlag) {
-      final int parentOffset = ((TreeElement)nameElement).getStartOffsetInParent();
+      final int parentOffset = nameElement.getStartOffsetInParent();
       return new TextRange(parentOffset + colon, parentOffset + nameElement.getTextLength());
     }
     else {

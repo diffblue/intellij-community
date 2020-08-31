@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util;
 
 import com.intellij.openapi.application.PathManager;
@@ -13,8 +13,7 @@ import com.intellij.openapi.vfs.VirtualFileSystem;
 import com.intellij.util.io.URLUtil;
 import org.jetbrains.annotations.*;
 
-public class PathUtil {
-
+public final class PathUtil {
   private PathUtil() { }
 
   @Nullable
@@ -45,6 +44,10 @@ public class PathUtil {
     return getLocalPath(VirtualFileManager.extractPath(url));
   }
 
+  /**
+   * @deprecated Use {@link FileUtil#toCanonicalPath(String)}
+   */
+  @Deprecated
   public static String getCanonicalPath(@NonNls String path) {
     return FileUtil.toCanonicalPath(path);
   }
@@ -106,9 +109,9 @@ public class PathUtil {
   }
 
   //<editor-fold desc="Deprecated stuff.">
-  /** @deprecated use {@link com.intellij.openapi.vfs.VfsUtil#getLocalFile(VirtualFile)} instead (to be removed in IDEA 2019) */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019")
+  /** @deprecated use {@link com.intellij.openapi.vfs.VfsUtil#getLocalFile(VirtualFile)} instead */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
   @NotNull
   public static VirtualFile getLocalFile(@NotNull VirtualFile file) {
     if (file.isValid()) {

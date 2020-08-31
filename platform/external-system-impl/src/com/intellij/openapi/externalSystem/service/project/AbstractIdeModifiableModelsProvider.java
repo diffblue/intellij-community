@@ -55,9 +55,6 @@ import static com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.toC
 public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProviderImpl implements IdeModifiableModelsProvider {
   private static final Logger LOG = Logger.getInstance(AbstractIdeModifiableModelsProvider.class);
 
-  private final static ExtensionPointName<ModifiableModelsProviderExtension<ModifiableModel>> EP_NAME =
-    ExtensionPointName.create("com.intellij.externalSystem.modifiableModelsProvider");
-
   private ModifiableModuleModel myModifiableModuleModel;
   private final Map<Module, ModifiableRootModel> myModifiableRootModels = new THashMap<>();
   private final Map<Module, ModifiableFacetModel> myModifiableFacetModels = new THashMap<>();
@@ -71,11 +68,12 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
 
   public AbstractIdeModifiableModelsProvider(@NotNull Project project) {
     super(project);
+
     myUserData = new MyUserDataHolderBase();
-    for (ModifiableModelsProviderExtension<ModifiableModel> extension : EP_NAME.getIterable()) {
+    EP_NAME.forEachExtensionSafe(extension -> {
       Pair<Class<ModifiableModel>, ModifiableModel> pair = extension.create(project, this);
       myModifiableModels.put(pair.first, pair.second);
-    }
+    });
   }
 
   @Nullable
@@ -106,15 +104,13 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
   @Override
   public abstract LibraryTable.ModifiableModel getModifiableProjectLibrariesModel();
 
-  @NotNull
   @Override
-  public Module[] getModules() {
+  public Module @NotNull [] getModules() {
     return getModifiableModuleModel().getModules();
   }
 
-  @NotNull
   @Override
-  public OrderEntry[] getOrderEntries(@NotNull Module module) {
+  public OrderEntry @NotNull [] getOrderEntries(@NotNull Module module) {
     return getRootModel(module).getOrderEntries();
   }
 
@@ -172,20 +168,17 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
   }
 
   @Override
-  @NotNull
-  public VirtualFile[] getContentRoots(Module module) {
+  public VirtualFile @NotNull [] getContentRoots(Module module) {
     return getRootModel(module).getContentRoots();
   }
 
-  @NotNull
   @Override
-  public VirtualFile[] getSourceRoots(Module module) {
+  public VirtualFile @NotNull [] getSourceRoots(Module module) {
     return getRootModel(module).getSourceRoots();
   }
 
-  @NotNull
   @Override
-  public VirtualFile[] getSourceRoots(Module module, boolean includingTests) {
+  public VirtualFile @NotNull [] getSourceRoots(Module module, boolean includingTests) {
     return getRootModel(module).getSourceRoots(includingTests);
   }
 
@@ -216,8 +209,7 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
   }
 
   @Override
-  @NotNull
-  public Library[] getAllLibraries() {
+  public Library @NotNull [] getAllLibraries() {
     return getModifiableProjectLibrariesModel().getLibraries();
   }
 
@@ -255,9 +247,8 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
     return myModifiableWorkspace;
   }
 
-  @NotNull
   @Override
-  public String[] getLibraryUrls(@NotNull Library library, @NotNull OrderRootType type) {
+  public String @NotNull [] getLibraryUrls(@NotNull Library library, @NotNull OrderRootType type) {
     final Library.ModifiableModel model = myModifiableLibraryModels.get(library);
     if (model != null) {
       return model.getUrls(type);
@@ -360,7 +351,7 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
 
   @Override
   public void dispose() {
-    ApplicationManager.getApplication().assertIsDispatchThread();
+    ApplicationManager.getApplication().assertIsWriteThread();
     assert !myDisposed : "Already disposed!";
     myDisposed = true;
 
@@ -465,9 +456,9 @@ public abstract class AbstractIdeModifiableModelsProvider extends IdeModelsProvi
 
 
     Map<String, String> toSubstitute = new HashMap<>();
+    ProjectDataManager projectDataManager = ProjectDataManager.getInstance();
     for (ExternalSystemManager<?, ?, ?, ?, ?> manager: ExternalSystemManager.EP_NAME.getIterable()) {
-      final Collection<ExternalProjectInfo> projectsData =
-        ProjectDataManager.getInstance().getExternalProjectsData(myProject, manager.getSystemId());
+      Collection<ExternalProjectInfo> projectsData = projectDataManager.getExternalProjectsData(myProject, manager.getSystemId());
       for (ExternalProjectInfo projectInfo: projectsData) {
         if (projectInfo.getExternalProjectStructure() == null) {
           continue;

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
 import com.intellij.diff.util.DiffDrawUtil
@@ -9,42 +9,20 @@ import com.intellij.openapi.diff.impl.patch.apply.GenericPatchApplier
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.EditorKind
+import com.intellij.openapi.editor.LineNumberConverter
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.fileTypes.FileTypeRegistry
+import com.intellij.openapi.editor.impl.LineNumberConverterAdapter
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.patch.AppliedTextPatch
 import com.intellij.openapi.vcs.changes.patch.tool.PatchChangeBuilder
-import com.intellij.ui.SimpleColoredComponent
-import com.intellij.ui.SimpleTextAttributes
-import com.intellij.util.PathUtil
-import com.intellij.util.ui.JBUI
+import org.jetbrains.plugins.github.util.GHPatchHunkUtil
 import javax.swing.JComponent
 
-class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTypeRegistry,
-                                           private val project: Project,
-                                           private val editorFactory: EditorFactory) {
-  fun createComponent(filePath: String, diffHunk: String): JComponent = JBUI.Panels
-    .simplePanel(createDiff(filePath, diffHunk))
-    .addToTop(createFileName(filePath))
-    .andTransparent()
+class GHPRReviewThreadDiffComponentFactory(private val project: Project, private val editorFactory: EditorFactory) {
 
-  private fun createFileName(filePath: String): SimpleColoredComponent {
-    val name = PathUtil.getFileName(filePath)
-    val path = PathUtil.getParentPath(filePath)
-    val fileType = fileTypeRegistry.getFileTypeByFileName(name)
-
-    return SimpleColoredComponent().apply {
-      isOpaque = false
-
-      icon = fileType.icon
-      append(name).appendTextPadding(5)
-      append(path, SimpleTextAttributes.GRAYED_ATTRIBUTES)
-    }
-  }
-
-  private fun createDiff(filePath: String, diffHunk: String): JComponent {
+  fun createComponent(diffHunk: String): JComponent {
     try {
-      val patchReader = PatchReader(createPatchFromHunk(filePath, diffHunk))
+      val patchReader = PatchReader(GHPatchHunkUtil.createPatchFromHunk("_", diffHunk))
       val patchHunk = patchReader.readTextPatches().firstOrNull()?.hunks?.firstOrNull()?.let { truncateHunk(it) }
                       ?: throw IllegalStateException("Could not parse diff hunk")
 
@@ -61,9 +39,9 @@ class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTyp
 
         return EditorHandlerPanel.create(editorFactory) {
           val editor = createEditor(document)
-          editor.gutterComponentEx.apply {
-            setLineNumberConvertor(builder.lineConvertor1.createConvertor(),
-                                   builder.lineConvertor2.createConvertor())
+          editor.gutter.apply {
+            setLineNumberConverter(LineNumberConverterAdapter(builder.lineConvertor1.createConvertor()),
+                                   LineNumberConverterAdapter(builder.lineConvertor2.createConvertor()))
           }
 
           val hunk = builder.hunks.first()
@@ -80,8 +58,11 @@ class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTyp
 
         return EditorHandlerPanel.create(editorFactory) {
           val editor = createEditor(document)
-          editor.gutterComponentEx.apply {
-            setLineNumberConvertor({ it + patchHunk.startLineBefore }, { it + patchHunk.startLineAfter })
+          editor.gutter.apply {
+            setLineNumberConverter(
+              LineNumberConverter.Increasing { _, line -> line + patchHunk.startLineBefore },
+              LineNumberConverter.Increasing { _, line -> line + patchHunk.startLineAfter }
+            )
           }
           editor
         }
@@ -101,7 +82,7 @@ class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTyp
     val toRemoveIdx = hunk.lines.lastIndex - DIFF_SIZE
     for (i in 0..toRemoveIdx) {
       val line = hunk.lines[i]
-      when (line.type!!) {
+      when (line.type) {
         PatchLine.Type.CONTEXT -> {
           startLineBefore++
           startLineAfter++
@@ -120,7 +101,7 @@ class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTyp
 
   private fun createEditor(document: Document): EditorEx {
     return (editorFactory.createViewer(document, project, EditorKind.DIFF) as EditorEx).apply {
-      setHorizontalScrollbarVisible(false)
+      setHorizontalScrollbarVisible(true)
       setVerticalScrollbarVisible(false)
       setCaretEnabled(false)
       setBorder(null)
@@ -144,11 +125,5 @@ class GHPRReviewThreadDiffComponentFactory(private val fileTypeRegistry: FileTyp
 
   companion object {
     private const val DIFF_SIZE = 3
-
-    private fun createPatchFromHunk(filePath: String, diffHunk: String): String {
-      return """--- a/$filePath
-+++ b/$filePath
-""" + diffHunk
-    }
   }
 }

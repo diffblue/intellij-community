@@ -1,6 +1,7 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.command.impl;
 
+import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.command.undo.BasicUndoableAction;
 import com.intellij.openapi.command.undo.DocumentReference;
 import com.intellij.openapi.command.undo.DocumentReferenceManager;
@@ -8,13 +9,12 @@ import com.intellij.openapi.command.undo.UndoManager;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Key;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-import java.util.HashMap;
-import java.util.Map;
-
-public class StartMarkAction extends BasicUndoableAction {
-  private static final Map<Project, StartMarkAction> ourCurrentMarks = new HashMap<>();
+public final class StartMarkAction extends BasicUndoableAction {
+  public static final Key<StartMarkAction> START_MARK_ACTION_KEY = Key.create("current.inplace.refactorings.mark");
   private String myCommandName;
   private boolean myGlobal;
   private Document myDocument;
@@ -55,17 +55,21 @@ public class StartMarkAction extends BasicUndoableAction {
   }
 
   @TestOnly
-  public static void checkCleared() {
+  public static void checkCleared(@Nullable Project project) {
+    if (project == null) {
+      return;
+    }
     try {
-      assert ourCurrentMarks.isEmpty() : ourCurrentMarks.values();
+      StartMarkAction markAction = project.getUserData(START_MARK_ACTION_KEY);
+      assert markAction == null : markAction.myDocument;
     }
     finally {
-      ourCurrentMarks.clear();
+      project.putUserData(START_MARK_ACTION_KEY, null);
     }
   }
 
   public static StartMarkAction start(Editor editor, Project project, String commandName) throws AlreadyStartedException {
-    final StartMarkAction existingMark = ourCurrentMarks.get(project);
+    final StartMarkAction existingMark = project.getUserData(START_MARK_ACTION_KEY);
     if (existingMark != null) {
       throw new AlreadyStartedException(existingMark.myCommandName,
                                         existingMark.myDocument,
@@ -73,17 +77,18 @@ public class StartMarkAction extends BasicUndoableAction {
     }
     final StartMarkAction markAction = new StartMarkAction(editor, commandName);
     UndoManager.getInstance(project).undoableActionPerformed(markAction);
-    ourCurrentMarks.put(project, markAction);
+    project.putUserData(START_MARK_ACTION_KEY, markAction);
     return markAction;
   }
 
   public static StartMarkAction canStart(Project project) {
-    return ourCurrentMarks.get(project);
+    return project.getUserData(START_MARK_ACTION_KEY);
   }
 
   static void markFinished(Project project) {
-    final StartMarkAction existingMark = ourCurrentMarks.remove(project);
+    StartMarkAction existingMark = project.getUserData(START_MARK_ACTION_KEY);
     if (existingMark != null) {
+      project.putUserData(START_MARK_ACTION_KEY, null);
       existingMark.myDocument = null;
     }
   }
@@ -95,7 +100,7 @@ public class StartMarkAction extends BasicUndoableAction {
     public AlreadyStartedException(String commandName,
                                    Document document,
                                    DocumentReference[] documentRefs) {
-      super("Unable to start inplace refactoring:\n"+ commandName + " is not finished yet.");
+      super("Unable to start inplace refactoring:\n" + IdeBundle.message("dialog.message.command.not.finished.yet", commandName));
       myAffectedDocuments = documentRefs;
       myDocument = document;
     }

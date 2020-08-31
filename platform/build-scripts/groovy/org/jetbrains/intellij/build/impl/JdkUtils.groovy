@@ -2,6 +2,7 @@
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.SystemProperties
 import groovy.transform.CompileStatic
@@ -11,9 +12,8 @@ import org.jetbrains.jps.model.java.JdkVersionDetector
 import org.jetbrains.jps.model.java.JpsJavaExtensionService
 import org.jetbrains.jps.model.library.JpsOrderRootType
 
-/**
- * @author nik
- */
+import static com.intellij.util.io.URLUtil.*
+
 @CompileStatic
 class JdkUtils {
   static void defineJdk(JpsGlobal global, String jdkName, String jdkHomePath, BuildMessages messages) {
@@ -25,14 +25,8 @@ class JdkUtils {
     messages.info("'$jdkName' Java SDK set to $jdkHomePath")
   }
 
-  static String computeJdkHome(BuildMessages messages, String name, String propertyName, String defaultDir, String envVarName) {
+  static String computeJdkHome(BuildMessages messages, String name, String defaultDir, String envVarName) {
     String jdkDir
-    if (propertyName != null) {
-      jdkDir = System.getProperty(propertyName)
-      if (jdkDir != null) {
-        return jdkDir
-      }
-    }
     if (defaultDir != null) {
       jdkDir = SystemInfo.isMac ? "$defaultDir/Contents/Home" : defaultDir
       if (new File(jdkDir).exists()) {
@@ -42,7 +36,7 @@ class JdkUtils {
         jdkDir = null
       }
     }
-    messages.info("$name: property=$propertyName, dir=$defaultDir, env=$envVarName")
+    messages.info("$name: dir=$defaultDir, env=$envVarName")
     if (envVarName != null) {
       jdkDir = System.getenv(envVarName)
     }
@@ -66,13 +60,22 @@ class JdkUtils {
     return javaHome
   }
 
+  /**
+   * Code is copied from com.intellij.openapi.projectRoots.impl.JavaSdkImpl#findClasses(java.io.File, boolean)
+   */
   static List<String> readModulesFromReleaseFile(File jbrBaseDir) {
     File releaseFile = new File(jbrBaseDir, "release")
+    if (!releaseFile.exists()) return Collections.<String>emptyList()
     new FileInputStream(releaseFile).withReader { stream ->
       Properties p = new Properties()
       p.load(stream)
-      String modules = p.getProperty("MODULES")
-      return StringUtil.split(StringUtil.unquoteString(modules), " ")
+      String jbrBaseUrl = JRT_PROTOCOL + SCHEME_SEPARATOR +
+                          FileUtil.toSystemIndependentName(jbrBaseDir.absolutePath) +
+                          JAR_SEPARATOR
+      def modules = p.getProperty("MODULES")
+      return modules == null ? Collections.<String>emptyList() : StringUtil
+        .split(StringUtil.unquoteString(modules), " ")
+        .collect { jbrBaseUrl + it }
     }
   }
 }

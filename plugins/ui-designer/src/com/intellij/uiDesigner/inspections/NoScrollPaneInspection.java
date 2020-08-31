@@ -40,18 +40,13 @@ public class NoScrollPaneInspection extends BaseFormInspection {
     super("NoScrollPane");
   }
 
-  @NotNull
-  @Override public String getDisplayName() {
-    return UIDesignerBundle.message("inspection.no.scroll.pane");
-  }
-
   @Override
   protected void checkComponentProperties(Module module, @NotNull IComponent component, FormErrorCollector collector) {
     if (FormInspectionUtil.isComponentClass(module, component, Scrollable.class) &&
         !FormInspectionUtil.isComponentClass(module, component, JTextField.class) &&
         !FormInspectionUtil.isComponentClass(module, component.getParentContainer(), JScrollPane.class)) {
       collector.addError(getID(), component, null, UIDesignerBundle.message("inspection.no.scroll.pane"),
-                         (EditorQuickFixProvider)MyQuickFix::new);
+                         MyQuickFix::new);
 
     }
   }

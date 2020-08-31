@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build;
 
 import com.intellij.build.events.*;
@@ -54,6 +40,7 @@ import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -96,23 +83,22 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
     myBuildsList.setModel(new DefaultListModel<>());
     myBuildsList.setFixedCellHeight(UIUtil.LIST_FIXED_CELL_HEIGHT * 2);
     myBuildsList.installCellRenderer(obj -> {
-      AbstractViewManager.BuildInfo buildInfo = (AbstractViewManager.BuildInfo)obj;
       JPanel panel = new JPanel(new BorderLayout());
       SimpleColoredComponent mainComponent = new SimpleColoredComponent();
-      mainComponent.setIcon(buildInfo.getIcon());
-      mainComponent.append(buildInfo.getTitle() + ": ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-      mainComponent.append(buildInfo.message, SimpleTextAttributes.REGULAR_ATTRIBUTES);
+      mainComponent.setIcon(obj.getIcon());
+      mainComponent.append(obj.getTitle() + ": ", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
+      mainComponent.append(obj.message, SimpleTextAttributes.REGULAR_ATTRIBUTES);
       panel.add(mainComponent, BorderLayout.NORTH);
-      if (buildInfo.statusMessage != null) {
+      if (obj.statusMessage != null) {
         SimpleColoredComponent statusComponent = new SimpleColoredComponent();
         statusComponent.setIcon(EmptyIcon.ICON_16);
-        statusComponent.append(buildInfo.statusMessage, SimpleTextAttributes.GRAY_ATTRIBUTES);
+        statusComponent.append(obj.statusMessage, SimpleTextAttributes.REGULAR_ATTRIBUTES);
         panel.add(statusComponent, BorderLayout.SOUTH);
       }
       return panel;
     });
-    myViewMap = ContainerUtil.newConcurrentMap();
-    myBuildsMap = ContainerUtil.newConcurrentMap();
+    myViewMap = new ConcurrentHashMap<>();
+    myBuildsMap = new ConcurrentHashMap<>();
     myProgressWatcher = new ProgressWatcher();
   }
 
@@ -125,11 +111,11 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
     return myContent;
   }
 
-  public Map<AbstractViewManager.BuildInfo, BuildView> getBuildsMap() {
+  public Map<BuildDescriptor, BuildView> getBuildsMap() {
     return Collections.unmodifiableMap(myViewMap);
   }
 
-  public boolean shouldConsume(@NotNull Object buildId, @NotNull BuildEvent event) {
+  public boolean shouldConsume(@NotNull Object buildId) {
     return myBuildsMap.containsKey(buildId);
   }
 
@@ -142,8 +128,7 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
       if (isInitializeStarted.get()) {
         clearOldBuilds(runOnEdt, startBuildEvent);
       }
-      buildInfo = new AbstractViewManager.BuildInfo(
-        event.getId(), startBuildEvent.getBuildTitle(), startBuildEvent.getWorkingDir(), event.getEventTime());
+      buildInfo = new AbstractViewManager.BuildInfo(((StartBuildEvent)event).getBuildDescriptor());
       myBuildsMap.put(buildId, buildInfo);
     }
     else {
@@ -156,15 +141,14 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
 
     runOnEdt.add(() -> {
       if (event instanceof StartBuildEvent) {
-        StartBuildEvent startBuildEvent = (StartBuildEvent)event;
-        buildInfo.message = startBuildEvent.getMessage();
+        buildInfo.message = event.getMessage();
 
         DefaultListModel<AbstractViewManager.BuildInfo> listModel =
           (DefaultListModel<AbstractViewManager.BuildInfo>)myBuildsList.getModel();
         listModel.addElement(buildInfo);
 
         RunContentDescriptor contentDescriptor;
-        Supplier<RunContentDescriptor> contentDescriptorSupplier = startBuildEvent.getContentDescriptorSupplier();
+        Supplier<RunContentDescriptor> contentDescriptorSupplier = buildInfo.getContentDescriptorSupplier();
         contentDescriptor = contentDescriptorSupplier != null ? contentDescriptorSupplier.get() : null;
         final Runnable activationCallback;
         if (contentDescriptor != null) {
@@ -180,21 +164,15 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
         }
 
         BuildView view = myViewMap.computeIfAbsent(buildInfo, info -> {
-          final DefaultBuildDescriptor buildDescriptor = new DefaultBuildDescriptor(
-            buildInfo.getId(), buildInfo.getTitle(), buildInfo.getWorkingDir(), buildInfo.getStartTime());
-          buildDescriptor.setActivateToolWindowWhenAdded(buildInfo.isActivateToolWindowWhenAdded());
-          buildDescriptor.setActivateToolWindowWhenFailed(buildInfo.isActivateToolWindowWhenFailed());
-          buildDescriptor.setAutoFocusContent(buildInfo.isAutoFocusContent());
-
           String selectionStateKey = "build.toolwindow." + myViewManager.getViewName() + ".selection.state";
-          final BuildView buildView = new BuildView(myProject, buildDescriptor, selectionStateKey, myViewManager);
+          BuildView buildView = new BuildView(myProject, buildInfo, selectionStateKey, myViewManager);
           Disposer.register(this, buildView);
           if (contentDescriptor != null) {
             Disposer.register(buildView, contentDescriptor);
           }
           return buildView;
         });
-        view.onEvent(buildId, startBuildEvent);
+        view.onEvent(buildId, event);
 
         myContent.setPreferredFocusedComponent(view::getPreferredFocusableComponent);
 
@@ -229,7 +207,7 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
         }
         myViewManager.onBuildStart(buildInfo);
         myProgressWatcher.addBuild(buildInfo);
-        ((BuildContentManagerImpl)myBuildContentManager).startBuildNotified(buildInfo, buildInfo.content, startBuildEvent.getProcessHandler());
+        ((BuildContentManagerImpl)myBuildContentManager).startBuildNotified(buildInfo, buildInfo.content, buildInfo.getProcessHandler());
       }
       else {
         if (!isFirstErrorShown.get() &&
@@ -243,6 +221,10 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
               .ifPresent(myBuildsList::setSelectedIndex);
           }
         }
+        BuildView view = myViewMap.get(buildInfo);
+        if (view != null) {
+          view.onEvent(buildId, event);
+        }
         if (event instanceof FinishBuildEvent) {
           buildInfo.endTime = event.getEventTime();
           buildInfo.message = event.getMessage();
@@ -253,11 +235,6 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
         }
         else {
           buildInfo.statusMessage = event.getMessage();
-        }
-
-        BuildView view = myViewMap.get(buildInfo);
-        if (view != null) {
-          view.onEvent(buildId, event);
         }
 
       }
@@ -298,7 +275,12 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
           consoleComponent.add(tb.getComponent(), BorderLayout.WEST);
 
           myContent = new ContentImpl(consoleComponent, myViewManager.getViewName(), true);
-          Disposer.register(myContent, this);
+          Disposer.register(myContent, new Disposable() {
+            @Override
+            public void dispose() {
+              Disposer.dispose(MultipleBuildsView.this);
+            }
+          });
           Disposer.register(myContent, new Disposable() {
             @Override
             public void dispose() {
@@ -337,7 +319,7 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
     List<AbstractViewManager.BuildInfo> sameBuildsToClear = new SmartList<>();
     for (int i = 0; i < listModel.getSize(); i++) {
       AbstractViewManager.BuildInfo build = listModel.getElementAt(i);
-      boolean sameBuild = build.getWorkingDir().equals(startBuildEvent.getWorkingDir());
+      boolean sameBuild = build.getWorkingDir().equals(startBuildEvent.getBuildDescriptor().getWorkingDir());
       if (!build.isRunning() && sameBuild) {
         sameBuildsToClear.add(build);
       }
@@ -372,6 +354,13 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
     }
   }
 
+  @ApiStatus.Internal
+  public BuildView getBuildView(Object buildId) {
+    AbstractViewManager.BuildInfo buildInfo = myBuildsMap.get(buildId);
+    if (buildInfo == null) return null;
+    return myViewMap.get(buildInfo);
+  }
+
   private class MultipleBuildsPanel extends JPanel implements OccurenceNavigator {
     MultipleBuildsPanel() {super(new BorderLayout());}
 
@@ -380,8 +369,7 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
       return getOccurenceNavigator(true) != null;
     }
 
-    @Nullable
-    private Pair<Integer, Supplier<OccurenceInfo>> getOccurenceNavigator(boolean next) {
+    private @Nullable Pair<Integer, Supplier<OccurenceInfo>> getOccurenceNavigator(boolean next) {
       if (myBuildsList.getItemsCount() == 0) return null;
       int index = Math.max(myBuildsList.getSelectedIndex(), 0);
 
@@ -447,15 +435,13 @@ public class MultipleBuildsView implements BuildProgressListener, Disposable {
       return null;
     }
 
-    @NotNull
     @Override
-    public String getNextOccurenceActionName() {
+    public @NotNull String getNextOccurenceActionName() {
       return IdeBundle.message("action.next.problem");
     }
 
-    @NotNull
     @Override
-    public String getPreviousOccurenceActionName() {
+    public @NotNull String getPreviousOccurenceActionName() {
       return IdeBundle.message("action.previous.problem");
     }
   }

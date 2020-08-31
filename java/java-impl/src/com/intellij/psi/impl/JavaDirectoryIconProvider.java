@@ -15,10 +15,11 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.jrt.JrtFileSystem;
 import com.intellij.openapi.vfs.newvfs.ArchiveFileSystem;
-import com.intellij.psi.JavaDirectoryService;
 import com.intellij.psi.PsiDirectory;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.impl.file.PsiDirectoryFactory;
 import com.intellij.ui.IconManager;
+import com.intellij.ui.IconWithToolTip;
 import com.intellij.util.PlatformIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,8 +53,8 @@ final class JavaDirectoryIconProvider extends IconProvider implements DumbAware 
       else if (JrtFileSystem.isModuleRoot(vFile)) {
         symbolIcon = AllIcons.Nodes.Module;
       }
-      else if (JavaDirectoryService.getInstance().getPackage(psiDirectory) != null) {
-        symbolIcon = PlatformIcons.PACKAGE_ICON;
+      else if (isValidPackage(psiDirectory)) {
+        symbolIcon = IconWithToolTip.tooltipOnlyIfComposite(PlatformIcons.PACKAGE_ICON);
       }
       else if (!Registry.is("ide.hide.excluded.files") && ProjectRootManager.getInstance(project).getFileIndex().isExcluded(vFile)) {
         symbolIcon = AllIcons.Modules.ExcludeRoot;
@@ -66,5 +67,14 @@ final class JavaDirectoryIconProvider extends IconProvider implements DumbAware 
     }
 
     return null;
+  }
+
+  /**
+   * @return {@code true} if the specified {@code directory} is a package, which name is valid
+   */
+  private static boolean isValidPackage(@NotNull PsiDirectory directory) {
+    Project project = directory.getProject();
+    PsiDirectoryFactory factory = project.isDisposed() ? null : PsiDirectoryFactory.getInstance(project);
+    return factory != null && factory.isPackage(directory) && factory.isValidPackageName(factory.getQualifiedName(directory, false));
   }
 }

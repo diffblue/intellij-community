@@ -18,6 +18,7 @@ package org.intellij.plugins.intelliLang.inject;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageUtil;
 import com.intellij.util.ArrayUtilRt;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -82,8 +83,7 @@ public final class InjectedLanguage {
     }
   }
 
-  @NotNull
-  public static String[] getAvailableLanguageIDs() {
+  public static String @NotNull [] getAvailableLanguageIDs() {
     synchronized (InjectedLanguage.class) {
       if (ourLanguageCache == null || ourLanguageCount != Language.getRegisteredLanguages().size()) {
         initLanguageCache();
@@ -93,8 +93,7 @@ public final class InjectedLanguage {
     }
   }
 
-  @NotNull
-  public static Language[] getAvailableLanguages() {
+  public static Language @NotNull [] getAvailableLanguages() {
     synchronized (InjectedLanguage.class) {
       if (ourLanguageCache == null || ourLanguageCount != Language.getRegisteredLanguages().size()) {
         initLanguageCache();
@@ -105,7 +104,7 @@ public final class InjectedLanguage {
   }
 
   private static void initLanguageCache() {
-    ourLanguageCache = new HashMap<>();
+    ourLanguageCache = ContainerUtil.createWeakValueMap();
 
     Collection<Language> registeredLanguages;
     do {

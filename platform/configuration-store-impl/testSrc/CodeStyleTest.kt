@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
+import com.intellij.application.options.CodeStyle
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.psi.codeStyle.CodeStyleSettings
 import com.intellij.psi.codeStyle.CodeStyleSettingsProvider
@@ -19,7 +20,7 @@ internal class CodeStyleTest {
   companion object {
     @JvmField
     @ClassRule
-    val projectRule = ProjectRule()
+    val projectRule = ProjectRule(runPostStartUpActivities = false)
   }
 
   @JvmField
@@ -28,7 +29,7 @@ internal class CodeStyleTest {
 
   @Test
   fun `do not remove unknown`() {
-    val settings = CodeStyleSettings()
+    val settings = CodeStyle.createTestSettings()
     val loaded = """
     <code_scheme name="testSchemeName" version="${CodeStyleSettings.CURR_VERSION}">
       <UnknownDoNotRemoveMe>
@@ -122,7 +123,7 @@ internal class CodeStyleTest {
     }
 
     ExtensionTestUtil.maskExtensions(CodeStyleSettingsProvider.EXTENSION_POINT_NAME, listOf(newProvider), disposableRule.disposable)
-    val settings = CodeStyleSettings()
+    val settings = CodeStyle.createTestSettings()
     fun text(param: String): String {
       return """
       <code_scheme name="testSchemeName" version="${CodeStyleSettings.CURR_VERSION}">
@@ -184,7 +185,7 @@ internal class CodeStyleTest {
   }
 
   @Test fun `reset deprecations`() {
-    val settings = CodeStyleSettings()
+    val settings = CodeStyle.createTestSettings()
     val initial = """
     <code_scheme name="testSchemeName" version="${CodeStyleSettings.CURR_VERSION}">
       <option name="RIGHT_MARGIN" value="64" />

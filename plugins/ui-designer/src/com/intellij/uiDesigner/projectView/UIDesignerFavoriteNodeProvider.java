@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.uiDesigner.projectView;
 
@@ -8,7 +8,6 @@ import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.project.Project;
@@ -18,6 +17,7 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.uiDesigner.GuiFormFileType;
 import com.intellij.uiDesigner.compiler.Utils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -31,20 +31,18 @@ import java.util.*;
 public class UIDesignerFavoriteNodeProvider extends FavoriteNodeProvider {
   @Override
   @Nullable
-  public Collection<AbstractTreeNode> getFavoriteNodes(DataContext context, @NotNull final ViewSettings viewSettings) {
+  public Collection<AbstractTreeNode<?>> getFavoriteNodes(DataContext context, @NotNull final ViewSettings viewSettings) {
     Project project = CommonDataKeys.PROJECT.getData(context);
     if (project == null) return null;
     Form[] forms = Form.DATA_KEY.getData(context);
     if (forms != null) {
-      Collection<AbstractTreeNode> result = new ArrayList<>();
+      Collection<AbstractTreeNode<?>> result = new ArrayList<>();
       Set<PsiClass> bindClasses = new HashSet<>();
       for (Form form: forms) {
         final PsiClass classToBind = form.getClassToBind();
-        if (classToBind != null) {
-          if (bindClasses.contains(classToBind)) continue;
-          bindClasses.add(classToBind);
-          result.add(FormNode.constructFormNode(classToBind, project, viewSettings));
-        }
+        if (bindClasses.contains(classToBind)) continue;
+        bindClasses.add(classToBind);
+        result.add(FormNode.constructFormNode(classToBind, project, viewSettings));
       }
       if (!result.isEmpty()) {
         return result;
@@ -54,7 +52,7 @@ public class UIDesignerFavoriteNodeProvider extends FavoriteNodeProvider {
     VirtualFile vFile = CommonDataKeys.VIRTUAL_FILE.getData(context);
     if (vFile != null) {
       final FileType fileType = vFile.getFileType();
-      if (fileType.equals(StdFileTypes.GUI_DESIGNER_FORM)) {
+      if (fileType.equals(GuiFormFileType.INSTANCE)) {
         final PsiFile formFile = PsiManager.getInstance(project).findFile(vFile);
         if (formFile == null) return null;
         String text = formFile.getText();
@@ -69,7 +67,7 @@ public class UIDesignerFavoriteNodeProvider extends FavoriteNodeProvider {
         final PsiClass classToBind = JavaPsiFacade.getInstance(project).findClass(className, GlobalSearchScope.allScope(project));
         if (classToBind != null) {
           Form form = new Form(classToBind);
-          final AbstractTreeNode node = new FormNode(project, form, viewSettings);
+          final AbstractTreeNode<?> node = new FormNode(project, form, viewSettings);
           return Collections.singletonList(node);
         }
       }

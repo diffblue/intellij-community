@@ -17,22 +17,20 @@
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeHighlighting.TextEditorHighlightingPass;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.codeInspection.ex.GlobalInspectionContextBase;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.util.ProgressWrapper;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiFile;
-import com.intellij.util.IncorrectOperationException;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * @author cdr
- */
 public abstract class ProgressableTextEditorHighlightingPass extends TextEditorHighlightingPass {
   private volatile boolean myFinished;
   private volatile long myProgressLimit;
@@ -46,7 +44,7 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
   HighlightingSession myHighlightingSession;
 
   protected ProgressableTextEditorHighlightingPass(@NotNull Project project,
-                                                   @Nullable final Document document,
+                                                   @NotNull final Document document,
                                                    @NotNull String presentableName,
                                                    @Nullable PsiFile file,
                                                    @Nullable Editor editor,
@@ -72,13 +70,11 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
 
   @Override
   public final void doCollectInformation(@NotNull final ProgressIndicator progress) {
-    if (!(progress instanceof DaemonProgressIndicator)) {
-      throw new IncorrectOperationException("Highlighting must be run under DaemonProgressIndicator, but got: " + progress);
-    }
+    GlobalInspectionContextBase.assertUnderDaemonProgress();
     myFinished = false;
     if (myFile != null) {
-      myHighlightingSession =
-        HighlightingSessionImpl.getOrCreateHighlightingSession(myFile, (DaemonProgressIndicator)progress, getColorsScheme());
+      DaemonProgressIndicator daemonProgressIndicator = (DaemonProgressIndicator)ProgressWrapper.unwrapAll(progress);
+      myHighlightingSession = HighlightingSessionImpl.getOrCreateHighlightingSession(myFile, daemonProgressIndicator, getColorsScheme());
     }
     try {
       collectInformationWithProgress(progress);
@@ -126,6 +122,7 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
   }
 
   @Nullable("null means do not show progress")
+  @Nls
   protected String getPresentableName() {
     return myPresentableName;
   }
@@ -151,16 +148,8 @@ public abstract class ProgressableTextEditorHighlightingPass extends TextEditorH
     }
   }
 
-  void waitForHighlightInfosApplied() {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    HighlightingSessionImpl session = (HighlightingSessionImpl)myHighlightingSession;
-    if (session != null) {
-      session.waitForHighlightInfosApplied();
-    }
-  }
-
   static class EmptyPass extends TextEditorHighlightingPass {
-    EmptyPass(final Project project, @Nullable final Document document) {
+    EmptyPass(@NotNull Project project, @NotNull Document document) {
       super(project, document, false);
     }
 

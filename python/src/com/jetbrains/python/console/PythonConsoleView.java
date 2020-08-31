@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.console;
 
+import com.google.common.collect.Maps;
 import com.intellij.execution.console.LanguageConsoleImpl;
 import com.intellij.execution.filters.OpenFileHyperlinkInfo;
 import com.intellij.execution.impl.ConsoleViewUtil;
@@ -36,15 +37,18 @@ import com.intellij.ui.JBSplitter;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.xdebugger.impl.frame.XStandaloneVariablesView;
 import com.intellij.xdebugger.impl.ui.tree.nodes.XDebuggerTreeNode;
+import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.PythonLanguage;
 import com.jetbrains.python.console.completion.PythonConsoleAutopopupBlockingHandler;
 import com.jetbrains.python.console.pydev.ConsoleCommunication;
 import com.jetbrains.python.console.pydev.ConsoleCommunicationListener;
+import com.jetbrains.python.debugger.PyDebugValueDescriptor;
 import com.jetbrains.python.debugger.PyDebuggerEditorsProvider;
 import com.jetbrains.python.debugger.PyStackFrame;
 import com.jetbrains.python.debugger.PyStackFrameInfo;
 import com.jetbrains.python.highlighting.PyHighlighter;
 import com.jetbrains.python.psi.LanguageLevel;
+import com.jetbrains.python.psi.impl.PythonLanguageLevelPusher;
 import com.jetbrains.python.sdk.PythonSdkType;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import com.jetbrains.python.testing.PyTestsSharedKt;
@@ -54,12 +58,10 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-/**
- * @author traff
- */
 public class PythonConsoleView extends LanguageConsoleImpl implements ObservableConsoleView, PyCodeExecutor {
   static Key<Boolean> CONSOLE_KEY = new Key<>("PYDEV_CONSOLE_KEY");
   private static final Logger LOG = Logger.getInstance(PythonConsoleView.class);
@@ -77,6 +79,8 @@ public class PythonConsoleView extends LanguageConsoleImpl implements Observable
   private boolean isShowVars;
   @Nullable private String mySdkHomePath;
 
+  private final Map<String, Map<String, PyDebugValueDescriptor>> myDescriptorsCache = Maps.newConcurrentMap();
+
   /**
    * @param testMode this console will be used to display test output and should support TC messages
    */
@@ -85,7 +89,7 @@ public class PythonConsoleView extends LanguageConsoleImpl implements Observable
     myTestMode = testMode;
     isShowVars = PyConsoleOptions.getInstance(project).isShowVariableByDefault();
     VirtualFile virtualFile = getVirtualFile();
-    virtualFile.putUserData(LanguageLevel.KEY, PythonSdkType.getLanguageLevelForSdk(sdk));
+    PythonLanguageLevelPusher.specifyFileLanguageLevel(virtualFile, PythonSdkType.getLanguageLevelForSdk(sdk));
     virtualFile.putUserData(CONSOLE_KEY, true);
     // Mark editor as console one, to prevent autopopup completion
     getConsoleEditor().putUserData(PythonConsoleAutopopupBlockingHandler.REPL_KEY, new Object());
@@ -194,7 +198,7 @@ public class PythonConsoleView extends LanguageConsoleImpl implements Observable
     myInitialized.doWhenDone(
       () -> {
         if (code != null) {
-          ProgressManager.getInstance().run(new Task.Backgroundable(null, "Executing Code in Console...", true) {
+          ProgressManager.getInstance().run(new Task.Backgroundable(null, PyBundle.message("console.executing.code.in.console"), true) {
             @Override
             public void run(@NotNull final ProgressIndicator indicator) {
               while (!myExecuteActionHandler.isEnabled() || !myExecuteActionHandler.canExecuteNow()) {
@@ -364,6 +368,7 @@ public class PythonConsoleView extends LanguageConsoleImpl implements Observable
 
   public void showVariables(PydevConsoleCommunication consoleCommunication) {
     PyStackFrame stackFrame = new PyStackFrame(getProject(), consoleCommunication, new PyStackFrameInfo("", "", "", null), null);
+    stackFrame.restoreChildrenDescriptors(myDescriptorsCache);
     final XStandaloneVariablesView view = new XStandaloneVariablesView(getProject(), new PyDebuggerEditorsProvider(), stackFrame);
     consoleCommunication.addCommunicationListener(new ConsoleCommunicationListener() {
       @Override

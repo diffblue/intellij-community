@@ -1,28 +1,25 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.rebase;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.intellij.diff.DiffEditorTitleCustomizer;
 import com.intellij.dvcs.DvcsUtil;
 import com.intellij.dvcs.repo.Repository;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
-import com.intellij.notification.NotificationListener;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.progress.ProgressIndicator;
-import com.intellij.openapi.progress.ProgressManager;
-import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.progress.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.VcsNotifier;
-import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangeListManager;
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager;
 import com.intellij.openapi.vcs.history.VcsRevisionNumber;
@@ -30,7 +27,7 @@ import com.intellij.openapi.vcs.merge.MergeDialogCustomizer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ThreeState;
-import com.intellij.util.containers.MultiMap;
+import com.intellij.util.progress.StepsProgressIndicator;
 import com.intellij.vcs.log.Hash;
 import com.intellij.vcs.log.TimedVcsCommit;
 import com.intellij.vcs.log.impl.HashImpl;
@@ -39,35 +36,35 @@ import git4idea.DialogManager;
 import git4idea.GitProtectedBranchesKt;
 import git4idea.GitRevisionNumber;
 import git4idea.branch.GitRebaseParams;
-import git4idea.changes.GitChangeUtils;
 import git4idea.commands.*;
+import git4idea.config.GitSaveChangesPolicy;
 import git4idea.history.GitHistoryUtils;
+import git4idea.i18n.GitBundle;
 import git4idea.merge.GitConflictResolver;
+import git4idea.merge.GitDefaultMergeDialogCustomizer;
 import git4idea.merge.GitDefaultMergeDialogCustomizerKt;
 import git4idea.merge.GitMergeProvider;
-import git4idea.rebase.GitSuccessfulRebase.SuccessType;
 import git4idea.repo.GitRepository;
 import git4idea.repo.GitRepositoryManager;
 import git4idea.stash.GitChangesSaver;
 import git4idea.util.GitFreezingProcess;
 import git4idea.util.GitUntrackedFilesHelper;
-import org.jetbrains.annotations.CalledInBackground;
-import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import kotlin.Pair;
+import org.jetbrains.annotations.*;
 
-import javax.swing.event.HyperlinkEvent;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.intellij.dvcs.DvcsUtil.getShortRepositoryName;
 import static com.intellij.openapi.ui.Messages.getWarningIcon;
-import static com.intellij.openapi.util.text.StringUtil.capitalize;
 import static com.intellij.openapi.vcs.VcsNotifier.IMPORTANT_ERROR_NOTIFICATION;
-import static com.intellij.util.ObjectUtils.*;
+import static com.intellij.util.ObjectUtils.notNull;
+import static com.intellij.util.ObjectUtils.tryCast;
 import static com.intellij.util.containers.ContainerUtil.*;
 import static git4idea.GitUtil.*;
+import static git4idea.merge.GitDefaultMergeDialogCustomizerKt.getTitleWithCommitDetailsCustomizer;
+import static git4idea.merge.GitDefaultMergeDialogCustomizerKt.getTitleWithCommitsRangeDetailsCustomizer;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singleton;
 
@@ -75,21 +72,18 @@ public class GitRebaseProcess {
 
   private static final Logger LOG = Logger.getInstance(GitRebaseProcess.class);
 
-  private final NotificationAction ABORT_ACTION = NotificationAction.create("Abort", (event, notification) -> {
-    abort();
-    notification.expire();
-  });
-
-  private final NotificationAction CONTINUE_ACTION = NotificationAction.create("Continue", (event, notification) -> {
-    retry(GitRebaseUtils.CONTINUE_PROGRESS_TITLE);
-    notification.expire();
-  });
-
-  private final NotificationAction RETRY_ACTION = NotificationAction.create("Retry", (event, notification) -> {
-    retry("Retry Rebase Process...");
-    notification.expire();
-  });
-
+  private final NotificationAction ABORT_ACTION = NotificationAction.createSimpleExpiring(
+    GitBundle.message("rebase.notification.action.abort.text"),
+    () -> abort()
+  );
+  private final NotificationAction CONTINUE_ACTION = NotificationAction.createSimpleExpiring(
+    GitBundle.message("rebase.notification.action.continue.text"),
+    () -> retry(GitBundle.getString("rebase.progress.indicator.continue.title"))
+  );
+  private final NotificationAction RETRY_ACTION = NotificationAction.createSimpleExpiring(
+    GitBundle.message("rebase.notification.action.retry.text"),
+    () -> retry(GitBundle.getString("rebase.progress.indicator.retry.title"))
+  );
   private final NotificationAction VIEW_STASH_ACTION;
 
   @NotNull private final Project myProject;
@@ -117,13 +111,18 @@ public class GitRebaseProcess {
     myProgressManager = ProgressManager.getInstance();
     myDirtyScopeManager = VcsDirtyScopeManager.getInstance(myProject);
 
-    VIEW_STASH_ACTION = NotificationAction.createSimple("View " + capitalize(mySaver.getSaverName()) + "...",
-                                                        () -> mySaver.showSavedChanges());
+    VIEW_STASH_ACTION = NotificationAction.createSimple(
+      mySaver.getSaveMethod().selectBundleMessage(
+        GitBundle.getString("rebase.notification.action.view.stash.text"),
+        GitBundle.getString("rebase.notification.action.view.shelf.text")
+      ),
+      () -> mySaver.showSavedChanges()
+    );
   }
 
   public void rebase() {
     if (checkForRebasingPublishedCommits()) {
-      new GitFreezingProcess(myProject, "rebase", this::doRebase).execute();
+      new GitFreezingProcess(myProject, GitBundle.getString("rebase.git.operation.name"), this::doRebase).execute();
     }
   }
 
@@ -147,15 +146,22 @@ public class GitRebaseProcess {
       if (!saveDirtyRootsInitially(repositoriesToRebase)) return;
 
       GitRepository latestRepository = null;
+      ProgressIndicator showingIndicator = myProgressManager.getProgressIndicator();
+      StepsProgressIndicator indicator = new StepsProgressIndicator(
+        showingIndicator != null ? showingIndicator : new EmptyProgressIndicator(),
+        repositoriesToRebase.size()
+      );
+      indicator.setIndeterminate(false);
       for (GitRepository repository : repositoriesToRebase) {
         GitRebaseResumeMode customMode = null;
         if (repository == myRebaseSpec.getOngoingRebase()) {
           customMode = myCustomMode == null ? GitRebaseResumeMode.CONTINUE : myCustomMode;
         }
 
-        Collection<Change> changes = collectFutureChanges(repository);
+        Hash startHash = getHead(repository);
 
-        GitRebaseStatus rebaseStatus = rebaseSingleRoot(repository, customMode, getSuccessfulRepositories(statuses));
+        GitRebaseStatus rebaseStatus = rebaseSingleRoot(repository, customMode, getSuccessfulRepositories(statuses), indicator);
+        indicator.nextStep();
         repository.update(); // make the repo state info actual ASAP
         if (customMode == GitRebaseResumeMode.CONTINUE) {
           myDirtyScopeManager.dirDirtyRecursively(repository.getRoot());
@@ -164,7 +170,7 @@ public class GitRebaseProcess {
         latestRepository = repository;
         statuses.put(repository, rebaseStatus);
         if (shouldBeRefreshed(rebaseStatus)) {
-          refreshVfs(repository.getRoot(), changes);
+          refreshChangedVfs(repository, startHash);
         }
         if (rebaseStatus.getType() != GitRebaseStatus.Type.SUCCESS) {
           break;
@@ -177,7 +183,7 @@ public class GitRebaseProcess {
         mySaver.load();
       }
       if (latestStatus == GitRebaseStatus.Type.SUCCESS) {
-        notifySuccess(getSuccessfulRepositories(statuses), getSkippedCommits(statuses));
+        notifySuccess();
       }
 
       saveUpdatedSpec(statuses);
@@ -189,28 +195,6 @@ public class GitRebaseProcess {
       myRepositoryManager.setOngoingRebaseSpec(null);
       ExceptionUtil.rethrowUnchecked(e);
     }
-  }
-
-  @Nullable
-  private Collection<Change> collectFutureChanges(@NotNull GitRepository repository) {
-    GitRebaseParams params = myRebaseSpec.getParams();
-    if (params == null) return null;
-
-    Collection<Change> changes = new ArrayList<>();
-    String branch = params.getBranch();
-    if (branch != null) {
-      Collection<Change> changesFromCheckout = GitChangeUtils.getDiff(repository, HEAD, branch, false);
-      if (changesFromCheckout == null) return null;
-      changes.addAll(changesFromCheckout);
-    }
-
-    String rev1 = coalesce(params.getNewBase(), branch, HEAD);
-    String rev2 = params.getUpstream();
-    Collection<Change> changesFromRebase = GitChangeUtils.getDiff(repository, rev1, rev2, false);
-    if (changesFromRebase == null) return null;
-
-    changes.addAll(changesFromRebase);
-    return changes;
   }
 
   private void saveUpdatedSpec(@NotNull Map<GitRepository, GitRebaseStatus> statuses) {
@@ -226,19 +210,31 @@ public class GitRebaseProcess {
   @NotNull
   private GitRebaseStatus rebaseSingleRoot(@NotNull GitRepository repository,
                                            @Nullable GitRebaseResumeMode customMode,
-                                           @NotNull Map<GitRepository, GitSuccessfulRebase> alreadyRebased) {
+                                           @NotNull Map<GitRepository, GitSuccessfulRebase> alreadyRebased,
+                                           @NotNull ProgressIndicator indicator) {
     VirtualFile root = repository.getRoot();
     String repoName = getShortRepositoryName(repository);
     LOG.info("Rebasing root " + repoName + ", mode: " + notNull(customMode, "standard"));
 
-    Collection<GitRebaseUtils.CommitInfo> skippedCommits = new ArrayList<>();
-    MultiMap<GitRepository, GitRebaseUtils.CommitInfo> allSkippedCommits = getSkippedCommits(alreadyRebased);
     boolean retryWhenDirty = false;
+
+    int commitsToRebase = 0;
+    try {
+      GitRebaseParams params = myRebaseSpec.getParams();
+      if (params != null) {
+        String upstream = params.getUpstream();
+        String branch = params.getBranch();
+        commitsToRebase = GitRebaseUtils.getNumberOfCommitsToRebase(repository, upstream, branch);
+      }
+    }
+    catch (VcsException e) {
+      LOG.warn("Couldn't get the number of commits to rebase", e);
+    }
+    GitRebaseProgressListener progressListener = new GitRebaseProgressListener(commitsToRebase, indicator);
 
     while (true) {
       GitRebaseProblemDetector rebaseDetector = new GitRebaseProblemDetector();
       GitUntrackedFilesOverwrittenByOperationDetector untrackedDetector = new GitUntrackedFilesOverwrittenByOperationDetector(root);
-      GitRebaseProgressListener progressListener = new GitRebaseProgressListener();
       GitRebaseCommandResult rebaseCommandResult = callRebase(repository, customMode, rebaseDetector, untrackedDetector, progressListener);
       GitCommandResult result = rebaseCommandResult.getCommandResult();
 
@@ -249,15 +245,15 @@ public class GitRebaseProcess {
       }
       else if (rebaseCommandResult.wasCancelledInCommitMessage()) {
         showStoppedForEditingMessage();
-        return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED, skippedCommits);
+        return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED);
       }
       else if (result.success()) {
         if (rebaseDetector.hasStoppedForEditing()) {
           showStoppedForEditingMessage();
-          return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED, skippedCommits);
+          return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED);
         }
         LOG.debug("Successfully rebased " + repoName);
-        return GitSuccessfulRebase.parseFromOutput(result.getOutput(), skippedCommits);
+        return new GitSuccessfulRebase();
       }
       else if (rebaseDetector.isDirtyTree() && customMode == null && !retryWhenDirty) {
         // if the initial dirty tree check doesn't find all local changes, we are still ready to stash-on-demand,
@@ -269,23 +265,25 @@ public class GitRebaseProcess {
           retryWhenDirty = true; // try same repository again
         }
         else {
-          LOG.warn("Couldn't " + mySaver.getOperationName() + " root " + repository.getRoot() + ": " + saveError);
-          showFatalError(saveError, repository, somethingRebased, alreadyRebased.keySet(), allSkippedCommits);
+          LOG.warn(String.format(
+            "Couldn't %s root %s: %s",
+            mySaver.getSaveMethod() == GitSaveChangesPolicy.SHELVE ? "shelve" : "stash",
+            repository.getRoot(),
+            saveError
+          ));
+          showFatalError(saveError, repository, somethingRebased, alreadyRebased.keySet());
           GitRebaseStatus.Type type = somethingRebased ? GitRebaseStatus.Type.SUSPENDED : GitRebaseStatus.Type.ERROR;
-          return new GitRebaseStatus(type, skippedCommits);
+          return new GitRebaseStatus(type);
         }
       }
       else if (untrackedDetector.wasMessageDetected()) {
         LOG.info("Untracked files detected in " + repoName);
-        showUntrackedFilesError(untrackedDetector.getRelativeFilePaths(), repository, somethingRebased, alreadyRebased.keySet(),
-                                allSkippedCommits);
+        showUntrackedFilesError(untrackedDetector.getRelativeFilePaths(), repository, somethingRebased, alreadyRebased.keySet());
         GitRebaseStatus.Type type = somethingRebased ? GitRebaseStatus.Type.SUSPENDED : GitRebaseStatus.Type.ERROR;
-        return new GitRebaseStatus(type, skippedCommits);
+        return new GitRebaseStatus(type);
       }
       else if (rebaseDetector.isNoChangeError()) {
         LOG.info("'No changes' situation detected in " + repoName);
-        GitRebaseUtils.CommitInfo currentRebaseCommit = GitRebaseUtils.getCurrentRebaseCommit(myProject, root);
-        if (currentRebaseCommit != null) skippedCommits.add(currentRebaseCommit);
         customMode = GitRebaseResumeMode.SKIP;
       }
       else if (rebaseDetector.isMergeConflict()) {
@@ -300,20 +298,20 @@ public class GitRebaseProcess {
           // (2) "manual editing of a file not followed by `git add`
           // => we check if there are any unresolved conflicts, and if not, then it is the case #2 which we are not handling
           LOG.info("Unmerged changes while rebasing root " + repoName + ": " + result.getErrorOutputAsJoinedString());
-          showFatalError(result.getErrorOutputAsHtmlString(), repository, somethingRebased, alreadyRebased.keySet(), allSkippedCommits);
+          showFatalError(result.getErrorOutputAsHtmlString(), repository, somethingRebased, alreadyRebased.keySet());
           GitRebaseStatus.Type type = somethingRebased ? GitRebaseStatus.Type.SUSPENDED : GitRebaseStatus.Type.ERROR;
-          return new GitRebaseStatus(type, skippedCommits);
+          return new GitRebaseStatus(type);
         }
         else {
-          notifyNotAllConflictsResolved(repository, allSkippedCommits);
-          return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED, skippedCommits);
+          notifyNotAllConflictsResolved(repository);
+          return new GitRebaseStatus(GitRebaseStatus.Type.SUSPENDED);
         }
       }
       else {
         LOG.info("Error rebasing root " + repoName + ": " + result.getErrorOutputAsJoinedString());
-        showFatalError(result.getErrorOutputAsHtmlString(), repository, somethingRebased, alreadyRebased.keySet(), allSkippedCommits);
+        showFatalError(result.getErrorOutputAsHtmlString(), repository, somethingRebased, alreadyRebased.keySet());
         GitRebaseStatus.Type type = somethingRebased ? GitRebaseStatus.Type.SUSPENDED : GitRebaseStatus.Type.ERROR;
-        return new GitRebaseStatus(type, skippedCommits);
+        return new GitRebaseStatus(type);
       }
     }
   }
@@ -321,9 +319,9 @@ public class GitRebaseProcess {
   @NotNull
   private GitRebaseCommandResult callRebase(@NotNull GitRepository repository,
                                             @Nullable GitRebaseResumeMode mode,
-                                            @NotNull GitLineHandlerListener... listeners) {
+                                            GitLineHandlerListener @NotNull ... listeners) {
     if (mode == null) {
-      GitRebaseParams params = assertNotNull(myRebaseSpec.getParams());
+      GitRebaseParams params = Objects.requireNonNull(myRebaseSpec.getParams());
       return myGit.rebase(repository, params, listeners);
     }
     else if (mode == GitRebaseResumeMode.SKIP) {
@@ -342,8 +340,7 @@ public class GitRebaseProcess {
   }
 
   private static boolean shouldBeRefreshed(@NotNull GitRebaseStatus rebaseStatus) {
-    return rebaseStatus.getType() != GitRebaseStatus.Type.SUCCESS ||
-           ((GitSuccessfulRebase)rebaseStatus).getSuccessType() != SuccessType.UP_TO_DATE;
+    return rebaseStatus.getType() != GitRebaseStatus.Type.SUCCESS;
   }
 
   private boolean saveDirtyRootsInitially(@NotNull List<? extends GitRepository> repositories) {
@@ -354,7 +351,7 @@ public class GitRebaseProcess {
     Collection<VirtualFile> rootsToSave = getRootsFromRepositories(getDirtyRoots(repositoriesToSave));
     String error = saveLocalChanges(rootsToSave);
     if (error != null) {
-      myNotifier.notifyError("Rebase Not Started", error);
+      myNotifier.notifyError(GitBundle.getString("rebase.notification.not.started.title"), error);
       return false;
     }
     return true;
@@ -368,7 +365,10 @@ public class GitRebaseProcess {
     }
     catch (VcsException e) {
       LOG.warn(e);
-      return "Couldn't " + mySaver.getSaverName() + " local uncommitted changes:<br/>" + e.getMessage();
+      return mySaver.getSaveMethod().selectBundleMessage(
+        GitBundle.message("rebase.notification.failed.stash.text", e.getMessage()),
+        GitBundle.message("rebase.notification.failed.shelf.text", e.getMessage())
+      );
     }
   }
 
@@ -376,19 +376,16 @@ public class GitRebaseProcess {
     return filter(repositories, repository -> myChangeListManager.haveChangesUnder(repository.getRoot()) != ThreeState.NO);
   }
 
-  protected void notifySuccess(@NotNull Map<GitRepository, GitSuccessfulRebase> successful,
-                             @NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
+  @CalledInBackground
+  protected void notifySuccess() {
     String rebasedBranch = getCommonCurrentBranchNameIfAllTheSame(myRebaseSpec.getAllRepositories());
-    List<SuccessType> successTypes = map(successful.values(), GitSuccessfulRebase::getSuccessType);
-    SuccessType commonType = getItemIfAllTheSame(successTypes, SuccessType.REBASED);
     GitRebaseParams params = myRebaseSpec.getParams();
     String baseBranch = params == null ? null : notNull(params.getNewBase(), params.getUpstream());
-    if ("HEAD".equals(baseBranch)) {
+    if (HEAD.equals(baseBranch)) {
       baseBranch = getItemIfAllTheSame(myRebaseSpec.getInitialBranchNames().values(), baseBranch);
     }
-    String message = commonType.formatMessage(rebasedBranch, baseBranch, params != null && params.getBranch() != null);
-    message += mentionSkippedCommits(skippedCommits);
-    myNotifier.notifyMinorInfo("Rebase Successful", message, new RebaseNotificationListener(skippedCommits));
+    String message = GitSuccessfulRebase.formatMessage(rebasedBranch, baseBranch, params != null && params.getBranch() != null);
+    myNotifier.notifyMinorInfo(GitBundle.getString("rebase.notification.successful.title"), message);
   }
 
   @Nullable
@@ -401,10 +398,14 @@ public class GitRebaseProcess {
     return new HashSet<>(collection).size() == 1 ? getFirstItem(collection) : defaultItem;
   }
 
-  private void notifyNotAllConflictsResolved(@NotNull GitRepository conflictingRepository,
-                                             MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
+  private void notifyNotAllConflictsResolved(@NotNull GitRepository conflictingRepository) {
     String description = GitRebaseUtils.mentionLocalChangesRemainingInStash(mySaver);
-    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification("Rebase Stopped Due to Conflicts", description, NotificationType.WARNING, new RebaseNotificationListener(skippedCommits));
+    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification(
+      GitBundle.getString("rebase.notification.conflict.title"),
+      description,
+      NotificationType.WARNING,
+      null
+    );
     notification.addAction(new ResolveAction(conflictingRepository));
     notification.addAction(CONTINUE_ACTION);
     notification.addAction(ABORT_ACTION);
@@ -425,6 +426,18 @@ public class GitRebaseProcess {
     return ResolveConflictResult.UNRESOLVED_REMAIN;
   }
 
+  @Nullable
+  private static Hash resolveRef(@NotNull GitRepository repository, @NotNull String ref) {
+    GitRevisionNumber resolved = null;
+    try {
+      resolved = GitRevisionNumber.resolve(repository.getProject(), repository.getRoot(), ref);
+    }
+    catch (VcsException e) {
+      LOG.warn(e);
+    }
+    return resolved != null ? HashImpl.build(resolved.asString()) : null;
+  }
+
   @NotNull
   private static MergeDialogCustomizer createDialogCustomizer(@NotNull GitRepository repository, @NotNull GitRebaseSpec rebaseSpec) {
     GitRebaseParams rebaseParams = rebaseSpec.getParams();
@@ -442,20 +455,39 @@ public class GitRebaseProcess {
       }
 
       if (upstream != null && branch != null) {
-        return new GitRebaseMergeDialogCustomizer(upstream, branch);
+        Hash rebaseHead = resolveRef(repository, REBASE_HEAD);
+        Hash mergeBase = null;
+        try {
+          GitRevisionNumber mergeBaseRev = GitHistoryUtils.getMergeBase(repository.getProject(), repository.getRoot(), upstream, branch);
+          mergeBase = mergeBaseRev != null ? HashImpl.build(mergeBaseRev.getRev()) : null;
+        }
+        catch (VcsException e) {
+          LOG.warn(e);
+        }
+        return new GitRebaseMergeDialogCustomizer(repository, upstream, branch, rebaseHead, mergeBase);
       }
     }
-    return new MergeDialogCustomizer();
+    return new GitDefaultMergeDialogCustomizer(repository.getProject());
   }
 
   private static class GitRebaseMergeDialogCustomizer extends MergeDialogCustomizer {
+    @NotNull private final GitRepository myRepository;
     @NotNull private final String myRebasingBranch;
     @NotNull private final String myBasePresentable;
     @Nullable private final String myBaseBranch;
     @Nullable private final Hash myBaseHash;
+    @Nullable private final Hash myIngoingCommit;
+    @Nullable private final Hash myMergeBase;
 
-    private GitRebaseMergeDialogCustomizer(@NotNull String upstream, @NotNull String branch) {
+    private GitRebaseMergeDialogCustomizer(@NotNull GitRepository repository,
+                                           @NotNull String upstream,
+                                           @NotNull String branch,
+                                           @Nullable Hash ingoingCommit,
+                                           @Nullable Hash mergeBase) {
+      myRepository = repository;
       myRebasingBranch = branch;
+      myIngoingCommit = ingoingCommit;
+      myMergeBase = mergeBase;
       if (upstream.matches("[a-fA-F0-9]{40}")) {
         myBasePresentable = VcsLogUtil.getShortHash(upstream);
         myBaseBranch = null;
@@ -494,11 +526,49 @@ public class GitRebaseProcess {
       return asList(GitMergeProvider.calcColumnName(false, myRebasingBranch),
                     GitMergeProvider.calcColumnName(true, myBasePresentable));
     }
+
+    @NotNull
+    @Override
+    public DiffEditorTitleCustomizerList getTitleCustomizerList(@NotNull FilePath file) {
+      return new DiffEditorTitleCustomizerList(
+        getLeftTitleCustomizer(file),
+        null,
+        getRightTitleCustomizer(file)
+      );
+    }
+
+    @Nullable
+    public DiffEditorTitleCustomizer getLeftTitleCustomizer(@NotNull FilePath file) {
+      if (myIngoingCommit == null) {
+        return null;
+      }
+      return getTitleWithCommitDetailsCustomizer(
+        GitBundle.message("rebase.conflict.diff.dialog.left.title", myIngoingCommit.toShortString(), myRebasingBranch),
+        myRepository,
+        file,
+        myIngoingCommit.asString()
+      );
+    }
+
+    @Nullable
+    public DiffEditorTitleCustomizer getRightTitleCustomizer(@NotNull FilePath file) {
+      if (myMergeBase == null) {
+        return null;
+      }
+      String title = myBaseBranch != null
+                     ? GitBundle.message("rebase.conflict.diff.dialog.right.with.branch.title", myBaseBranch)
+                     : GitBundle.getString("rebase.conflict.diff.dialog.right.simple.title");
+      return getTitleWithCommitsRangeDetailsCustomizer(title, myRepository, file, new Pair<>(myMergeBase.asString(), HEAD));
+    }
   }
 
   private void showStoppedForEditingMessage() {
-    String description = "";
-    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification("Rebase Stopped for Editing", description, NotificationType.INFORMATION, new RebaseNotificationListener(MultiMap.empty()));
+    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification(
+      GitBundle.getString("rebase.notification.editing.title"),
+      "",
+      NotificationType.INFORMATION,
+      null
+    );
     notification.addAction(CONTINUE_ACTION);
     notification.addAction(ABORT_ACTION);
     myNotifier.notify(notification);
@@ -507,62 +577,50 @@ public class GitRebaseProcess {
   private void showFatalError(@NotNull final String error,
                               @NotNull final GitRepository currentRepository,
                               boolean somethingWasRebased,
-                              @NotNull final Collection<GitRepository> successful,
-                              @NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
+                              @NotNull final Collection<GitRepository> successful) {
     String repo = myRepositoryManager.moreThanOneRoot() ? getShortRepositoryName(currentRepository) + ": " : "";
-    String description = repo + error + "<br/>" +
-                         mentionSkippedCommits(skippedCommits) +
-                         GitRebaseUtils.mentionLocalChangesRemainingInStash(mySaver);
-    String title = myRebaseSpec.getOngoingRebase() == null ? "Rebase Failed" : "Continue Rebase Failed";
-    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification(title, description, NotificationType.ERROR, new RebaseNotificationListener(skippedCommits));
+    String description = repo + error + "<br/>" + GitRebaseUtils.mentionLocalChangesRemainingInStash(mySaver);
+    String title = myRebaseSpec.getOngoingRebase() == null
+                   ? GitBundle.getString("rebase.notification.failed.rebase.title")
+                   : GitBundle.getString("rebase.notification.failed.continue.title");
+    Notification notification = IMPORTANT_ERROR_NOTIFICATION.createNotification(
+      title,
+      description,
+      NotificationType.ERROR,
+      null
+    );
     notification.addAction(RETRY_ACTION);
-    if (somethingWasRebased || !successful.isEmpty()) notification.addAction(ABORT_ACTION);
-    if (mySaver.wereChangesSaved()) notification.addAction(VIEW_STASH_ACTION);
+    if (somethingWasRebased || !successful.isEmpty()) {
+      notification.addAction(ABORT_ACTION);
+    }
+    if (mySaver.wereChangesSaved()) {
+      notification.addAction(VIEW_STASH_ACTION);
+    }
     myNotifier.notify(notification);
   }
 
   private void showUntrackedFilesError(@NotNull Set<String> untrackedPaths,
                                        @NotNull GitRepository currentRepository,
                                        boolean somethingWasRebased,
-                                       @NotNull Collection<GitRepository> successful,
-                                       MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
-    String message = mentionSkippedCommits(skippedCommits) +
-                     GitRebaseUtils.mentionLocalChangesRemainingInStash(mySaver);
+                                       @NotNull Collection<GitRepository> successful) {
+    String message = GitRebaseUtils.mentionLocalChangesRemainingInStash(mySaver);
     List<NotificationAction> actions = new ArrayList<>();
     actions.add(RETRY_ACTION);
-    if (somethingWasRebased || !successful.isEmpty()) actions.add(ABORT_ACTION);
-    if (mySaver.wereChangesSaved()) actions.add(VIEW_STASH_ACTION);
-    GitUntrackedFilesHelper.notifyUntrackedFilesOverwrittenBy(myProject, currentRepository.getRoot(), untrackedPaths,
-                                                              "rebase", message, new RebaseNotificationListener(skippedCommits), actions.toArray(
-        new NotificationAction[0]));
-  }
-
-  @NotNull
-  private static String mentionSkippedCommits(@NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
-    if (skippedCommits.isEmpty()) return "";
-    String message = "<br/>";
-    if (skippedCommits.values().size() == 1) {
-      message += "The following commit was skipped during rebase:<br/>";
+    if (somethingWasRebased || !successful.isEmpty()) {
+      actions.add(ABORT_ACTION);
     }
-    else {
-      message += "The following commits were skipped during rebase:<br/>";
+    if (mySaver.wereChangesSaved()) {
+      actions.add(VIEW_STASH_ACTION);
     }
-    message += StringUtil.join(skippedCommits.values(), commitInfo -> {
-      String commitMessage = StringUtil.shortenPathWithEllipsis(commitInfo.subject, 72, true);
-      String hash = commitInfo.revision.asString();
-      String shortHash = DvcsUtil.getShortHash(commitInfo.revision.asString());
-      return String.format("<a href='%s'>%s</a> %s", hash, shortHash, commitMessage);
-    }, "<br/>");
-    return message;
-  }
-
-  @NotNull
-  private static MultiMap<GitRepository, GitRebaseUtils.CommitInfo> getSkippedCommits(@NotNull Map<GitRepository, ? extends GitRebaseStatus> statuses) {
-    MultiMap<GitRepository, GitRebaseUtils.CommitInfo> map = MultiMap.create();
-    for (GitRepository repository : statuses.keySet()) {
-      map.put(repository, statuses.get(repository).getSkippedCommits());
-    }
-    return map;
+    GitUntrackedFilesHelper.notifyUntrackedFilesOverwrittenBy(
+      myProject,
+      currentRepository.getRoot(),
+      untrackedPaths,
+      GitBundle.getString("rebase.git.operation.name"),
+      message,
+      null,
+      actions.toArray(new NotificationAction[0])
+    );
   }
 
   @NotNull
@@ -613,12 +671,20 @@ public class GitRebaseProcess {
   }
 
   private static boolean askIfShouldRebasePublishedCommit() {
-    String title = "Rebasing Published Commit";
-    String message = "<html>You're trying to rebase some commits already pushed to a protected branch.<br/>" +
-                     "Rebasing them would duplicate commits, which is not recommended and most likely unwanted.</html>";
     Ref<Boolean> rebaseAnyway = Ref.create(false);
     ApplicationManager.getApplication().invokeAndWait(() -> {
-      int answer = DialogManager.showMessage(message, title, new String[]{"Rebase Anyway", "Cancel"}, 1, 1, getWarningIcon(), null);
+      int answer = DialogManager.showMessage(
+        GitBundle.getString("rebase.confirmation.dialog.published.commits.message"),
+        GitBundle.getString("rebase.confirmation.dialog.published.commits.title"),
+        new String[]{
+          GitBundle.getString("rebase.confirmation.dialog.published.commits.button.rebase.text"),
+          GitBundle.getString("rebase.confirmation.dialog.published.commits.button.cancel.text")
+        },
+        1,
+        1,
+        getWarningIcon(),
+        null
+      );
       rebaseAnyway.set(answer == 0);
     });
     return rebaseAnyway.get();
@@ -644,7 +710,7 @@ public class GitRebaseProcess {
     @Override
     protected boolean proceedAfterAllMerged() {
       if (myCalledFromNotification) {
-        retry(GitRebaseUtils.CONTINUE_PROGRESS_TITLE);
+        retry(GitBundle.getString("rebase.progress.indicator.continue.title"));
       }
       return true;
     }
@@ -662,30 +728,20 @@ public class GitRebaseProcess {
     UNRESOLVED_REMAIN
   }
 
-  private class RebaseNotificationListener extends NotificationListener.Adapter {
-    @NotNull private final MultiMap<GitRepository, GitRebaseUtils.CommitInfo> mySkippedCommits;
-
-    RebaseNotificationListener(@NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
-      mySkippedCommits = skippedCommits;
-    }
-
-    @Override
-    protected void hyperlinkActivated(@NotNull Notification notification, @NotNull final HyperlinkEvent e) {
-      handlePossibleCommitLinks(e.getDescription(), mySkippedCommits);
-    }
-  }
-
   private class ResolveAction extends NotificationAction {
     @NotNull private final GitRepository myCurrentRepository;
 
     ResolveAction(@NotNull GitRepository currentRepository) {
-      super("Resolve...");
+      super(GitBundle.messagePointer("action.NotificationAction.text.resolve"));
       myCurrentRepository = currentRepository;
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification notification) {
-      myProgressManager.run(new Task.Backgroundable(myProject, "Collecting Conflicts to Resolve...") {
+      myProgressManager.run(new Task.Backgroundable(
+        myProject,
+        GitBundle.getString("rebase.progress.indicator.conflicts.collecting.title")
+      ) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           showConflictResolver(myCurrentRepository, true);
@@ -695,7 +751,7 @@ public class GitRebaseProcess {
   }
 
   private void abort() {
-    myProgressManager.run(new Task.Backgroundable(myProject, "Aborting Rebase Process...") {
+    myProgressManager.run(new Task.Backgroundable(myProject, GitBundle.getString("rebase.progress.indicator.aborting.title")) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
         GitRebaseUtils.abort(myProject, indicator);
@@ -703,7 +759,7 @@ public class GitRebaseProcess {
     });
   }
 
-  private void retry(@NotNull String processTitle) {
+  private void retry(@NotNull @Nls String processTitle) {
     myProgressManager.run(new Task.Backgroundable(myProject, processTitle, true) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
@@ -712,29 +768,30 @@ public class GitRebaseProcess {
     });
   }
 
-  private void handlePossibleCommitLinks(@NotNull String href, @NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
-    GitRepository repository = findRootBySkippedCommit(href, skippedCommits);
-    if (repository != null) {
-      showSubmittedFiles(myProject, href, repository.getRoot(), true, false);
-    }
-  }
-
-  @Nullable
-  private static GitRepository findRootBySkippedCommit(@NotNull final String hash,
-                                                       @NotNull MultiMap<GitRepository, GitRebaseUtils.CommitInfo> skippedCommits) {
-    return find(skippedCommits.keySet(),  repository-> exists(skippedCommits.get(repository),  info-> info.revision.asString().equals(hash)));
-  }
-
   private static class GitRebaseProgressListener implements GitLineHandlerListener {
-    private static final Pattern PROGRESS = Pattern.compile("^Rebasing \\((\\d+)/(\\d+)\\)$"); // `Rebasing (2/3)` means 2nd commit from 3
+    @NonNls private static final Pattern REBASING_PATTERN = Pattern.compile("^Rebasing \\((\\d+)/(\\d+)\\)$");
+    @NonNls private static final String APPLYING_PREFIX = "Applying: ";
+    private int currentCommit = 0;
 
-    private int currentCommit;
+    private final int myCommitsToRebase;
+    @NotNull private final ProgressIndicator myIndicator;
+
+    GitRebaseProgressListener(int commitsToRebase, @NotNull ProgressIndicator indicator) {
+      myCommitsToRebase = commitsToRebase;
+      myIndicator = indicator;
+    }
 
     @Override
     public void onLineAvailable(@NotNull String line, @NotNull Key outputType) {
-      Matcher matcher = PROGRESS.matcher(line);
+      Matcher matcher = REBASING_PATTERN.matcher(line);
       if (matcher.matches()) {
         currentCommit = Integer.parseInt(matcher.group(1));
+      }
+      else if (StringUtil.startsWith(line, APPLYING_PREFIX)) {
+        currentCommit++;
+      }
+      if (myCommitsToRebase != 0) {
+        myIndicator.setFraction((double)currentCommit / myCommitsToRebase);
       }
     }
   }

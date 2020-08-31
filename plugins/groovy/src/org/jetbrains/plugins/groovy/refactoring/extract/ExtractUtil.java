@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.plugins.groovy.refactoring.extract;
 
@@ -44,7 +44,7 @@ import java.util.*;
 /**
  * @author ilyas
  */
-public class ExtractUtil {
+public final class ExtractUtil {
   private static final Logger LOG = Logger.getInstance(ExtractUtil.class);
 
   private ExtractUtil() {
@@ -85,8 +85,7 @@ public class ExtractUtil {
     return realStatement;
   }
 
-  @NotNull
-  private static GrStatement[] createResultStatement(ExtractInfoHelper helper) {
+  private static GrStatement @NotNull [] createResultStatement(ExtractInfoHelper helper) {
     VariableInfo[] outputVars = helper.getOutputVariableInfos();
 
     PsiType type = helper.getOutputType();
@@ -217,7 +216,7 @@ public class ExtractUtil {
   /*
   To declare or not a variable to which method call result will be assigned.
    */
-  private static List<VariableInfo> mustAddVariableDeclaration(@NotNull GrStatement[] statements, @NotNull VariableInfo[] vars) {
+  private static List<VariableInfo> mustAddVariableDeclaration(GrStatement @NotNull [] statements, VariableInfo @NotNull [] vars) {
     Map<String, VariableInfo> names = new HashMap<>();
     for (VariableInfo var : vars) {
       names.put(var.getName(), var);

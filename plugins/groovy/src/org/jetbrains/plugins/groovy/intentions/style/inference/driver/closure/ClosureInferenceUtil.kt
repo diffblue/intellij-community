@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.intentions.style.inference.driver.closure
 
 import com.intellij.codeInsight.AnnotationUtil
@@ -8,14 +8,13 @@ import com.intellij.psi.*
 import com.intellij.psi.impl.source.resolve.graphInference.constraints.ConstraintFormula
 import com.intellij.psi.util.parentOfType
 import org.jetbrains.plugins.groovy.intentions.closure.isClosureCall
-import org.jetbrains.plugins.groovy.intentions.closure.isClosureCallMethod
-import org.jetbrains.plugins.groovy.intentions.style.inference.driver.BoundConstraint
+import org.jetbrains.plugins.groovy.intentions.style.inference.CollectingGroovyInferenceSession
 import org.jetbrains.plugins.groovy.intentions.style.inference.driver.BoundConstraint.ContainMarker.LOWER
 import org.jetbrains.plugins.groovy.intentions.style.inference.driver.RecursiveMethodAnalyzer
+import org.jetbrains.plugins.groovy.intentions.style.inference.driver.TypeUsageInformationBuilder
 import org.jetbrains.plugins.groovy.intentions.style.inference.driver.closure.ClosureParametersStorageBuilder.Companion.isReferenceTo
 import org.jetbrains.plugins.groovy.intentions.style.inference.properResolve
 import org.jetbrains.plugins.groovy.intentions.style.inference.resolve
-import org.jetbrains.plugins.groovy.intentions.style.inference.typeParameter
 import org.jetbrains.plugins.groovy.lang.psi.GroovyPsiElementFactory
 import org.jetbrains.plugins.groovy.lang.psi.api.GroovyMethodResult
 import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.modifiers.annotation.GrAnnotation
@@ -30,12 +29,11 @@ import org.jetbrains.plugins.groovy.lang.psi.controlFlow.ReadWriteVariableInstru
 import org.jetbrains.plugins.groovy.lang.psi.impl.GrAnnotationUtil.inferClassAttribute
 import org.jetbrains.plugins.groovy.lang.psi.impl.stringValue
 import org.jetbrains.plugins.groovy.lang.psi.impl.synthetic.ClosureSyntheticParameter
+import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrTypeConverter.Position.ASSIGNMENT
 import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.SignatureHintProcessor
 import org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames.*
-import org.jetbrains.plugins.groovy.lang.resolve.api.Argument
-import org.jetbrains.plugins.groovy.lang.resolve.api.ArgumentMapping
 import org.jetbrains.plugins.groovy.lang.resolve.api.ExpressionArgument
-import org.jetbrains.plugins.groovy.lang.resolve.impl.GdkArgumentMapping
+import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.ExpectedType
 import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.ExpressionConstraint
 import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.TypeConstraint
 import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.type
@@ -44,11 +42,12 @@ fun extractConstraintsFromClosureInvocations(closureParameter: ParameterizedClos
                                              instructions: List<ReadWriteVariableInstruction>): List<ConstraintFormula> {
   val collector = mutableListOf<ConstraintFormula>()
   for (call in instructions) {
-    val nearestCall = call.element?.parentOfType<GrCall>()?.takeIf { it.isClosureCall() } ?: continue
+    val nearestCall = call.element?.parentOfType<GrCall>()?.takeIf { it.isClosureCall(closureParameter.parameter) } ?: continue
     for (index in nearestCall.expressionArguments.indices) {
       val argumentExpression = nearestCall.expressionArguments.getOrNull(index) ?: continue
       val innerParameterType = closureParameter.typeParameters.getOrNull(index)?.type()
-      collector.add(ExpressionConstraint(innerParameterType, argumentExpression))
+      val expectedType = if (innerParameterType == null) null else ExpectedType(innerParameterType, ASSIGNMENT)
+      collector.add(ExpressionConstraint(expectedType, argumentExpression))
     }
   }
   return collector
@@ -68,16 +67,11 @@ inline fun GrMethod.forEachParameterUsage(action: (GrParameter, List<ReadWriteVa
     }
 }
 
-fun analyzeClosureUsages(constraintCollector: MutableList<ConstraintFormula>,
-                         closureParameter: ParameterizedClosure,
+fun analyzeClosureUsages(closureParameter: ParameterizedClosure,
                          usages: List<ReadWriteVariableInstruction>,
-                         dependentTypes: MutableSet<PsiTypeParameter>,
-                         requiredTypesCollector: MutableMap<PsiTypeParameter, MutableList<BoundConstraint>>) {
+                         builder: TypeUsageInformationBuilder) {
   val parameter = closureParameter.parameter
-  val parameterType = parameter.type
-  val outerMethod = parameter.parentOfType<GrMethod>()!!
   val delegatesToCombiner = closureParameter.delegatesToCombiner
-  parameter.setType(PsiType.getTypeByName(GROOVY_LANG_CLOSURE, parameter.project, parameter.resolveScope))
   for (usage in usages) {
     val element = usage.element ?: continue
     val directMethodResult = element.parentOfType<GrAssignmentExpression>()?.properResolve() as? GroovyMethodResult
@@ -88,41 +82,39 @@ fun analyzeClosureUsages(constraintCollector: MutableList<ConstraintFormula>,
     val resolveResult = nearestCall.properResolve() as? GroovyMethodResult ?: return
     if (nearestCall.resolveMethod()?.containingClass?.qualifiedName == GROOVY_LANG_CLOSURE) {
       delegatesToCombiner.acceptResolveResult(resolveResult)
-      collectClosureMethodInvocationDependencies(closureParameter, dependentTypes, requiredTypesCollector, constraintCollector,
-                                                 resolveResult)
+      collectClosureMethodInvocationDependencies(closureParameter, builder, resolveResult, nearestCall)
     }
     else {
       val mapping = resolveResult.candidate?.argumentMapping ?: continue
       val requiredArgument = mapping.arguments.find { it.isReferenceTo(parameter) } ?: continue
-      val innerParameter = mapping.targetParameter(requiredArgument) ?: continue
-      collectClosureParamsDependencies(innerParameter, resolveResult, closureParameter, constraintCollector, dependentTypes, outerMethod,
-                                       requiredTypesCollector)
+      val innerParameter = mapping.targetParameter(requiredArgument)?.psi ?: continue
+      val signature = extractSignature(innerParameter, resolveResult, nearestCall)
+      collectClosureParamsDependencies(innerParameter, closureParameter, builder, signature)
       processDelegatesToAnnotation(innerParameter, resolveResult, closureParameter.delegatesToCombiner)
     }
   }
-  parameter.setType(parameterType)
 }
 
 
 fun collectClosureMethodInvocationDependencies(parameterizedClosure: ParameterizedClosure,
-                                               dependentTypes: MutableSet<PsiTypeParameter>,
-                                               requiredTypesCollector: MutableMap<PsiTypeParameter, MutableList<BoundConstraint>>,
-                                               constraintCollector: MutableList<ConstraintFormula>,
-                                               resolveResult: GroovyMethodResult) {
-  if (resolveResult.candidate?.method.isClosureCallMethod()) {
+                                               builder: TypeUsageInformationBuilder,
+                                               resolveResult: GroovyMethodResult,
+                                               nearestCall: GrCall) {
+  if (nearestCall.isClosureCall(parameterizedClosure.parameter)) {
     val arguments = resolveResult.candidate?.argumentMapping?.arguments ?: return
     val expectedTypes = parameterizedClosure.types.zip(arguments)
     val method = parameterizedClosure.parameter.parentOfType<GrMethod>() ?: return
     for ((expectedType, argument) in expectedTypes) {
       val argumentType = argument.type ?: continue
-      constraintCollector.add(TypeConstraint(expectedType, argumentType, method))
-      RecursiveMethodAnalyzer.induceDeepConstraints(expectedType, argumentType, dependentTypes, requiredTypesCollector,
-                                                    method.typeParameters.toSet(), LOWER)
+      builder.addConstraint(TypeConstraint(expectedType, argumentType, method))
+      RecursiveMethodAnalyzer.induceDeepConstraints(expectedType, argumentType, builder, method, LOWER)
     }
   }
 }
 
-fun extractSignature(innerParameter: PsiParameter, resolveResult: GroovyMethodResult): Array<PsiType>? {
+fun extractSignature(innerParameter: PsiParameter,
+                     resolveResult: GroovyMethodResult,
+                     nearestCall: GrCall): Array<PsiType>? {
   val closureParamsAnnotation = innerParameter.annotations.find { it.qualifiedName == GROOVY_TRANSFORM_STC_CLOSURE_PARAMS } ?: return null
   val valueAttribute = inferClassAttribute(closureParamsAnnotation, "value")?.qualifiedName ?: return null
   val hintProcessor = SignatureHintProcessor.getHintProcessor(valueAttribute) ?: return null
@@ -130,27 +122,18 @@ fun extractSignature(innerParameter: PsiParameter, resolveResult: GroovyMethodRe
   val arrayOptionsAttribute = AnnotationUtil.arrayAttributeValues(optionsAttribute)
   val options = arrayOptionsAttribute.mapNotNull { (it as? PsiLiteral)?.stringValue() }.toTypedArray()
   val invokedMethod = resolveResult.candidate?.method ?: return null
-  return hintProcessor.inferExpectedSignatures(invokedMethod, resolveResult.substitutor, options).singleOrNull() ?: return null
+  val collectingSubstitutor = CollectingGroovyInferenceSession.getContextSubstitutor(resolveResult, nearestCall)
+  return hintProcessor.inferExpectedSignatures(invokedMethod, collectingSubstitutor, options).singleOrNull() ?: return null
 }
 
 fun collectClosureParamsDependencies(innerParameter: PsiParameter,
-                                     resolveResult: GroovyMethodResult,
                                      closureParameter: ParameterizedClosure,
-                                     constraintCollector: MutableList<ConstraintFormula>,
-                                     dependentTypes: MutableSet<PsiTypeParameter>,
-                                     outerMethod: GrMethod,
-                                     requiredTypesCollector: MutableMap<PsiTypeParameter, MutableList<BoundConstraint>>) {
-  val signature = extractSignature(innerParameter, resolveResult) ?: return
+                                     builder: TypeUsageInformationBuilder,
+                                     signature: Array<PsiType>?) {
+  signature ?: return
   for ((inferredType, typeParameter) in signature.zip(closureParameter.typeParameters)) {
-    constraintCollector.add(TypeConstraint(typeParameter.type(), inferredType, outerMethod))
-    val inferredTypeParameter = inferredType.typeParameter()
-    if (inferredTypeParameter != null) {
-      dependentTypes.add(typeParameter)
-      dependentTypes.add(inferredTypeParameter)
-    }
-    else {
-      requiredTypesCollector.computeIfAbsent(typeParameter) { mutableListOf() }.add(BoundConstraint(inferredType, LOWER))
-    }
+    builder.addConstraint(TypeConstraint(typeParameter.type(), inferredType, innerParameter))
+    builder.generateRequiredTypes(typeParameter, inferredType, LOWER)
   }
 }
 
@@ -198,7 +181,7 @@ private fun trySetParameterDelegate(annotation: PsiAnnotation, combiner: Delegat
   val mapping = resolveResult.candidate?.argumentMapping ?: return
   val methodParameters = resolveResult.candidate?.method?.parameters?.takeIf { it.size > 1 }?.asList() ?: return
   val targetParameter = findTargetParameter(annotation, methodParameters)
-  val argument = mapping.arguments.find { mapping.getProperTargetParameter(it, methodParameters[0]) == targetParameter } ?: return
+  val argument = mapping.arguments.find { mapping.targetParameter(it)?.psi == targetParameter } ?: return
   val argumentExpression = (argument as? ExpressionArgument)?.expression
   if (argumentExpression != null) {
     combiner.setDelegate(argumentExpression)
@@ -207,18 +190,6 @@ private fun trySetParameterDelegate(annotation: PsiAnnotation, combiner: Delegat
     val argumentType = argument.type.resolve() ?: return
     combiner.setDelegate(argumentType)
   }
-}
-
-private fun ArgumentMapping.getProperTargetParameter(argument: Argument, firstParameter: JvmParameter) = when (this) {
-  is GdkArgumentMapping -> {
-    if (argument == arguments[0]) {
-      firstParameter
-    }
-    else {
-      targetParameter(argument)
-    }
-  }
-  else -> targetParameter(argument)
 }
 
 private fun findTargetParameter(annotation: PsiAnnotation, methodParameters: Iterable<JvmParameter>): JvmParameter? {
@@ -304,24 +275,7 @@ data class AnnotatingResult(val parameter: GrParameter, val annotationText: Stri
 
 fun getBlock(parameter: GrParameter): GrClosableBlock? = when (parameter) {
   is ClosureSyntheticParameter -> parameter.closure
-  else -> {
-    with(parameter.parentOfType<GrClosableBlock>()) { return if (this == null) null else extractBlock(this, parameter) }
-  }
-}
-
-private fun extractBlock(block: GrClosableBlock, parameter: GrParameter): GrClosableBlock? {
-  if (block.parameterList.getParameterNumber(parameter) == -1) {
-    val outerBlock = block.parentOfType<GrClosableBlock>()
-    if (outerBlock != null) {
-      return extractBlock(block, parameter)
-    }
-    else {
-      return null
-    }
-  }
-  else {
-    return block
-  }
+  else -> parameter.parentOfType<GrClosableBlock>()?.takeIf { it.parameterList.getParameterNumber(parameter) != -1 }
 }
 
 internal infix fun PsiSubstitutor.compose(right: PsiSubstitutor): PsiSubstitutor {
@@ -336,23 +290,23 @@ internal infix fun PsiSubstitutor.compose(right: PsiSubstitutor): PsiSubstitutor
 inline fun PsiType.anyComponent(crossinline predicate: (PsiType) -> Boolean): Boolean {
   var mark = false
   accept(object : PsiTypeVisitor<Unit>() {
-    override fun visitClassType(classType: PsiClassType?) {
-      if (predicate(classType ?: return)) {
+    override fun visitClassType(classType: PsiClassType) {
+      if (predicate(classType)) {
         mark = true
       }
       classType.parameters.forEach { it.accept(this) }
     }
 
-    override fun visitWildcardType(wildcardType: PsiWildcardType?) {
-      wildcardType?.bound?.accept(this)
+    override fun visitWildcardType(wildcardType: PsiWildcardType) {
+      wildcardType.bound?.accept(this)
     }
 
-    override fun visitIntersectionType(intersectionType: PsiIntersectionType?) {
-      intersectionType?.conjuncts?.forEach { it.accept(this) }
+    override fun visitIntersectionType(intersectionType: PsiIntersectionType) {
+      intersectionType.conjuncts?.forEach { it.accept(this) }
     }
 
-    override fun visitArrayType(arrayType: PsiArrayType?) {
-      arrayType?.componentType?.accept(this)
+    override fun visitArrayType(arrayType: PsiArrayType) {
+      arrayType.componentType.accept(this)
     }
   })
   return mark

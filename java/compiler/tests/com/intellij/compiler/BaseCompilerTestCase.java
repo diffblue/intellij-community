@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.compiler;
 
 import com.intellij.ProjectTopics;
@@ -26,11 +26,11 @@ import com.intellij.packaging.impl.compiler.ArtifactCompileScope;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.testFramework.*;
 import com.intellij.util.concurrency.Semaphore;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.io.DirectoryContentSpec;
 import com.intellij.util.io.DirectoryContentSpecKt;
 import com.intellij.util.io.TestFileSystemBuilder;
 import com.intellij.util.ui.UIUtil;
-import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.util.JpsPathUtil;
@@ -39,12 +39,10 @@ import org.junit.Assert;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * @author nik
- */
 public abstract class BaseCompilerTestCase extends JavaModuleTestCase {
   @Override
   protected void setUpModule() {
@@ -126,11 +124,11 @@ public abstract class BaseCompilerTestCase extends JavaModuleTestCase {
     });
   }
 
-  protected Module addModule(final String moduleName, final @Nullable VirtualFile sourceRoot) {
+  protected Module addModule(String moduleName, @Nullable VirtualFile sourceRoot) {
     return addModule(moduleName, sourceRoot, null);
   }
 
-  protected Module addModule(final String moduleName, final @Nullable VirtualFile sourceRoot, final @Nullable VirtualFile testRoot) {
+  protected Module addModule(String moduleName, @Nullable VirtualFile sourceRoot, @Nullable VirtualFile testRoot) {
     return WriteAction.computeAndWait(() -> {
       final Module module = createModule(moduleName);
       if (sourceRoot != null) {
@@ -325,12 +323,12 @@ public abstract class BaseCompilerTestCase extends JavaModuleTestCase {
   @Override
   protected Module doCreateRealModule(@NotNull String moduleName) {
     //todo[nik] reuse code from PlatformTestCase
-    final VirtualFile baseDir = getOrCreateProjectBaseDir();
-    final File moduleFile = new File(baseDir.getPath().replace('/', File.separatorChar), moduleName + ModuleFileType.DOT_DEFAULT_EXTENSION);
+    VirtualFile baseDir = getOrCreateProjectBaseDir();
+    Path moduleFile = baseDir.toNioPath().resolve(moduleName + ModuleFileType.DOT_DEFAULT_EXTENSION);
     myFilesToDelete.add(moduleFile);
     return WriteAction.computeAndWait(() -> {
       Module module = ModuleManager.getInstance(myProject)
-                                   .newModule(FileUtil.toSystemIndependentName(moduleFile.getAbsolutePath()), getModuleType().getId());
+        .newModule(FileUtil.toSystemIndependentName(moduleFile.toString()), getModuleType().getId());
       module.getModuleFile();
       return module;
     });
@@ -402,7 +400,7 @@ public abstract class BaseCompilerTestCase extends JavaModuleTestCase {
       myExternalBuildUpToDate = externalBuildUpToDate;
       myErrors = errors;
       myWarnings = warnings;
-      myGeneratedPaths = new THashSet<>(generatedFilePaths, FileUtil.PATH_HASHING_STRATEGY);
+      myGeneratedPaths = CollectionFactory.createFilePathSet(generatedFilePaths);
     }
 
     public void assertUpToDate() {

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("ProjectUtilCore")
 package com.intellij.openapi.project
 
@@ -14,6 +14,7 @@ import com.intellij.openapi.vfs.LocalFileProvider
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.PathUtil
 import com.intellij.util.PlatformUtils
+import org.jetbrains.annotations.TestOnly
 
 fun displayUrlRelativeToProject(file: VirtualFile, url: String, project: Project, isIncludeFilePath: Boolean, moduleOnTheLeft: Boolean): String {
   var result = url
@@ -26,6 +27,22 @@ fun displayUrlRelativeToProject(file: VirtualFile, url: String, project: Project
     }
   }
 
+  val urlWithLibraryName = decorateWithLibraryName(file, project, result)
+  if (urlWithLibraryName != null) {
+    return urlWithLibraryName
+  }
+
+  // see PredefinedSearchScopeProviderImpl.getPredefinedScopes for the other place to fix.
+  if (PlatformUtils.isCidr() || PlatformUtils.isRider()) {
+    return result
+  }
+
+  return appendModuleName(file, project, result, moduleOnTheLeft)
+}
+
+fun decorateWithLibraryName(file: VirtualFile,
+                                    project: Project,
+                                    result: String): String? {
   if (file.fileSystem is LocalFileProvider) {
     @Suppress("DEPRECATION") val localFile = (file.fileSystem as LocalFileProvider).getLocalVirtualFileFor(file)
     if (localFile != null) {
@@ -36,12 +53,13 @@ fun displayUrlRelativeToProject(file: VirtualFile, url: String, project: Project
       }
     }
   }
+  return null
+}
 
-  // see PredefinedSearchScopeProviderImpl.getPredefinedScopes for the other place to fix.
-  if (PlatformUtils.isCidr() || PlatformUtils.isRider()) {
-    return result
-  }
-
+fun appendModuleName(file: VirtualFile,
+                     project: Project,
+                     result: String,
+                     moduleOnTheLeft: Boolean): String {
   val module = ModuleUtilCore.findModuleForFile(file, project)
   return when {
     module == null || ModuleManager.getInstance(project).modules.size == 1 -> result
@@ -50,6 +68,8 @@ fun displayUrlRelativeToProject(file: VirtualFile, url: String, project: Project
   }
 }
 
+private var enableExternalStorageByDefaultInTests = true
+
 val Project.isExternalStorageEnabled: Boolean
   get() {
     if (projectFilePath?.endsWith(ProjectFileType.DOT_DEFAULT_EXTENSION) == true) {
@@ -57,5 +77,21 @@ val Project.isExternalStorageEnabled: Boolean
     }
 
     val manager = ServiceManager.getService(this, ExternalStorageConfigurationManager::class.java) ?: return false
-    return manager.isEnabled || (ApplicationManager.getApplication()?.isUnitTestMode ?: false)
+    if (manager.isEnabled) return true
+    val testMode = ApplicationManager.getApplication()?.isUnitTestMode ?: false
+    return testMode && enableExternalStorageByDefaultInTests
   }
+
+/**
+ * By default external storage is enabled in tests. Wrap code which loads the project into this call to always use explicit option value.
+ */
+@TestOnly
+fun doNotEnableExternalStorageByDefaultInTests(action: () -> Unit) {
+  enableExternalStorageByDefaultInTests = false
+  try {
+    action()
+  }
+  finally {
+    enableExternalStorageByDefaultInTests = true
+  }
+}

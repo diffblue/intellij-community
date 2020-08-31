@@ -32,7 +32,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 
 public abstract class AbstractRecordsTable implements Disposable, Forceable {
-  private static final Logger LOG = Logger.getInstance("com.intellij.util.io.storage.AbstractRecordsTable");
+  private static final Logger LOG = Logger.getInstance(AbstractRecordsTable.class);
 
   private static final int HEADER_MAGIC_OFFSET = 0;
   private static final int HEADER_VERSION_OFFSET = 4;
@@ -89,7 +89,7 @@ public abstract class AbstractRecordsTable implements Disposable, Forceable {
     if (myFreeRecordsList.isEmpty()) {
       int result = getRecordsCount() + 1;
       doCleanRecord(result);
-      if (getRecordsCount() != result)  LOG.error("Failed to correctly allocate new record in: " + myStorage.getFile());
+      if (getRecordsCount() != result)  LOG.error("Failed to correctly allocate new record in: " + myStorage);
       return result;
     }
     else {

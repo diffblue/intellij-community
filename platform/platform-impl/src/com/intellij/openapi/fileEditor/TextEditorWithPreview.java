@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileEditor;
 
 import com.intellij.codeHighlighting.BackgroundEditorHighlighter;
@@ -6,11 +6,15 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.structureView.StructureViewBuilder;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.UserDataHolderBase;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.pom.Navigatable;
 import com.intellij.ui.JBSplitter;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
@@ -22,26 +26,38 @@ import java.beans.PropertyChangeListener;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.intellij.openapi.actionSystem.ActionPlaces.TEXT_EDITOR_WITH_PREVIEW;
+
 /**
  * Two panel editor with three states: Editor, Preview and Editor with Preview.
  * Based on SplitFileEditor by Valentin Fondaratov
  *
  * @author Konstantin Bulenkov
  */
-public class TextEditorWithPreview extends UserDataHolderBase implements FileEditor {
+public class TextEditorWithPreview extends UserDataHolderBase implements TextEditor {
   protected final TextEditor myEditor;
   protected final FileEditor myPreview;
   @NotNull
   private final MyListenersMultimap myListenersGenerator = new MyListenersMultimap();
+  private final Layout myDefaultLayout;
   private Layout myLayout;
   private JComponent myComponent;
   private SplitEditorToolbar myToolbarWrapper;
   private final String myName;
+  public static final Key<Layout> DEFAULT_LAYOUT_FOR_FILE = Key.create("TextEditorWithPreview.DefaultLayout");
 
-  public TextEditorWithPreview(@NotNull TextEditor editor, @NotNull FileEditor preview, @NotNull String editorName) {
+  public TextEditorWithPreview(@NotNull TextEditor editor,
+                               @NotNull FileEditor preview,
+                               @NotNull String editorName,
+                               @NotNull Layout defaultLayout) {
     myEditor = editor;
     myPreview = preview;
     myName = editorName;
+    myDefaultLayout = defaultLayout;
+  }
+
+  public TextEditorWithPreview(@NotNull TextEditor editor, @NotNull FileEditor preview, @NotNull String editorName) {
+    this(editor, preview, editorName, Layout.SHOW_EDITOR_AND_PREVIEW);
   }
 
   public TextEditorWithPreview(@NotNull TextEditor editor, @NotNull FileEditor preview) {
@@ -95,11 +111,10 @@ public class TextEditorWithPreview extends UserDataHolderBase implements FileEdi
       splitter.setDividerWidth(3);
 
       myToolbarWrapper = createMarkdownToolbarWrapper(splitter);
-      Disposer.register(this, myToolbarWrapper);
 
       if (myLayout == null) {
         String lastUsed = PropertiesComponent.getInstance().getValue(getLayoutPropertyName());
-        myLayout = Layout.fromName(lastUsed, Layout.SHOW_EDITOR_AND_PREVIEW);
+        myLayout = Layout.fromName(lastUsed, myDefaultLayout);
       }
       adjustEditorsVisibility();
 
@@ -314,7 +329,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements FileEdi
   protected ActionToolbar createToolbar() {
     ActionGroup actionGroup = createLeftToolbarActionGroup();
     if (actionGroup != null) {
-      return ActionManager.getInstance().createActionToolbar("TextEditorWithPreview", actionGroup, true);
+      return ActionManager.getInstance().createActionToolbar(TEXT_EDITOR_WITH_PREVIEW, actionGroup, true);
     }
     else {
       return null;
@@ -333,7 +348,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements FileEdi
     final ActionGroup rightToolbarActions = group == null
                                             ? viewActions
                                             : new DefaultActionGroup(group, Separator.create(), viewActions);
-    return ActionManager.getInstance().createActionToolbar("TextEditorWithPreview", rightToolbarActions, true);
+    return ActionManager.getInstance().createActionToolbar(TEXT_EDITOR_WITH_PREVIEW, rightToolbarActions, true);
   }
 
   @NotNull
@@ -413,7 +428,7 @@ public class TextEditorWithPreview extends UserDataHolderBase implements FileEdi
     public void setSelected(@NotNull AnActionEvent e, boolean state) {
       if (state) {
         myLayout = myActionLayout;
-        PropertiesComponent.getInstance().setValue(getLayoutPropertyName(), myLayout.myName, Layout.SHOW_EDITOR_AND_PREVIEW.myName);
+        PropertiesComponent.getInstance().setValue(getLayoutPropertyName(), myLayout.myName, myDefaultLayout.myName);
         adjustEditorsVisibility();
       }
     }
@@ -422,5 +437,25 @@ public class TextEditorWithPreview extends UserDataHolderBase implements FileEdi
   @NotNull
   private String getLayoutPropertyName() {
     return myName + "Layout";
+  }
+
+  @Override
+  public @Nullable VirtualFile getFile() {
+    return getTextEditor().getFile();
+  }
+
+  @Override
+  public @NotNull Editor getEditor() {
+    return getTextEditor().getEditor();
+  }
+
+  @Override
+  public boolean canNavigateTo(@NotNull Navigatable navigatable) {
+    return getTextEditor().canNavigateTo(navigatable);
+  }
+
+  @Override
+  public void navigateTo(@NotNull Navigatable navigatable) {
+    getTextEditor().navigateTo(navigatable);
   }
 }

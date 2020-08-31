@@ -1,14 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.core;
 
 import com.intellij.lang.injection.InjectedLanguageManager;
-import com.intellij.mock.MockDumbService;
-import com.intellij.mock.MockFileIndexFacade;
-import com.intellij.mock.MockProject;
-import com.intellij.mock.MockResolveScopeManager;
+import com.intellij.mock.*;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.project.DumbUtil;
 import com.intellij.openapi.roots.FileIndexFacade;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.psi.PsiDocumentManager;
@@ -53,19 +51,19 @@ public class CoreProjectEnvironment {
     myProject.registerService(ResolveCache.class, new ResolveCache(myProject));
 
     myPsiManager = new PsiManagerImpl(myProject);
-    registerProjectComponent(PsiManager.class, myPsiManager);
+    myProject.registerService(PsiManager.class, myPsiManager);
     myProject.registerService(SmartPointerManager.class, SmartPointerManagerImpl.class);
-    registerProjectComponent(PsiDocumentManager.class, new CorePsiDocumentManager(myProject, myPsiManager,
-                                                                                  myMessageBus,
-                                                                                  new MockDocumentCommitProcessor()));
+    myProject.registerService(DocumentCommitProcessor.class, new MockDocumentCommitProcessor());
+    myProject.registerService(PsiDocumentManager.class, new CorePsiDocumentManager(myProject));
 
     myProject.registerService(ResolveScopeManager.class, createResolveScopeManager(myPsiManager));
 
     myProject.registerService(PsiFileFactory.class, new PsiFileFactoryImpl(myPsiManager));
-    myProject.registerService(CachedValuesManager.class, new CachedValuesManagerImpl(myProject, new PsiCachedValuesFactory(myPsiManager)));
-    myProject.registerService(PsiDirectoryFactory.class, new PsiDirectoryFactoryImpl(myPsiManager));
+    myProject.registerService(CachedValuesManager.class, new CachedValuesManagerImpl(myProject, new PsiCachedValuesFactory(myProject)));
+    myProject.registerService(PsiDirectoryFactory.class, new PsiDirectoryFactoryImpl(myProject));
     myProject.registerService(ProjectScopeBuilder.class, createProjectScopeBuilder());
     myProject.registerService(DumbService.class, new MockDumbService(myProject));
+    myProject.registerService(DumbUtil.class, new MockDumbUtil());
     myProject.registerService(CoreEncodingProjectManager.class, CoreEncodingProjectManager.class);
     myProject.registerService(InjectedLanguageManager.class, new CoreInjectedLanguageManager());
   }

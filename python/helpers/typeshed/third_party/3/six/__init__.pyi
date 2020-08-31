@@ -1,5 +1,3 @@
-# Stubs for six (Python 3.5)
-
 from __future__ import print_function
 
 from typing import (
@@ -26,7 +24,6 @@ import types
 import typing
 import unittest
 
-# Exports
 from io import StringIO as StringIO, BytesIO as BytesIO
 from builtins import next as next
 from functools import wraps as wraps
@@ -35,6 +32,8 @@ from . import moves
 _T = TypeVar('_T')
 _K = TypeVar('_K')
 _V = TypeVar('_V')
+
+__version__: str
 
 # TODO make constant, then move this stub to 2and3
 # https://github.com/python/typeshed/issues/17
@@ -49,9 +48,6 @@ text_type = str
 binary_type = bytes
 
 MAXSIZE: int
-
-# def add_move
-# def remove_move
 
 def callable(obj: object) -> bool: ...
 
@@ -106,3 +102,21 @@ def ensure_binary(s: Union[bytes, Text], encoding: str = ..., errors: str = ...)
 def ensure_str(s: Union[bytes, Text], encoding: str = ..., errors: str = ...) -> str: ...
 def ensure_text(s: Union[bytes, Text], encoding: str = ..., errors: str = ...) -> Text: ...
 def python_2_unicode_compatible(klass: _T) -> _T: ...
+
+class _LazyDescriptor:
+    name: str
+    def __init__(self, name: str) -> None: ...
+    def __get__(self, obj: Optional[object], type: Optional[type] = ...) -> Any: ...
+
+class MovedModule(_LazyDescriptor):
+    mod: str
+    def __init__(self, name: str, old: str, new: Optional[str] = ...) -> None: ...
+    def __getattr__(self, attr: str) -> Any: ...
+
+class MovedAttribute(_LazyDescriptor):
+    mod: str
+    attr: str
+    def __init__(self, name: str, old_mod: str, new_mod: str, old_attr: Optional[str] = ..., new_attr: Optional[str] = ...) -> None: ...
+
+def add_move(move: Union[MovedModule, MovedAttribute]) -> None: ...
+def remove_move(name: str) -> None: ...

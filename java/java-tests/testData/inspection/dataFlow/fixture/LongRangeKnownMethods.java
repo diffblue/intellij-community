@@ -38,7 +38,7 @@ public class LongRangeKnownMethods {
   }
 
   void test(String s) {
-    if (<warning descr="Condition 's.isEmpty() && s.length() > 2' is always 'false'">s.isEmpty() && <warning descr="Condition 's.length() > 2' is always 'false' when reached">s.length() > 2</warning></warning>) {
+    if (<warning descr="Condition 's.isEmpty() && s.length() > 2' is always 'false'">s.isEmpty() && <warning descr="Condition 's.length() > 2' is always 'false' when reached"><warning descr="Result of 's.length()' is always '0'">s.length()</warning> > 2</warning></warning>) {
       System.out.println("Never");
     }
   }
@@ -115,7 +115,7 @@ public class LongRangeKnownMethods {
 
   void testMin(long x, long y) {
     if (x < 10 && y > 10) {
-      y = Long.min(x, y);
+      y = Long.<warning descr="Result of min is the same as the first argument making the call meaningless">min</warning>(x, y);
       if (<warning descr="Condition 'y > 20' is always 'false'">y > 20</warning>) {
         System.out.println("Impossible");
       }
@@ -352,10 +352,33 @@ public class LongRangeKnownMethods {
       if (<warning descr="Condition 's.length() > 7' is always 'false'">s.length() > 7</warning>) {}
     }
   }
-  
+
+  void testChainCall() {
+    if (<warning descr="Condition 'getByte(0).intValue() == 256' is always 'false'">getByte(0).intValue() == 256</warning>) {
+
+    }
+  }
+
+  native Byte getByte(int x);
+
   void testNumberToStringExact(boolean b) {
     int i = b ? 123 : 456;
     String s = Integer.toString(i);
     if (<warning descr="Condition 's.equals(\"123\") || s.equals(\"456\")' is always 'true'">s.equals("123") || <warning descr="Condition 's.equals(\"456\")' is always 'true' when reached">s.equals("456")</warning></warning>) {}
+  }
+  
+  void testRandom(Random r, SplittableRandom sr, int x) {
+    int val = r.nextInt(x);
+    if (<warning descr="Condition 'val < 0' is always 'false'">val < 0</warning>) {}
+    val = r.nextInt(100);
+    if (<warning descr="Condition 'val >= 100' is always 'false'">val >= 100</warning>) {}
+    if (val >= 99) {}
+    val = sr.nextInt(x, 1000);
+    if (<warning descr="Condition 'val >= 1000' is always 'false'">val >= 1000</warning>) {}
+    val = sr.nextInt(10, 20);
+    if (<warning descr="Condition 'val < 10' is always 'false'">val < 10</warning>) {}
+    if (val <= 10) {}
+    if (<warning descr="Condition 'val >= 20' is always 'false'">val >= 20</warning>) {}
+    if (val >= 19) {}
   }
 }

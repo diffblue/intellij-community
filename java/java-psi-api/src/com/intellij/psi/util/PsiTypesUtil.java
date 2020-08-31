@@ -25,6 +25,7 @@ import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashMap;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
@@ -348,12 +349,51 @@ public class PsiTypesUtil {
       return false;
     }
   }
+
+  /**
+   * @param type type to check
+   * @return true if given type has a type annotation anywhere inside its declaration
+   */
+  public static boolean hasTypeAnnotation(@NotNull PsiType type) {
+    return type.accept(new PsiTypeVisitor<Boolean>() {
+      @Override
+      public Boolean visitType(@NotNull PsiType type) {
+        return type.getAnnotations().length > 0;
+      }
+
+      @Override
+      public Boolean visitClassType(@NotNull PsiClassType classType) {
+        return super.visitClassType(classType) ||
+               ContainerUtil.exists(classType.getParameters(), t -> t.accept(this));
+      }
+
+      @Override
+      public Boolean visitArrayType(@NotNull PsiArrayType arrayType) {
+        return super.visitArrayType(arrayType) || arrayType.getComponentType().accept(this);
+      }
+
+      @Override
+      public Boolean visitWildcardType(@NotNull PsiWildcardType wildcardType) {
+        return super.visitWildcardType(wildcardType) || wildcardType.getBound() != null && wildcardType.getBound().accept(this);
+      }
+
+      @Override
+      public Boolean visitIntersectionType(@NotNull PsiIntersectionType intersectionType) {
+        return ContainerUtil.exists(intersectionType.getConjuncts(), t -> t.accept(this));
+      }
+
+      @Override
+      public Boolean visitDisjunctionType(@NotNull PsiDisjunctionType disjunctionType) {
+        return ContainerUtil.exists(disjunctionType.getDisjunctions(), t -> t.accept(this));
+      }
+    });
+  }
   
   public static boolean hasUnresolvedComponents(@NotNull PsiType type) {
     return type.accept(new PsiTypeVisitor<Boolean>() {
       @Nullable
       @Override
-      public Boolean visitClassType(PsiClassType classType) {
+      public Boolean visitClassType(@NotNull PsiClassType classType) {
         PsiClassType.ClassResolveResult resolveResult = classType.resolveGenerics();
         final PsiClass psiClass = resolveResult.getElement();
         if (psiClass == null) {
@@ -371,26 +411,26 @@ public class PsiTypesUtil {
 
       @Nullable
       @Override
-      public Boolean visitArrayType(PsiArrayType arrayType) {
+      public Boolean visitArrayType(@NotNull PsiArrayType arrayType) {
         return arrayType.getComponentType().accept(this);
       }
 
       @NotNull
       @Override
-      public Boolean visitWildcardType(PsiWildcardType wildcardType) {
+      public Boolean visitWildcardType(@NotNull PsiWildcardType wildcardType) {
         final PsiType bound = wildcardType.getBound();
         return bound != null && bound.accept(this);
       }
 
       @Override
-      public Boolean visitType(PsiType type) {
+      public Boolean visitType(@NotNull PsiType type) {
         return false;
       }
     });
   }
 
   @NotNull
-  public static PsiType getParameterType(@NotNull PsiParameter[] parameters, int i, boolean varargs) {
+  public static PsiType getParameterType(PsiParameter @NotNull [] parameters, int i, boolean varargs) {
     final PsiParameter parameter = parameters[i < parameters.length ? i : parameters.length - 1];
     PsiType parameterType = parameter.getType();
     if (parameterType instanceof PsiEllipsisType && varargs) {
@@ -402,8 +442,7 @@ public class PsiTypesUtil {
     return parameterType;
   }
 
-  @NotNull
-  public static PsiTypeParameter[] filterUnusedTypeParameters(@NotNull PsiTypeParameter[] typeParameters, @NotNull PsiType... types) {
+  public static PsiTypeParameter @NotNull [] filterUnusedTypeParameters(PsiTypeParameter @NotNull [] typeParameters, PsiType @NotNull ... types) {
     if (typeParameters.length == 0) return PsiTypeParameter.EMPTY_ARRAY;
 
     TypeParameterSearcher searcher = new TypeParameterSearcher();
@@ -413,9 +452,8 @@ public class PsiTypesUtil {
     return searcher.getTypeParameters().toArray(PsiTypeParameter.EMPTY_ARRAY);
   }
 
-  @NotNull
-  public static PsiTypeParameter[] filterUnusedTypeParameters(@NotNull PsiType superReturnTypeInBaseClassType,
-                                                              @NotNull PsiTypeParameter[] typeParameters) {
+  public static PsiTypeParameter @NotNull [] filterUnusedTypeParameters(@NotNull PsiType superReturnTypeInBaseClassType,
+                                                                        PsiTypeParameter @NotNull [] typeParameters) {
     return filterUnusedTypeParameters(typeParameters, superReturnTypeInBaseClassType);
   }
 
@@ -518,12 +556,12 @@ public class PsiTypesUtil {
     if (type == null) return false;
     return type.accept(new PsiTypeVisitor<Boolean>() {
       @Override
-      public Boolean visitType(PsiType type) {
+      public Boolean visitType(@NotNull PsiType type) {
         return false;
       }
 
       @Override
-      public Boolean visitWildcardType(PsiWildcardType wildcardType) {
+      public Boolean visitWildcardType(@NotNull PsiWildcardType wildcardType) {
         final PsiType bound = wildcardType.getBound();
         if (bound != null) {
           return bound.accept(this);
@@ -532,7 +570,7 @@ public class PsiTypesUtil {
       }
 
       @Override
-      public Boolean visitClassType(PsiClassType classType) {
+      public Boolean visitClassType(@NotNull PsiClassType classType) {
         PsiClassType.ClassResolveResult result = classType.resolveGenerics();
         final PsiClass psiClass = result.getElement();
         if (psiClass != null) {
@@ -546,7 +584,7 @@ public class PsiTypesUtil {
       }
 
       @Override
-      public Boolean visitIntersectionType(PsiIntersectionType intersectionType) {
+      public Boolean visitIntersectionType(@NotNull PsiIntersectionType intersectionType) {
         for (PsiType conjunct : intersectionType.getConjuncts()) {
           if (conjunct.accept(this)) return true;
         }
@@ -554,17 +592,17 @@ public class PsiTypesUtil {
       }
 
       @Override
-      public Boolean visitMethodReferenceType(PsiMethodReferenceType methodReferenceType) {
+      public Boolean visitMethodReferenceType(@NotNull PsiMethodReferenceType methodReferenceType) {
         return false;
       }
 
       @Override
-      public Boolean visitLambdaExpressionType(PsiLambdaExpressionType lambdaExpressionType) {
+      public Boolean visitLambdaExpressionType(@NotNull PsiLambdaExpressionType lambdaExpressionType) {
         return false;
       }
 
       @Override
-      public Boolean visitArrayType(PsiArrayType arrayType) {
+      public Boolean visitArrayType(@NotNull PsiArrayType arrayType) {
         return arrayType.getComponentType().accept(this);
       }
     });
@@ -579,17 +617,17 @@ public class PsiTypesUtil {
     }
 
     @Override
-    public Boolean visitType(final PsiType type) {
+    public Boolean visitType(@NotNull final PsiType type) {
       return false;
     }
 
     @Override
-    public Boolean visitArrayType(final PsiArrayType arrayType) {
+    public Boolean visitArrayType(@NotNull final PsiArrayType arrayType) {
       return arrayType.getComponentType().accept(this);
     }
 
     @Override
-    public Boolean visitClassType(final PsiClassType classType) {
+    public Boolean visitClassType(@NotNull final PsiClassType classType) {
       PsiClassType.ClassResolveResult resolveResult = classType.resolveGenerics();
       final PsiClass aClass = resolveResult.getElement();
       if (aClass instanceof PsiTypeParameter) {
@@ -609,7 +647,7 @@ public class PsiTypesUtil {
     }
 
     @Override
-    public Boolean visitWildcardType(final PsiWildcardType wildcardType) {
+    public Boolean visitWildcardType(@NotNull final PsiWildcardType wildcardType) {
       final PsiType bound = wildcardType.getBound();
       if (bound != null) {
         bound.accept(this);

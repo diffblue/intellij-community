@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.command.undo;
 
 import com.intellij.openapi.command.WriteCommandAction;
@@ -16,9 +16,6 @@ import java.nio.charset.StandardCharsets;
 
 import static com.intellij.testFramework.utils.EncodingManagerUtilKt.doEncodingTest;
 
-/**
- * @author max
- */
 public class ComplexUndoTest extends EditorUndoTestCase {
   private static final Charset WINDOWS_1251 = Charset.forName("windows-1251");
 
@@ -99,11 +96,11 @@ public class ComplexUndoTest extends EditorUndoTestCase {
       WriteCommandAction.runWriteCommandAction(getProject(), () -> editor.getDocument().deleteString(0, editor.getDocument().getTextLength()));
       undo(editor);
       UIUtil.dispatchAllInvocationEvents();
-      assertEquals((int)utf8character, (int)editor.getDocument().getText().charAt(0));
+      assertEquals(utf8character, (int)editor.getDocument().getText().charAt(0));
       WriteCommandAction.runWriteCommandAction(getProject(), () -> editor2.getDocument().deleteString(0, editor2.getDocument().getTextLength()));
       undo(editor2);
       UIUtil.dispatchAllInvocationEvents();
-      assertEquals((int)utf8character, (int)editor2.getDocument().getText().charAt(0));
+      assertEquals(utf8character, (int)editor2.getDocument().getText().charAt(0));
     }));
   }
 

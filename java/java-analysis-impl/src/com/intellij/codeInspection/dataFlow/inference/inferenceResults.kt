@@ -1,10 +1,11 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection.dataFlow.inference
 
+import com.intellij.codeInsight.ExpressionUtil
 import com.intellij.codeInsight.Nullability
 import com.intellij.codeInsight.NullableNotNullManager
-import com.intellij.codeInspection.dataFlow.JavaMethodContractUtil
 import com.intellij.codeInspection.dataFlow.Mutability
+import com.intellij.codeInspection.dataFlow.MutationSignature
 import com.intellij.lang.LighterASTNode
 import com.intellij.psi.*
 import com.intellij.psi.impl.source.PsiMethodImpl
@@ -12,7 +13,6 @@ import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.psi.util.PsiUtil
-import com.intellij.util.gist.GistManager
 import com.siyeh.ig.psiutils.ClassUtils
 import java.util.*
 
@@ -35,29 +35,39 @@ data class ExpressionRange internal constructor (internal val startOffset: Int, 
 
 }
 
-data class PurityInferenceResult(internal val mutatedRefs: List<ExpressionRange>, internal val singleCall: ExpressionRange?) {
+data class PurityInferenceResult(internal val mutatesThis: Boolean,
+                                 internal val mutatedRefs: List<ExpressionRange>, 
+                                 internal val singleCall: ExpressionRange?) {
 
-  fun isPure(method: PsiMethod, body: () -> PsiCodeBlock): Boolean = !mutatesNonLocals(method, body) && callsOnlyPureMethods(method, body)
+  fun getMutationSignature(method: PsiMethod, body: () -> PsiCodeBlock): MutationSignature =
+    when {
+      mutatesNonLocals(method, body) -> MutationSignature.unknown()
+      mutatesThis -> fromCalls(method, body).alsoMutatesThis()
+      else -> fromCalls(method, body)
+    }
 
   private fun mutatesNonLocals(method: PsiMethod, body: () -> PsiCodeBlock): Boolean {
     return mutatedRefs.any { range -> !isLocalVarReference(range.restoreExpression(body()), method) }
   }
 
-  private fun callsOnlyPureMethods(currentMethod: PsiMethod, body: () -> PsiCodeBlock): Boolean {
-    if (singleCall == null) return true
+  private fun fromCalls(currentMethod: PsiMethod, body: () -> PsiCodeBlock): MutationSignature {
+    if (singleCall == null) return MutationSignature.pure()
 
-    val psiCall = singleCall.restoreExpression(body()) as PsiCall
-    val method = psiCall.resolveMethod()
-    if (method != null) {
-      return method == currentMethod || JavaMethodContractUtil.isPure(method)
-    } else if (psiCall is PsiNewExpression && psiCall.argumentList?.expressionCount == 0) {
-      val psiClass = psiCall.classOrAnonymousClassReference?.resolve() as? PsiClass
-      if (psiClass != null) {
-        val superClass = psiClass.superClass
-        return superClass == null || superClass.qualifiedName == CommonClassNames.JAVA_LANG_OBJECT
+    val psiCall = singleCall.restoreExpression(body()) as? PsiCall
+    val method = psiCall?.resolveMethod()
+    if (method == currentMethod) {
+      if (!mutatesThis || psiCall is PsiMethodCallExpression && ExpressionUtil.isEffectivelyUnqualified(psiCall.methodExpression)) {
+        return MutationSignature.pure()
       }
+      return MutationSignature.unknown()
     }
-    return false
+    val signature = MutationSignature.fromCall(psiCall)
+    if (signature == MutationSignature.pure() ||
+        signature == MutationSignature.pure().alsoMutatesThis() &&
+        psiCall is PsiMethodCallExpression && ExpressionUtil.isEffectivelyUnqualified(psiCall.methodExpression)) {
+      return if (currentMethod.isConstructor) MutationSignature.pure() else signature
+    }
+    return MutationSignature.unknown()
   }
 
   private fun isLocalVarReference(expression: PsiExpression?, scope: PsiMethod): Boolean {
@@ -103,7 +113,7 @@ interface MethodReturnInferenceResult {
     override fun getNullability(method: PsiMethod, body: () -> PsiCodeBlock): Nullability {
       return when {
         value == Nullability.NULLABLE -> Nullability.NULLABLE 
-        delegateCalls.all { range -> isNotNullCall(range, body()) } -> Nullability.NOT_NULL
+        delegateCalls.all { range -> isNotNullCall(method, range, body()) } -> Nullability.NOT_NULL
         else -> Nullability.UNKNOWN
       }
     }
@@ -112,27 +122,27 @@ interface MethodReturnInferenceResult {
       if (value == Nullability.NOT_NULL) {
         return Mutability.UNKNOWN
       }
-      return delegateCalls.stream().map { range -> getDelegateMutability(range, body()) }.reduce(
+      return delegateCalls.stream().map { range -> getDelegateMutability(method, range, body()) }.reduce(
         Mutability::unite).orElse(
         Mutability.UNKNOWN)
     }
 
-    private fun getDelegateMutability(delegate: ExpressionRange, body: PsiCodeBlock): Mutability {
+    private fun getDelegateMutability(caller: PsiMethod, delegate: ExpressionRange, body: PsiCodeBlock): Mutability {
       val call = delegate.restoreExpression(body) as PsiMethodCallExpression
       val target = call.resolveMethod()
       return when {
-        target == null -> Mutability.UNKNOWN
+        target == null || target == caller -> Mutability.UNKNOWN
         ClassUtils.isImmutable(target.returnType, false) -> Mutability.UNMODIFIABLE
         else -> Mutability.getMutability(target)
       }
     }
 
-    private fun isNotNullCall(delegate: ExpressionRange, body: PsiCodeBlock): Boolean {
+    private fun isNotNullCall(caller: PsiMethod, delegate: ExpressionRange, body: PsiCodeBlock): Boolean {
       val call = delegate.restoreExpression(body) as PsiMethodCallExpression
       if (call.type is PsiPrimitiveType) return true
 
       val target = call.resolveMethod()
-      return target != null && NullableNotNullManager.isNotNull(target)
+      return target == caller || target != null && NullableNotNullManager.isNotNull(target)
     }
   }
 }
@@ -164,15 +174,14 @@ data class MethodData(
       method.body!!
   }
 
-  private fun getDetachedBody(method: PsiMethod): PsiCodeBlock {
+  private fun getDetachedBody(method: PsiMethodImpl): PsiCodeBlock {
     val document = method.containingFile.viewProvider.document ?: return method.body!!
     try {
       val bodyText = PsiDocumentManager.getInstance(method.project).getLastCommittedText(document).substring(bodyStart, bodyEnd)
       return JavaPsiFacade.getElementFactory(method.project).createCodeBlockFromText(bodyText, method)
     }
-    catch (e: Exception) {
-      GistManager.getInstance().invalidateData()
-      throw e
+    catch (e: RuntimeException) {
+      throw handleInconsistency(method, this, e)
     }
   }
 }

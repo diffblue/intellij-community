@@ -76,6 +76,9 @@
             <val name="pure" val="true"/>
         </annotation>
     </item>
+    <item name='org.apache.velocity.runtime.parser.ParserConstants tokenImage'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager ParserTokenManager(org.apache.velocity.runtime.parser.CharStream)'>
         <annotation name='org.jetbrains.annotations.Contract'>
             <val name="pure" val="true"/>
@@ -84,6 +87,21 @@
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager boolean jjCanMove_0(int, int, int, long, long)'>
         <annotation name='org.jetbrains.annotations.Contract'>
             <val name="pure" val="true"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopAtPos(int, int)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_0(int, long, long)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_1(int, long, long)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
         </annotation>
     </item>
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_10(int, long)'>
@@ -99,6 +117,16 @@
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_2(int, long)'>
         <annotation name='org.jetbrains.annotations.Contract'>
             <val name="pure" val="true"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_3(int, long)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_4(int, long)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
         </annotation>
     </item>
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager int jjStopStringLiteralDfa_5(int, long)'>
@@ -126,6 +154,36 @@
             <val name="pure" val="true"/>
         </annotation>
     </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjbitVec0'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjbitVec2'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjnewLexState'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjnextStates'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjstrLiteralImages'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjtoMore'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjtoSkip'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjtoSpecial'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager jjtoToken'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager lexStateNames'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager org.apache.velocity.runtime.parser.Token jjFillToken()'>
         <annotation name='org.jetbrains.annotations.Contract'>
             <val val="&quot;-&gt;new&quot;"/>
@@ -135,10 +193,23 @@
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager void SkipLexicalActions(org.apache.velocity.runtime.parser.Token) 0'>
         <annotation name='org.jetbrains.annotations.Nullable'/>
     </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager void SwitchTo(int)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTokenManager void setDebugStream(java.io.PrintStream)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
     <item name='org.apache.velocity.runtime.parser.ParserTokenManager.ParserState ParserState()'>
         <annotation name='org.jetbrains.annotations.Contract'>
             <val name="pure" val="true"/>
         </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.ParserTreeConstants jjtNodeName'>
+        <annotation name='org.jetbrains.annotations.NotNull'/>
     </item>
     <item name='org.apache.velocity.runtime.parser.TemplateParseException int getColumnNumber()'>
         <annotation name='org.jetbrains.annotations.Contract'>
@@ -259,10 +330,30 @@
     <item name='org.apache.velocity.runtime.parser.VelocityCharStream java.lang.String GetImage()'>
         <annotation name='org.jetbrains.annotations.NotNull'/>
     </item>
+    <item name='org.apache.velocity.runtime.parser.VelocityCharStream void Done()'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
     <item name='org.apache.velocity.runtime.parser.VelocityCharStream void ReInit(java.io.InputStream, int, int) 0'>
         <annotation name='org.jetbrains.annotations.NotNull'/>
     </item>
     <item name='org.apache.velocity.runtime.parser.VelocityCharStream void ReInit(java.io.InputStream, int, int, int) 0'>
         <annotation name='org.jetbrains.annotations.NotNull'/>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.VelocityCharStream void ReInit(java.io.Reader, int, int)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.VelocityCharStream void ReInit(java.io.Reader, int, int, int)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
+    </item>
+    <item name='org.apache.velocity.runtime.parser.VelocityCharStream void backup(int)'>
+        <annotation name='org.jetbrains.annotations.Contract'>
+            <val name="mutates" val="&quot;this&quot;"/>
+        </annotation>
     </item>
 </root>

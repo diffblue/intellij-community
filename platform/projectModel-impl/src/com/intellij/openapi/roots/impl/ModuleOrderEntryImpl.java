@@ -20,7 +20,8 @@ import org.jetbrains.jps.model.serialization.java.JpsJavaModelSerializerExtensio
 import org.jetbrains.jps.model.serialization.module.JpsModuleRootModelSerializer;
 
 /**
- * @author dsl
+ * This class isn't used in the new implementation of project model, which is based on {@link com.intellij.workspaceModel.ide Workspace Model}.
+ * It shouldn't be used directly, its interface {@link ModuleOrderEntry} should be used instead.
  */
 @ApiStatus.Internal
 public class ModuleOrderEntryImpl extends OrderEntryBaseImpl implements ModuleOrderEntry, WritableOrderEntry, ClonableOrderEntry {
@@ -85,8 +86,7 @@ public class ModuleOrderEntryImpl extends OrderEntryBaseImpl implements ModuleOr
   }
 
   @Override
-  @NotNull
-  public VirtualFile[] getFiles(@NotNull OrderRootType type) {
+  public VirtualFile @NotNull [] getFiles(@NotNull OrderRootType type) {
     final OrderRootsEnumerator enumerator = getEnumerator(type);
     return enumerator != null ? enumerator.getRoots() : VirtualFile.EMPTY_ARRAY;
   }
@@ -100,8 +100,7 @@ public class ModuleOrderEntryImpl extends OrderEntryBaseImpl implements ModuleOr
   }
 
   @Override
-  @NotNull
-  public String[] getUrls(@NotNull OrderRootType rootType) {
+  public String @NotNull [] getUrls(@NotNull OrderRootType rootType) {
     final OrderRootsEnumerator enumerator = getEnumerator(rootType);
     return enumerator != null ? enumerator.getUrls() : ArrayUtilRt.EMPTY_STRING_ARRAY;
   }
@@ -155,10 +154,10 @@ public class ModuleOrderEntryImpl extends OrderEntryBaseImpl implements ModuleOr
 
   @NotNull
   @Override
-  public OrderEntry cloneEntry(@NotNull RootModelImpl rootModel,
+  public OrderEntry cloneEntry(@NotNull ModifiableRootModel rootModel,
                                @NotNull ProjectRootManagerImpl projectRootManager,
                                @NotNull VirtualFilePointerManager filePointerManager) {
-    return new ModuleOrderEntryImpl(this, rootModel);
+    return new ModuleOrderEntryImpl(this, (RootModelImpl)rootModel);
   }
 
   @Override

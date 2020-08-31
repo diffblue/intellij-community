@@ -51,8 +51,6 @@ public abstract class AbstractVcs extends StartedActivated {
   private RollbackEnvironment myRollbackEnvironment;
 
   public AbstractVcs(@NotNull Project project, final String name) {
-    super(project);
-
     myProject = project;
     myName = name;
     myKey = new VcsKey(myName);
@@ -548,11 +546,11 @@ public abstract class AbstractVcs extends StartedActivated {
   }
 
   @Nullable
-  public CommittedChangeList loadRevisions(final VirtualFile vf, final VcsRevisionNumber number) {
+  public CommittedChangeList loadRevisions(VirtualFile vf, @NotNull VcsRevisionNumber number) {
     return VcsSynchronousProgressWrapper.compute(() -> {
       final Pair<CommittedChangeList, FilePath> pair = getCommittedChangesProvider().getOneList(vf, number);
       return pair != null ? pair.getFirst() : null;
-    }, getProject(), "Load Revision Contents");
+    }, getProject(), VcsBundle.message("title.load.revision.contents"));
   }
 
   @Override
@@ -587,6 +585,10 @@ public abstract class AbstractVcs extends StartedActivated {
   @Override
   public String toString() {
     return getName();
+  }
+
+  public boolean needsCaseSensitiveDirtyScope() {
+    return false;
   }
 }
 

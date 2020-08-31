@@ -6,10 +6,7 @@ import com.intellij.openapi.application.*
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.registry.Registry
-import com.intellij.openapi.vcs.AbstractVcs
-import com.intellij.openapi.vcs.FilesProcessorWithNotificationImpl
-import com.intellij.openapi.vcs.VcsApplicationSettings
-import com.intellij.openapi.vcs.VcsBundle
+import com.intellij.openapi.vcs.*
 import com.intellij.openapi.vcs.changes.*
 import com.intellij.openapi.vcs.changes.ignore.IgnoreConfigurationProperty.ASKED_MANAGE_IGNORE_FILES_PROPERTY
 import com.intellij.openapi.vcs.changes.ignore.IgnoreConfigurationProperty.MANAGE_IGNORE_FILES_PROPERTY
@@ -38,13 +35,12 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
 
   private val unprocessedFiles = mutableSetOf<VirtualFile>()
 
-  private val changeListManager = ChangeListManagerImpl.getInstanceImpl(project)
   private val vcsIgnoreManager = VcsIgnoreManager.getInstance(project)
 
   fun install() {
     runReadAction {
       if (!project.isDisposed) {
-        changeListManager.addChangeListListener(this, parentDisposable)
+        project.messageBus.connect(parentDisposable).subscribe(ChangeListListener.TOPIC, this)
         AsyncVfsEventsPostProcessor.getInstance().addListener(this, parentDisposable)
       }
     }
@@ -84,8 +80,11 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
 
     val potentiallyIgnoredFiles =
       events.asSequence()
-        .mapNotNull(::getAffectedFile)
-        .filter(vcsIgnoreManager::isPotentiallyIgnoredFile)
+        .filter {
+          val filePath = getAffectedFilePath(it)
+          filePath != null && vcsIgnoreManager.isPotentiallyIgnoredFile(filePath)
+        }
+        .mapNotNull { it.file }
         .toList()
 
     if (potentiallyIgnoredFiles.isEmpty()) return
@@ -121,7 +120,7 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
             for ((ignoredFileProvider, descriptors) in providerToDescriptorMap) {
               for (ignoredFileDescriptor in descriptors.filter { it.matchesFile(VcsUtil.getFilePath(potentiallyIgnoredFile)) }) {
                 val ignoreFileContent = ignoreFileToContent.computeIfAbsent(ignoreFile) { mutableListOf() }
-                val groupDescription = " ${ignoredFileProvider.ignoredGroupDescription}"
+                val groupDescription = ignoredContentProvider.buildIgnoreGroupDescription(ignoredFileProvider)
                 val ignoreFileGroupContent = ignoreFileContent.getOrInitialize(groupDescription)
                 ignoreFileGroupContent.ignoredDescriptors.add(ignoredFileDescriptor)
               }
@@ -151,8 +150,13 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
     val storeDir = findStoreDir(project)
 
     val ignoreFileRoot =
-      if (ignoredContentProvider.supportIgnoreFileNotInVcsRoot()
-          && storeDir != null && file.underProjectStoreDir(storeDir)) storeDir
+      if (storeDir != null
+          && ignoredContentProvider.supportIgnoreFileNotInVcsRoot()
+          && file.underProjectStoreDir(storeDir)) {
+        if (ignoredContentProvider.canCreateIgnoreFileInStateStoreDir()){
+          storeDir
+        } else return null
+      }
       else VcsUtil.getVcsRootFor(project, file) ?: return null
 
     return ignoreFileRoot.findChild(ignoredContentProvider.fileName) ?: runWriteAction {
@@ -172,12 +176,14 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
   }
 
   override fun doFilterFiles(files: Collection<VirtualFile>) =
-    changeListManager.unversionedFiles.filter { isUnder(files, it) }
+    ChangeListManagerImpl.getInstanceImpl(project).unversionedFiles.filter { isUnder(files, it) }
 
   override fun rememberForAllProjects() {
     val applicationSettings = VcsApplicationSettings.getInstance()
     applicationSettings.MANAGE_IGNORE_FILES = true
   }
+
+  override val notificationDisplayId: String = "manage.ignore.files.notification"
 
   override val askedBeforeProperty = ASKED_MANAGE_IGNORE_FILES_PROPERTY
 
@@ -203,17 +209,15 @@ class IgnoreFilesProcessorImpl(project: Project, private val vcs: AbstractVcs, p
     return !appSettings.DISABLE_MANAGE_IGNORE_FILES && (appSettings.MANAGE_IGNORE_FILES || super.needDoForCurrentProject())
   }
 
-  private fun getAffectedFile(event: VFileEvent): VirtualFile? =
-    runReadAction {
-      when {
-        event is VFileCreateEvent && event.parent.isValid -> event.file
-        event is VFileMoveEvent || event.isRename() -> event.file
-        event is VFileCopyEvent && event.newParent.isValid -> event.newParent.findChild(event.newChildName)
-        else -> null
+  private fun getAffectedFilePath(event: VFileEvent): FilePath? = when {
+    event is VFileCreateEvent -> VcsUtil.getFilePath(event.path, event.isDirectory)
+    event is VFileMoveEvent ||
+    event is VFileCopyEvent ||
+    event is VFilePropertyChangeEvent && event.isRename -> {
+      VcsUtil.getFilePath(event.path, event.file!!.isDirectory)
       }
-    }
-
-  private fun VFileEvent.isRename() = this is VFilePropertyChangeEvent && isRename
+    else -> null
+  }
 
   private fun needProcessIgnoredFiles() = Registry.`is`("vcs.ignorefile.generation", true)
 }

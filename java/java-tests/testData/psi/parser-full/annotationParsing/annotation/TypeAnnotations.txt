@@ -72,6 +72,8 @@ PsiJavaFile:TypeAnnotations.java
       <empty list>
     PsiReferenceList
       <empty list>
+    PsiReferenceList
+      <empty list>
     PsiWhiteSpace(' ')
     PsiJavaToken:LBRACE('{')
     PsiWhiteSpace('\n\n  ')
@@ -212,6 +214,8 @@ PsiJavaFile:TypeAnnotations.java
         <empty list>
       PsiReferenceList
         <empty list>
+      PsiReferenceList
+        <empty list>
       PsiWhiteSpace(' ')
       PsiJavaToken:LBRACE('{')
       PsiWhiteSpace(' ')
@@ -296,6 +300,8 @@ PsiJavaFile:TypeAnnotations.java
                 PsiReferenceParameterList
                   <empty list>
             PsiJavaToken:GT('>')
+      PsiReferenceList
+        <empty list>
       PsiWhiteSpace(' ')
       PsiJavaToken:LBRACE('{')
       PsiWhiteSpace(' ')
@@ -569,7 +575,7 @@ PsiJavaFile:TypeAnnotations.java
             PsiWhiteSpace(' ')
             PsiJavaToken:EQ('=')
             PsiWhiteSpace(' ')
-            PsiInstanceofExpression:myString instanceof @NonNull String
+            PsiInstanceofExpression
               PsiReferenceExpression:myString
                 PsiReferenceParameterList
                   <empty list>
@@ -577,20 +583,21 @@ PsiJavaFile:TypeAnnotations.java
               PsiWhiteSpace(' ')
               PsiKeyword:instanceof('instanceof')
               PsiWhiteSpace(' ')
-              PsiTypeElement:@NonNull String
-                PsiAnnotation
-                  PsiJavaToken:AT('@')
-                  PsiJavaCodeReferenceElement:NonNull
-                    PsiIdentifier:NonNull('NonNull')
+              PsiTypeTestPattern
+                PsiTypeElement:@NonNull String
+                  PsiAnnotation
+                    PsiJavaToken:AT('@')
+                    PsiJavaCodeReferenceElement:NonNull
+                      PsiIdentifier:NonNull('NonNull')
+                      PsiReferenceParameterList
+                        <empty list>
+                    PsiAnnotationParameterList
+                      <empty list>
+                  PsiWhiteSpace(' ')
+                  PsiJavaCodeReferenceElement:String
+                    PsiIdentifier:String('String')
                     PsiReferenceParameterList
                       <empty list>
-                  PsiAnnotationParameterList
-                    <empty list>
-                PsiWhiteSpace(' ')
-                PsiJavaCodeReferenceElement:String
-                  PsiIdentifier:String('String')
-                  PsiReferenceParameterList
-                    <empty list>
           PsiJavaToken:SEMICOLON(';')
         PsiWhiteSpace('\n    ')
         PsiExpressionStatement
@@ -602,7 +609,7 @@ PsiJavaFile:TypeAnnotations.java
             PsiWhiteSpace(' ')
             PsiJavaToken:EQ('=')
             PsiWhiteSpace(' ')
-            PsiInstanceofExpression:myString instanceof @NonNull
+            PsiInstanceofExpression
               PsiReferenceExpression:myString
                 PsiReferenceParameterList
                   <empty list>
@@ -1052,6 +1059,8 @@ PsiJavaFile:TypeAnnotations.java
       PsiWhiteSpace(' ')
       PsiIdentifier:TestClass('TestClass')
       PsiTypeParameterList
+        <empty list>
+      PsiReferenceList
         <empty list>
       PsiReferenceList
         <empty list>
@@ -1666,6 +1675,8 @@ PsiJavaFile:TypeAnnotations.java
         <empty list>
       PsiReferenceList
         <empty list>
+      PsiReferenceList
+        <empty list>
       PsiWhiteSpace(' ')
       PsiJavaToken:LBRACE('{')
       PsiWhiteSpace(' ')
@@ -1693,6 +1704,8 @@ PsiJavaFile:TypeAnnotations.java
           PsiReferenceList
             <empty list>
         PsiJavaToken:GT('>')
+      PsiReferenceList
+        <empty list>
       PsiReferenceList
         <empty list>
       PsiReferenceList

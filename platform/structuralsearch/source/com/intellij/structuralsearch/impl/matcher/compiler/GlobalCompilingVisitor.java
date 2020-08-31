@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.impl.matcher.compiler;
 
 import com.intellij.dupLocator.util.NodeFilter;
@@ -7,7 +7,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.structuralsearch.MalformedPatternException;
 import com.intellij.structuralsearch.StructuralSearchProfile;
 import com.intellij.structuralsearch.StructuralSearchUtil;
-import com.intellij.structuralsearch.impl.matcher.filters.CompositeFilter;
+import com.intellij.structuralsearch.impl.matcher.filters.CompositeNodeFilter;
 import com.intellij.structuralsearch.impl.matcher.filters.LexicalNodesFilter;
 import com.intellij.structuralsearch.impl.matcher.handlers.LiteralWithSubstitutionHandler;
 import com.intellij.structuralsearch.impl.matcher.handlers.MatchingHandler;
@@ -18,12 +18,9 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import static com.intellij.structuralsearch.MatchOptions.INSTANCE_MODIFIER_NAME;
-import static com.intellij.structuralsearch.MatchOptions.MODIFIER_ANNOTATION_NAME;
 
 /**
  * @author maxim
@@ -31,14 +28,7 @@ import static com.intellij.structuralsearch.MatchOptions.MODIFIER_ANNOTATION_NAM
 public class GlobalCompilingVisitor {
   @NonNls private static final String SUBSTITUTION_PATTERN_STR = "\\b(__\\$_\\w+)\\b";
   private static final Pattern ourSubstitutionPattern = Pattern.compile(SUBSTITUTION_PATTERN_STR);
-  private static final Set<String> ourReservedWords = new HashSet<>(Arrays.asList(MODIFIER_ANNOTATION_NAME, INSTANCE_MODIFIER_NAME));
   private static final NodeFilter ourFilter = LexicalNodesFilter.getInstance();
-
-  static {
-    for (StructuralSearchProfile profile : StructuralSearchProfile.EP_NAME.getExtensionList()) {
-      ourReservedWords.addAll(profile.getReservedWords());
-    }
-  }
 
   private CompileContext context;
   private final List<PsiElement> myLexicalNodes = new SmartList<>();
@@ -96,7 +86,7 @@ public class GlobalCompilingVisitor {
   public static void setFilter(MatchingHandler handler, NodeFilter filter) {
     if (handler.getFilter() != null && handler.getFilter().getClass() != filter.getClass()) {
       // for constructor we will have the same handler for class and method and tokens itself
-      handler.setFilter(new CompositeFilter(filter, handler.getFilter()));
+      handler.setFilter(new CompositeNodeFilter(filter, handler.getFilter()));
     }
     else {
       handler.setFilter(filter);
@@ -121,11 +111,16 @@ public class GlobalCompilingVisitor {
     }
     myCodeBlockLevel = 0;
     this.context = context;
-    final StructuralSearchProfile profile = StructuralSearchUtil.getProfileByFileType(context.getOptions().getFileType());
+    final StructuralSearchProfile profile =
+      StructuralSearchUtil.getProfileByFileType(context.getOptions().getFileType());
     assert profile != null;
     profile.compile(elements, this);
 
     assert context.getPattern().getStrategy() != null;
+  }
+
+  public boolean hasFragments(String pattern) {
+    return ourSubstitutionPattern.matcher(pattern).find();
   }
 
   @Nullable
@@ -159,8 +154,8 @@ public class GlobalCompilingVisitor {
     while (matcher.find()) {
       word = content.substring(start, matcher.start());
       if (!word.isEmpty()) {
-        buf.append(StructuralSearchUtil.shieldRegExpMetaChars(word));
         hasLiteralContent = true;
+        buf.append(StructuralSearchUtil.makeExtremeSpacesOptional(StructuralSearchUtil.shieldRegExpMetaChars(word)));
 
         processTokenizedName(word, false, kind);
       }
@@ -189,7 +184,7 @@ public class GlobalCompilingVisitor {
 
     if (!word.isEmpty()) {
       hasLiteralContent = true;
-      buf.append(StructuralSearchUtil.shieldRegExpMetaChars(word));
+      buf.append(StructuralSearchUtil.makeExtremeSpacesOptional(StructuralSearchUtil.shieldRegExpMetaChars(word)));
 
       processTokenizedName(word, false, kind);
     }
@@ -222,7 +217,10 @@ public class GlobalCompilingVisitor {
     if (!compileContext.getSearchHelper().doOptimizing()) {
       return;
     }
-    if (ourReservedWords.contains(word)) return; // skip our special annotations !!!
+    final StructuralSearchProfile profile =
+      StructuralSearchUtil.getProfileByFileType(compileContext.getOptions().getFileType());
+    assert profile != null;
+    if (profile.getReservedWords().contains(word)) return; // skip our special annotations !!!
 
     if (kind == GlobalCompilingVisitor.OccurenceKind.CODE) {
       compileContext.getSearchHelper().addWordToSearchInCode(word);
@@ -243,6 +241,7 @@ public class GlobalCompilingVisitor {
   }
 
   public void processTokenizedName(String name, boolean skipComments, GlobalCompilingVisitor.OccurenceKind kind) {
+    if (kind == OccurenceKind.LITERAL) name = StringUtil.unescapeStringCharacters(name);
     for (String word : StringUtil.getWordsInStringLongestFirst(name)) {
       addFilesToSearchForGivenWord(word, true, kind, getContext());
     }

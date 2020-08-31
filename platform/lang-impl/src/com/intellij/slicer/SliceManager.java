@@ -1,9 +1,12 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.slicer;
 
 import com.intellij.analysis.AnalysisUIOptions;
 import com.intellij.ide.impl.ContentManagerWatcher;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ToolWindow;
@@ -19,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.regex.Pattern;
 
 @State(name = "SliceManager", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
-public class SliceManager implements PersistentStateComponent<SliceManager.StoredSettingsBean> {
+public final class SliceManager implements PersistentStateComponent<SliceManager.StoredSettingsBean> {
   private final Project myProject;
   private ContentManager myBackContentManager;
   private ContentManager myForthContentManager;
@@ -33,7 +36,7 @@ public class SliceManager implements PersistentStateComponent<SliceManager.Store
   }
 
   public static SliceManager getInstance(@NotNull Project project) {
-    return ServiceManager.getService(project, SliceManager.class);
+    return project.getService(SliceManager.class);
   }
 
   public SliceManager(@NotNull Project project) {
@@ -45,7 +48,7 @@ public class SliceManager implements PersistentStateComponent<SliceManager.Store
       if (myBackContentManager == null) {
         ToolWindow backToolWindow = ToolWindowManager.getInstance(myProject).registerToolWindow(BACK_TOOLWINDOW_ID, true, ToolWindowAnchor.BOTTOM, myProject);
         myBackContentManager = backToolWindow.getContentManager();
-        new ContentManagerWatcher(backToolWindow, myBackContentManager);
+        ContentManagerWatcher.watchContentManager(backToolWindow, myBackContentManager);
       }
       return myBackContentManager;
     }
@@ -53,7 +56,7 @@ public class SliceManager implements PersistentStateComponent<SliceManager.Store
     if (myForthContentManager == null) {
       ToolWindow forthToolWindow = ToolWindowManager.getInstance(myProject).registerToolWindow(FORTH_TOOLWINDOW_ID, true, ToolWindowAnchor.BOTTOM, myProject);
       myForthContentManager = forthToolWindow.getContentManager();
-      new ContentManagerWatcher(forthToolWindow, myForthContentManager);
+      ContentManagerWatcher.watchContentManager(forthToolWindow, myForthContentManager);
     }
     return myForthContentManager;
   }
@@ -62,13 +65,22 @@ public class SliceManager implements PersistentStateComponent<SliceManager.Store
     String dialogTitle = getElementDescription((dataFlowToThis ? BACK_TOOLWINDOW_ID : FORTH_TOOLWINDOW_ID) + " ", element, null);
 
     dialogTitle = Pattern.compile("(<style>.*</style>)|<[^<>]*>", Pattern.DOTALL).matcher(dialogTitle).replaceAll("");
-    SliceAnalysisParams params = handler.askForParams(element, dataFlowToThis, myStoredSettings, StringUtil.unescapeXmlEntities(dialogTitle));
+    SliceAnalysisParams params = handler.askForParams(element, myStoredSettings, StringUtil.unescapeXmlEntities(dialogTitle));
     if (params == null) return;
 
+    createToolWindow(element, params);
+  }
+
+  /**
+   * Opens the dataflow analysis toolwindow starting from the given element
+   *
+   * @param element root element
+   * @param params analysis parameters
+   */
+  public void createToolWindow(@NotNull PsiElement element, @NotNull SliceAnalysisParams params) {
     SliceRootNode rootNode = new SliceRootNode(myProject, new DuplicateMap(),
                                                LanguageSlicing.getProvider(element).createRootUsage(element, params));
-
-    createToolWindow(dataFlowToThis, rootNode, false, getElementDescription(null, element, null));
+    createToolWindow(params.dataFlowToThis, rootNode, false, getElementDescription(null, element, null));
   }
 
   public void createToolWindow(boolean dataFlowToThis, @NotNull SliceRootNode rootNode, boolean splitByLeafExpressions, @NotNull String displayName) {
@@ -118,7 +130,7 @@ public class SliceManager implements PersistentStateComponent<SliceManager.Store
     }
     String desc = ElementDescriptionUtil.getElementDescription(element, RefactoringDescriptionLocation.WITHOUT_PARENT);
     return "<html><body>" +
-           (prefix == null ? "" : prefix) + StringUtil.first(desc, 100, true)+(suffix == null ? "" : suffix) +
+           (prefix == null ? "" : prefix) + StringUtil.first(desc, 100, true) + (suffix == null ? "" : suffix) +
            "</body></html>";
   }
 

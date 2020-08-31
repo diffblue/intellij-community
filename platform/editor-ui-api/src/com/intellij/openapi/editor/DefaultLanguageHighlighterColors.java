@@ -1,6 +1,7 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor;
 
+import com.intellij.openapi.editor.colors.ColorKey;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
 
 /**
@@ -8,7 +9,7 @@ import com.intellij.openapi.editor.colors.TextAttributesKey;
  *
  * @author Rustam Vishnyakov
  */
-public class DefaultLanguageHighlighterColors {
+public final class DefaultLanguageHighlighterColors {
   public static final TextAttributesKey TEMPLATE_LANGUAGE_COLOR = TextAttributesKey.createTextAttributesKey("DEFAULT_TEMPLATE_LANGUAGE_COLOR", HighlighterColors.TEXT);
   public static final TextAttributesKey IDENTIFIER = TextAttributesKey.createTextAttributesKey("DEFAULT_IDENTIFIER", HighlighterColors.TEXT);
   public static final TextAttributesKey NUMBER = TextAttributesKey.createTextAttributesKey("DEFAULT_NUMBER");
@@ -46,10 +47,13 @@ public class DefaultLanguageHighlighterColors {
   public static final TextAttributesKey DOC_COMMENT_MARKUP = TextAttributesKey.createTextAttributesKey("DEFAULT_DOC_MARKUP");
   public static final TextAttributesKey DOC_COMMENT_TAG = TextAttributesKey.createTextAttributesKey("DEFAULT_DOC_COMMENT_TAG");
   public static final TextAttributesKey DOC_COMMENT_TAG_VALUE = TextAttributesKey.createTextAttributesKey("DEFAULT_DOC_COMMENT_TAG_VALUE");
+  public static final ColorKey DOC_COMMENT_GUIDE = ColorKey.createColorKey("DOC_COMMENT_GUIDE");
+  public static final ColorKey DOC_COMMENT_LINK = ColorKey.createColorKey("DOC_COMMENT_LINK");
   public static final TextAttributesKey VALID_STRING_ESCAPE = TextAttributesKey.createTextAttributesKey("DEFAULT_VALID_STRING_ESCAPE");
   public static final TextAttributesKey INVALID_STRING_ESCAPE = TextAttributesKey.createTextAttributesKey("DEFAULT_INVALID_STRING_ESCAPE");
 
   public static final TextAttributesKey PREDEFINED_SYMBOL = TextAttributesKey.createTextAttributesKey("DEFAULT_PREDEFINED_SYMBOL", IDENTIFIER);
+  public static final TextAttributesKey HIGHLIGHTED_REFERENCE = TextAttributesKey.createTextAttributesKey("DEFAULT_HIGHLIGHTED_REFERENCE", STRING);
 
   public static final TextAttributesKey METADATA = TextAttributesKey.createTextAttributesKey("DEFAULT_METADATA", HighlighterColors.TEXT);
 
@@ -59,4 +63,7 @@ public class DefaultLanguageHighlighterColors {
   public static final TextAttributesKey INLINE_PARAMETER_HINT = TextAttributesKey.createTextAttributesKey("INLINE_PARAMETER_HINT");
   public static final TextAttributesKey INLINE_PARAMETER_HINT_HIGHLIGHTED = TextAttributesKey.createTextAttributesKey("INLINE_PARAMETER_HINT_HIGHLIGHTED");
   public static final TextAttributesKey INLINE_PARAMETER_HINT_CURRENT = TextAttributesKey.createTextAttributesKey("INLINE_PARAMETER_HINT_CURRENT");
+  public static final ColorKey INLINE_REFACTORING_SETTINGS_DEFAULT = ColorKey.createColorKey("INLINE_REFACTORING_SETTINGS_DEFAULT");
+  public static final ColorKey INLINE_REFACTORING_SETTINGS_FOCUSED = ColorKey.createColorKey("INLINE_REFACTORING_SETTINGS_FOCUSED");
+  public static final ColorKey INLINE_REFACTORING_SETTINGS_HOVERED = ColorKey.createColorKey("INLINE_REFACTORING_SETTINGS_HOVERED");
 }

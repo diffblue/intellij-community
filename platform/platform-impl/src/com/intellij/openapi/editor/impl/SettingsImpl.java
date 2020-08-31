@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.editor.impl;
 
@@ -17,6 +17,7 @@ import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.registry.RegistryValue;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
@@ -29,12 +30,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 public class SettingsImpl implements EditorSettings {
   private static final Logger LOG = Logger.getInstance(SettingsImpl.class);
+  private static final RegistryValue SPECIAL_CHARS_ENABLED = Registry.get("editor.show.special.chars");
 
   @Nullable private final EditorEx myEditor;
-  @Nullable private Language myLanguage;
+  @Nullable private Supplier<? extends Language> myLanguageSupplier;
   private Boolean myIsCamelWords;
 
   // This group of settings does not have UI
@@ -83,6 +86,7 @@ public class SettingsImpl implements EditorSettings {
   private Boolean myRenamePreselect                       = null;
   private Boolean myWrapWhenTypingReachesRightMargin      = null;
   private Boolean myShowIntentionBulb                     = null;
+  private Boolean myShowingSpecialCharacters              = null;
 
   private List<Integer> mySoftMargins = null;
 
@@ -216,16 +220,16 @@ public class SettingsImpl implements EditorSettings {
   public int getRightMargin(Project project) {
     if (myRightMargin != null) return myRightMargin.intValue();
     return myEditor != null
-           ? CodeStyle.getSettings(myEditor).getRightMargin(myLanguage)
-           : CodeStyle.getProjectOrDefaultSettings(project).getRightMargin(myLanguage);
+           ? CodeStyle.getSettings(myEditor).getRightMargin(getLanguage())
+           : CodeStyle.getProjectOrDefaultSettings(project).getRightMargin(getLanguage());
   }
 
   @Override
   public boolean isWrapWhenTypingReachesRightMargin(Project project) {
     if (myWrapWhenTypingReachesRightMargin != null) return myWrapWhenTypingReachesRightMargin.booleanValue();
     return myEditor == null ?
-           CodeStyle.getDefaultSettings().isWrapOnTyping(myLanguage) :
-           CodeStyle.getSettings(myEditor).isWrapOnTyping(myLanguage);
+           CodeStyle.getDefaultSettings().isWrapOnTyping(getLanguage()) :
+           CodeStyle.getSettings(myEditor).isWrapOnTyping(getLanguage());
   }
 
   @Override
@@ -247,8 +251,8 @@ public class SettingsImpl implements EditorSettings {
     if (mySoftMargins != null) return mySoftMargins;
     return
       myEditor == null ?
-      CodeStyle.getDefaultSettings().getSoftMargins(myLanguage) :
-      CodeStyle.getSettings(myEditor).getSoftMargins(myLanguage);
+      CodeStyle.getDefaultSettings().getSoftMargins(getLanguage()) :
+      CodeStyle.getSettings(myEditor).getSoftMargins(getLanguage());
   }
 
   @Override
@@ -732,8 +736,31 @@ public class SettingsImpl implements EditorSettings {
     myShowIntentionBulb = show; 
   }
 
+  @Nullable
+  public Language getLanguage() {
+    if (myLanguageSupplier != null) {
+      return myLanguageSupplier.get();
+    }
+    return null;
+  }
+
   @Override
-  public void setLanguage(@Nullable Language language) {
-    myLanguage = language;
+  public void setLanguageSupplier(@Nullable Supplier<? extends Language> languageSupplier) {
+    myLanguageSupplier = languageSupplier;
+  }
+
+  @Override
+  public boolean isShowingSpecialChars() {
+    return myShowingSpecialCharacters == null ? SPECIAL_CHARS_ENABLED.asBoolean() : myShowingSpecialCharacters;
+  }
+
+  @Override
+  public void setShowingSpecialChars(boolean value) {
+    boolean oldState = isShowingSpecialChars();
+    myShowingSpecialCharacters = value;
+    boolean newState = isShowingSpecialChars();
+    if (newState != oldState) {
+      fireEditorRefresh();
+    }
   }
 }

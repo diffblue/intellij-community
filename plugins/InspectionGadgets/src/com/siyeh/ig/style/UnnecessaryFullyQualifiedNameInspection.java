@@ -47,21 +47,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @see com.siyeh.ipp.fqnames.ReplaceFullyQualifiedNameWithImportIntention
- */
 public class UnnecessaryFullyQualifiedNameInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @SuppressWarnings({"PublicField", "unused"})
   public boolean m_ignoreJavadoc; // left here to prevent changes to project files.
 
   public boolean ignoreInModuleStatements = true;
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("unnecessary.fully.qualified.name.display.name");
-  }
 
   @Override
   @NotNull
@@ -95,7 +86,7 @@ public class UnnecessaryFullyQualifiedNameInspection extends BaseInspection impl
     @NotNull
     @Override
     public String getFamilyName() {
-      return "Replace fully qualified name";
+      return InspectionGadgetsBundle.message("unnecessary.fully.qualified.name.fix.family.name");
     }
 
     @Override

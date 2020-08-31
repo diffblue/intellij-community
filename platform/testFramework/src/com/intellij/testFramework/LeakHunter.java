@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.ide.IdeEventQueue;
@@ -26,6 +12,7 @@ import com.intellij.openapi.project.impl.ProjectImpl;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.project.TestProjectManager;
 import com.intellij.util.PairProcessor;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.io.PersistentEnumeratorBase;
@@ -36,10 +23,13 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
-import java.util.*;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Vector;
 import java.util.function.Supplier;
 
-public class LeakHunter {
+public final class LeakHunter {
   @TestOnly
   public static void checkProjectLeak() {
     checkLeak(allRoots(), ProjectImpl.class, project -> !project.isDefault() && !project.isLight());
@@ -63,7 +53,7 @@ public class LeakHunter {
                                    @NotNull Class<T> suspectClass,
                                    @Nullable final Condition<? super T> isReallyLeak) throws AssertionError {
     processLeaks(rootsSupplier, suspectClass, isReallyLeak, (leaked, backLink)->{
-      String place = leaked instanceof Project ? HeavyPlatformTestCase.getCreationPlace((Project)leaked) : "";
+      String place = leaked instanceof Project ? TestProjectManager.getCreationPlace((Project)leaked) : "";
       String message ="Found leaked "+leaked.getClass() + ": "+leaked +
                       "; hash: " + System.identityHashCode(leaked) + "; place: " + place + "\n" +
                       backLink;
@@ -124,20 +114,24 @@ public class LeakHunter {
     return () -> {
       ClassLoader classLoader = LeakHunter.class.getClassLoader();
       // inspect static fields of all loaded classes
-      Vector allLoadedClasses = ReflectionUtil.getField(classLoader.getClass(), classLoader, Vector.class, "classes");
+      Vector<?> allLoadedClasses = ReflectionUtil.getField(classLoader.getClass(), classLoader, Vector.class, "classes");
 
       // Remove expired invocations, so they are not used as object roots.
       LaterInvocator.purgeExpiredItems();
 
       Map<Object, String> result = new IdentityHashMap<>();
-      if (ApplicationManager.getApplication() != null) {
-        result.put(ApplicationManager.getApplication(), "ApplicationManager.getApplication()");
+      Application application = ApplicationManager.getApplication();
+      if (application != null) {
+        result.put(application, "ApplicationManager.getApplication()");
       }
       result.put(Disposer.getTree(), "Disposer.getTree()");
       result.put(IdeEventQueue.getInstance(), "IdeEventQueue.getInstance()");
-      result.put(LaterInvocator.getLaterInvocatorQueue(), "LaterInvocator.getLaterInvocatorQueue()");
+      result.put(LaterInvocator.getLaterInvocatorEdtQueue(), "LaterInvocator.getLaterInvocatorEdtQueue()");
+      result.put(LaterInvocator.getLaterInvocatorWtQueue(), "LaterInvocator.getLaterInvocatorWtQueue()");
       result.put(ThreadTracker.getThreads().values(), "all live threads");
-      result.put(allLoadedClasses, "all loaded classes statics");
+      if (allLoadedClasses != null) {
+        result.put(allLoadedClasses, "all loaded classes statics");
+      }
       return result;
     };
   }

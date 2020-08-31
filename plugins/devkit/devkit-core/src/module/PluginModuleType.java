@@ -2,6 +2,7 @@
 package org.jetbrains.idea.devkit.module;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.*;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ContentEntry;
@@ -29,7 +30,7 @@ import java.util.Set;
 
 public class PluginModuleType extends ModuleType<PluginModuleBuilder> {
 
-  @NonNls private static final String ID = "PLUGIN_MODULE";
+  @NonNls public static final String ID = "PLUGIN_MODULE";
 
   public PluginModuleType() {
     super(ID);

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.usages.impl.rules;
 
 import com.intellij.openapi.vcs.FileStatus;
@@ -9,18 +9,16 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.usages.*;
 import com.intellij.usages.rules.PsiElementUsage;
 import com.intellij.usages.rules.SingleParentUsageGroupingRule;
+import com.intellij.usages.rules.UsageGroupingRuleEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-/**
- * @author max
- */
-public class UsageTypeGroupingRule extends SingleParentUsageGroupingRule {
+public class UsageTypeGroupingRule extends SingleParentUsageGroupingRule implements UsageGroupingRuleEx {
   @Nullable
   @Override
-  protected UsageGroup getParentGroupFor(@NotNull Usage usage, @NotNull UsageTarget[] targets) {
+  protected UsageGroup getParentGroupFor(@NotNull Usage usage, UsageTarget @NotNull [] targets) {
     if (usage instanceof PsiElementUsage) {
       PsiElementUsage elementUsage = (PsiElementUsage)usage;
 
@@ -46,7 +44,7 @@ public class UsageTypeGroupingRule extends SingleParentUsageGroupingRule {
   }
 
   @Nullable
-  private static UsageType getUsageType(PsiElement element, @NotNull UsageTarget[] targets) {
+  private static UsageType getUsageType(PsiElement element, UsageTarget @NotNull [] targets) {
     if (element == null) return null;
 
     if (PsiTreeUtil.getParentOfType(element, PsiComment.class, false) != null) { return UsageType.COMMENT_USAGE; }
@@ -65,6 +63,11 @@ public class UsageTypeGroupingRule extends SingleParentUsageGroupingRule {
     }
 
     return null;
+  }
+
+  @Override
+  public @Nullable String getGroupingActionId() {
+    return "UsageGrouping.UsageType";
   }
 
   private static class UsageTypeGroup implements UsageGroup {

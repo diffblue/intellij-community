@@ -9,6 +9,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.util.CachedValue;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.util.CachedValueImpl;
+import com.intellij.util.CommonProcessors;
 import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.EnumeratorStringDescriptor;
 import com.intellij.util.io.PersistentEnumeratorBase;
@@ -364,10 +365,13 @@ public class MavenIndex implements MavenSearchIndex {
 
   private void handleUpdateException(Exception e) {
     myFailureMessage = e.getMessage();
-    if (myFailureMessage.contains("nexus-maven-repository-index.properties") && myFailureMessage.contains("FileNotFoundException")) {
-      myFailureMessage = "Repository is non-nexus repo, or does not indexed";
+    if (myFailureMessage != null &&
+        myFailureMessage.contains("nexus-maven-repository-index.properties") &&
+        myFailureMessage.contains("FileNotFoundException")) {
+      myFailureMessage = "Repository is non-nexus repo, or is not indexed";
       MavenLog.LOG.debug("Failed to update Maven indices for: [" + myId.getValue() + "] " + myRepositoryPathOrUrl, e);
-    } else {
+    }
+    else {
       MavenLog.LOG.warn("Failed to update Maven indices for: [" + myId.getValue() + "] " + myRepositoryPathOrUrl, e);
     }
 
@@ -540,7 +544,9 @@ public class MavenIndex implements MavenSearchIndex {
   }
 
   public synchronized Collection<String> getGroupIds() {
-    return doIndexTask(() -> myData.groupToArtifactMap.getAllDataObjects(null), Collections.emptySet());
+    return doIndexTask(() -> {
+      return getGroupIdsRaw();
+    }, Collections.emptySet());
   }
 
   public synchronized Set<String> getArtifactIds(final String groupId) {
@@ -551,7 +557,7 @@ public class MavenIndex implements MavenSearchIndex {
   public synchronized void printInfo() {
     doIndexTask(() -> {
       MavenLog.LOG.debug("BaseFile: " + myData.groupToArtifactMap.getBaseFile());
-      MavenLog.LOG.debug("All data objects: " + myData.groupToArtifactMap.getAllDataObjects(null));
+      MavenLog.LOG.debug("All data objects: " + getGroupIdsRaw());
       return null;
     }, null);
   }
@@ -584,7 +590,7 @@ public class MavenIndex implements MavenSearchIndex {
   }
 
   private boolean hasValue(final PersistentHashMap<String, ?> map, Map<String, Boolean> cache, final String value) {
-    return cache.computeIfAbsent(value, v -> doIndexTask(() -> map.tryEnumerate(v) != 0, false));
+    return cache.computeIfAbsent(value, v -> doIndexTask(() -> map.containsMapping(v), false));
   }
 
   public synchronized Set<MavenArtifactInfo> search(final Query query, final int maxResult) {
@@ -677,7 +683,7 @@ public class MavenIndex implements MavenSearchIndex {
     }
 
     private PersistentHashMap<String, Set<String>> createPersistentMap(final File f) throws IOException {
-      return new PersistentHashMap<>(f, EnumeratorStringDescriptor.INSTANCE, new SetDescriptor());
+      return new PersistentHashMap<>(f.toPath(), EnumeratorStringDescriptor.INSTANCE, new SetDescriptor());
     }
 
     public void close(boolean releaseIndexContext) throws MavenIndexException {
@@ -721,6 +727,13 @@ public class MavenIndex implements MavenSearchIndex {
     public Set<MavenArtifactInfo> search(Query query, int maxResult) throws MavenServerIndexerException {
       return myNexusIndexer.search(indexId, query, maxResult);
     }
+  }
+
+  @NotNull
+  private Collection<String> getGroupIdsRaw() throws IOException {
+    CommonProcessors.CollectProcessor<String> processor = new CommonProcessors.CollectProcessor<>();
+    myData.groupToArtifactMap.processKeysWithExistingMapping(processor);
+    return processor.getResults();
   }
 
   private static class SetDescriptor implements DataExternalizer<Set<String>> {

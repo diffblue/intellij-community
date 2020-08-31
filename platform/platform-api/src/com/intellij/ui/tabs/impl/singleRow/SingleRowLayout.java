@@ -1,13 +1,11 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.tabs.impl.singleRow;
 
-import com.intellij.ui.tabs.JBTabsPosition;
 import com.intellij.ui.tabs.TabInfo;
 import com.intellij.ui.tabs.impl.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.awt.*;
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -21,15 +19,6 @@ public abstract class SingleRowLayout extends TabLayout {
   private final SingleRowLayoutStrategy myLeft;
   private final SingleRowLayoutStrategy myBottom;
   private final SingleRowLayoutStrategy myRight;
-
-  public final MoreTabsIcon myMoreIcon = new MoreTabsIcon() {
-    @Override
-    @Nullable
-    protected Rectangle getIconRec() {
-      return myLastSingRowLayout != null ? myLastSingRowLayout.moreRect : null;
-    }
-  };
-  public JPopupMenu myMorePopup;
 
   @Override
   public boolean isSideComponentOnTabs() {
@@ -111,20 +100,20 @@ public abstract class SingleRowLayout extends TabLayout {
   public LayoutPassInfo layoutSingleRow(List<TabInfo> visibleInfos)  {
     SingleRowPassInfo data = new SingleRowPassInfo(this, visibleInfos);
 
-    final boolean layoutLabels = checkLayoutLabels(data);
-    if (!layoutLabels) {
+    final boolean shouldLayoutLabels = checkLayoutLabels(data);
+    if (!shouldLayoutLabels) {
       data = myLastSingRowLayout;
     }
 
     final TabInfo selected = myTabs.getSelectedInfo();
     prepareLayoutPassInfo(data, selected);
 
-    myTabs.resetLayout(layoutLabels || myTabs.isHideTabs());
+    myTabs.resetLayout(shouldLayoutLabels || myTabs.isHideTabs());
 
-    if (layoutLabels && !myTabs.isHideTabs()) {
-      data.position = getStrategy().getStartPosition(data) - getScrollOffset();
-
+    if (shouldLayoutLabels && !myTabs.isHideTabs()) {
       recomputeToLayout(data);
+
+      data.position = getStrategy().getStartPosition(data) - getScrollOffset();
 
       layoutLabels(data);
 
@@ -135,8 +124,6 @@ public abstract class SingleRowLayout extends TabLayout {
       data.comp = new WeakReference<>(selected.getComponent());
       getStrategy().layoutComp(data);
     }
-
-    updateMoreIconVisibility(data);
 
     data.tabRectangle = new Rectangle();
 
@@ -174,11 +161,6 @@ public abstract class SingleRowLayout extends TabLayout {
     data.toFitLength = getStrategy().getToFitLength(data);
   }
 
-  protected void updateMoreIconVisibility(SingleRowPassInfo data) {
-    int counter = (int)data.myVisibleInfos.stream().filter(this::isTabHidden).count();
-    myMoreIcon.updateCounter(counter);
-  }
-
   protected void layoutMoreButton(SingleRowPassInfo data) {
     if (data.toDrop.size() > 0) {
       data.moreRect = getStrategy().getMoreRect(data);
@@ -186,36 +168,23 @@ public abstract class SingleRowLayout extends TabLayout {
   }
 
   protected void layoutLabels(final SingleRowPassInfo data) {
-    int totalLength = 0;
-    int positionStart = data.position;
     boolean layoutStopped = false;
     for (TabInfo eachInfo : data.toLayout) {
       final TabLabel label = myTabs.myInfo2Label.get(eachInfo);
       if (layoutStopped) {
-        label.setActionPanelVisible(false);
         final Rectangle rec = getStrategy().getLayoutRect(data, 0, 0);
         myTabs.layout(label, rec);
         continue;
       }
 
-      label.setActionPanelVisible(true);
       final Dimension eachSize = label.getPreferredSize();
 
-      boolean isLast = data.toLayout.indexOf(eachInfo) == data.toLayout.size() - 1;
-
-      int length;
-      if (!isLast) {
-        length = getStrategy().getLengthIncrement(eachSize);
-      }
-      else {
-        length = data.toFitLength - totalLength;
-      }
+      int length = getStrategy().getLengthIncrement(eachSize);
       boolean continueLayout = applyTabLayout(data, label, length);
 
       data.position = getStrategy().getMaxPosition(label.getBounds());
       data.position += myTabs.getTabHGap();
 
-      totalLength = getStrategy().getMaxPosition(label.getBounds()) - positionStart + myTabs.getTabHGap();
       if (!continueLayout) {
         layoutStopped = true;
       }
@@ -240,7 +209,7 @@ public abstract class SingleRowLayout extends TabLayout {
   protected void calculateRequiredLength(SingleRowPassInfo data) {
     for (TabInfo eachInfo : data.myVisibleInfos) {
       data.requiredLength += getRequiredLength(eachInfo);
-      if (myTabs.getTabsPosition() == JBTabsPosition.left || myTabs.getTabsPosition() == JBTabsPosition.right) {
+      if (myTabs.getTabsPosition().isSide()) {
         data.requiredLength -= 1;
       }
       data.toLayout.add(eachInfo);

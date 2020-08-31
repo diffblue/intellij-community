@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.configurationStore.schemeManager.ROOT_CONFIG
@@ -12,9 +12,11 @@ import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.util.NamedJDOMExternalizable
 import com.intellij.util.io.systemIndependentPath
+import com.intellij.serviceContainer.ComponentManagerImpl
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.jetbrains.jps.model.serialization.JpsGlobalLoader
+import java.nio.file.Path
 
 internal class ApplicationPathMacroManager : PathMacroManager(null)
 
@@ -25,19 +27,24 @@ class ApplicationStoreImpl : ComponentStoreWithExtraComponents() {
 
   override val storageManager = ApplicationStorageManager(application, PathMacroManager.getInstance(ApplicationManager.getApplication()))
 
+  override val serviceContainer: ComponentManagerImpl
+    get() = ApplicationManager.getApplication() as ComponentManagerImpl
+
   // number of app components require some state, so, we load default state in test mode
   override val loadPolicy: StateLoadPolicy
     get() = if (application.isUnitTestMode) StateLoadPolicy.LOAD_ONLY_DEFAULT else StateLoadPolicy.LOAD
 
-  override fun setPath(path: String) {
+  override fun setPath(path: Path) {
+    val systemIndependentPath = path.systemIndependentPath
     // app config must be first, because collapseMacros collapse from fist to last, so, at first we must replace APP_CONFIG because it overlaps ROOT_CONFIG value
-    storageManager.addMacro(APP_CONFIG, "$path/${PathManager.OPTIONS_DIRECTORY}")
-    storageManager.addMacro(ROOT_CONFIG, path)
+    storageManager.addMacro(APP_CONFIG, "$systemIndependentPath/${PathManager.OPTIONS_DIRECTORY}")
+    storageManager.addMacro(ROOT_CONFIG, systemIndependentPath)
     storageManager.addMacro(StoragePathMacros.CACHE_FILE, appSystemDir.resolve("workspace").resolve("app.xml").systemIndependentPath)
   }
 
   override suspend fun doSave(result: SaveResult, forceSavingAllSettings: Boolean) {
-    val saveSessionManager = saveSettingsSavingComponentsAndCommitComponents(result, forceSavingAllSettings)
+    val saveSessionManager = createSaveSessionProducerManager()
+    saveSettingsSavingComponentsAndCommitComponents(result, forceSavingAllSettings, saveSessionManager)
     // todo can we store default project in parallel to regular saving? for now only flush on disk is async, but not component committing
     coroutineScope {
       launch {

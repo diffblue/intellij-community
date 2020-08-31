@@ -5,6 +5,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.util.Computable;
 import com.intellij.psi.*;
+import com.intellij.psi.impl.light.LightRecordCanonicalConstructor;
+import com.intellij.psi.impl.light.LightRecordMember;
 import com.intellij.psi.javadoc.PsiDocTag;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.SearchScope;
@@ -148,6 +150,14 @@ public class JavaTargetElementEvaluator extends TargetElementEvaluatorEx2 implem
           return JavaPsiFacade.getInstance(refElement.getProject()).findClass(qualifiedName, refElement.getResolveScope());
         }
       }
+
+      if (refElement instanceof LightRecordMember) {
+        return ((LightRecordMember)refElement).getRecordComponent();
+      }
+
+      if (refElement instanceof LightRecordCanonicalConstructor) {
+        return ((LightRecordCanonicalConstructor)refElement).getContainingClass();
+      }
     }
     return super.adjustReferenceOrReferencedElement(file, editor, offset, flags, refElement);
   }
@@ -264,8 +274,7 @@ public class JavaTargetElementEvaluator extends TargetElementEvaluatorEx2 implem
     return super.acceptImplementationForReference(reference, element);
   }
 
-  @Nullable
-  private static PsiClass[] getClassesWithMember(final PsiReference reference, final PsiMember member) {
+  private static PsiClass @Nullable [] getClassesWithMember(final PsiReference reference, final PsiMember member) {
     return ApplicationManager.getApplication().runReadAction(new Computable<PsiClass[]>() {
       @Override
       public PsiClass[] compute() {
@@ -335,25 +344,39 @@ public class JavaTargetElementEvaluator extends TargetElementEvaluatorEx2 implem
        }
       final PsiClass[] memberClass = getClassesWithMember(referenceExpression, (PsiMember)element);
       if (memberClass != null && memberClass.length == 1) {
-        return CachedValuesManager.getCachedValue(memberClass[0], () -> {
-          final List<PsiClass> classesToSearch = ContainerUtil.newArrayList(memberClass);
-          classesToSearch.addAll(ClassInheritorsSearch.search(memberClass[0]).findAll());
-
-          final Set<PsiClass> supers = new HashSet<>();
-          for (PsiClass psiClass : classesToSearch) {
-            supers.addAll(InheritanceUtil.getSuperClasses(psiClass));
-          }
-
-          final List<PsiElement> elements = new ArrayList<>();
-          elements.addAll(classesToSearch);
-          elements.addAll(supers);
-          elements.addAll(FunctionalExpressionSearch.search(memberClass[0]).findAll());
-
-          return new CachedValueProvider.Result<SearchScope>(new LocalSearchScope(PsiUtilCore.toPsiElementArray(elements)), PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT);
+        PsiClass aClass = memberClass[0];
+        return CachedValuesManager.getCachedValue(aClass, () -> {
+          return new CachedValueProvider.Result<>(getHierarchyScope(aClass, aClass.getUseScope()),
+                                                  PsiModificationTracker.MODIFICATION_COUNT);
         });
       }
     }
     return super.getSearchScope(editor, element);
+  }
+
+  /**
+   * Narrow given scope to include only those places where methods called on given class qualifier could be defined.
+   * 
+   * @param aClass qualifier type class
+   * @param scope a scope to narrow
+   * @return narrowed scope
+   */
+  public @NotNull static SearchScope getHierarchyScope(@NotNull PsiClass aClass, @NotNull SearchScope scope) {
+    final List<PsiClass> classesToSearch = new ArrayList<>();
+    classesToSearch.add(aClass);
+    classesToSearch.addAll(ClassInheritorsSearch.search(aClass, scope, true).findAll());
+
+    final Set<PsiClass> supers = new HashSet<>();
+    for (PsiClass psiClass : classesToSearch) {
+      supers.addAll(InheritanceUtil.getSuperClasses(psiClass));
+    }
+
+    final List<PsiElement> elements = new ArrayList<>();
+    elements.addAll(classesToSearch);
+    elements.addAll(supers);
+    elements.addAll(FunctionalExpressionSearch.search(aClass, scope).findAll());
+
+    return new LocalSearchScope(PsiUtilCore.toPsiElementArray(elements));
   }
 
   private static class PsiElementFindProcessor<T extends PsiClass> implements Processor<T> {

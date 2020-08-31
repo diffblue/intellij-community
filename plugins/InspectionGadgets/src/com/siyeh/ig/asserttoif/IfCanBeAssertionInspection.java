@@ -19,6 +19,7 @@ import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiUtil;
+import com.intellij.util.ArrayUtil;
 import com.intellij.util.Consumer;
 import com.intellij.util.ObjectUtils;
 import com.siyeh.InspectionGadgetsBundle;
@@ -39,13 +40,6 @@ public class IfCanBeAssertionInspection extends BaseInspection {
   private static final String GUAVA_PRECONDITIONS = "com.google.common.base.Preconditions";
   private static final String GUAVA_CHECK_NON_NULL = "checkNotNull";
 
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("if.can.be.assertion.name");
-  }
-
   @NotNull
   @Override
   protected String buildErrorString(Object... infos) {
@@ -57,9 +51,8 @@ public class IfCanBeAssertionInspection extends BaseInspection {
     return new IfToAssertionVisitor();
   }
 
-  @NotNull
   @Override
-  protected InspectionGadgetsFix[] buildFixes(Object... infos) {
+  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
     boolean isObjectsRequireNonNullAvailable = (boolean)infos[0];
     boolean isIfStatement = (boolean)infos[1];
     List<InspectionGadgetsFix> fixes = new ArrayList<>(2);
@@ -81,7 +74,7 @@ public class IfCanBeAssertionInspection extends BaseInspection {
     }
     else if (element instanceof PsiThrowStatement) {
       final PsiThrowStatement throwStatement = (PsiThrowStatement)element;
-      final PsiExpression exception = ParenthesesUtils.stripParentheses(throwStatement.getException());
+      final PsiExpression exception = PsiUtil.skipParenthesizedExprDown(throwStatement.getException());
       if (exception instanceof PsiNewExpression) {
         return (PsiNewExpression)exception;
       }
@@ -171,10 +164,20 @@ public class IfCanBeAssertionInspection extends BaseInspection {
         if (!(condition instanceof PsiBinaryExpression)) return null;
         PsiExpression nullComparedExpression = ExpressionUtils.getValueComparedWithNull((PsiBinaryExpression)condition);
         if (nullComparedExpression == null) return null;
+        PsiNewExpression exception = getThrownNewException(ifStatement.getThenBranch());
+        if (exception == null) return null;
+        PsiExpressionList args = exception.getArgumentList();
+        PsiExpression message = null;
+        if (args != null) {
+          PsiExpression arg = ArrayUtil.getFirstElement(args.getExpressions());
+          if (arg != null && TypeUtils.isJavaLangString(arg.getType())) {
+            message = arg;
+          }
+        }
         CommentTracker tracker = new CommentTracker();
         return new Replacer(text -> PsiReplacementUtil.replaceStatementAndShortenClassNames(ifStatement, text + ";", tracker),
                             tracker.markUnchanged(nullComparedExpression),
-                            null);
+                            message);
       } else {
         PsiReferenceExpression ref = ObjectUtils.tryCast(descriptor.getPsiElement().getParent(), PsiReferenceExpression.class);
         if (ref == null) return null;

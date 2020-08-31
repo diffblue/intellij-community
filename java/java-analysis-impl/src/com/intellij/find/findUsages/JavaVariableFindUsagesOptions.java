@@ -39,24 +39,28 @@ public class JavaVariableFindUsagesOptions extends JavaFindUsagesOptions {
 
   @Override
   protected void setDefaults(@NotNull PropertiesComponent properties, @NotNull String prefix) {
-    super.setDefaults(properties, prefix);
+    // overrides default values from superclass
+    isSearchForTextOccurrences = properties.getBoolean(prefix + "isSearchForTextOccurrences");
+    isUsages = properties.getBoolean(prefix + "isUsages", true);
     isReadAccess = properties.getBoolean(prefix + "isReadAccess", true);
     isWriteAccess = properties.getBoolean(prefix + "isWriteAccess", true);
   }
 
   @Override
   protected void storeDefaults(@NotNull PropertiesComponent properties, @NotNull String prefix) {
-    super.storeDefaults(properties, prefix);
-    properties.setValue(prefix + "isReadAccess", isReadAccess);
-    properties.setValue(prefix + "isWriteAccess", isWriteAccess);
+    // overrides default values from superclass
+    properties.setValue(prefix + "isSearchForTextOccurrences", isSearchForTextOccurrences);
+    properties.setValue(prefix + "isUsages", isUsages, true);
+    properties.setValue(prefix + "isReadAccess", isReadAccess, true);
+    properties.setValue(prefix + "isWriteAccess", isWriteAccess, true);
   }
 
-  public boolean equals(final Object o) {
+  public boolean equals(Object o) {
     if (this == o) return true;
     if (!super.equals(o)) return false;
     if (getClass() != o.getClass()) return false;
 
-    final JavaVariableFindUsagesOptions that = (JavaVariableFindUsagesOptions)o;
+    JavaVariableFindUsagesOptions that = (JavaVariableFindUsagesOptions)o;
 
     if (isReadAccess != that.isReadAccess) return false;
     if (isWriteAccess != that.isWriteAccess) return false;

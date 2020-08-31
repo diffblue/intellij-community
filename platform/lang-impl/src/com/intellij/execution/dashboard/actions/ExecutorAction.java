@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.dashboard.actions;
 
 import com.intellij.execution.*;
@@ -7,16 +7,12 @@ import com.intellij.execution.compound.SettingsAndEffectiveTarget;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.configurations.RuntimeConfigurationError;
 import com.intellij.execution.configurations.RuntimeConfigurationException;
-import com.intellij.execution.dashboard.RunDashboardManager;
 import com.intellij.execution.dashboard.RunDashboardRunConfigurationNode;
 import com.intellij.execution.process.ProcessHandler;
-import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.execution.ui.RunContentManagerImpl;
-import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.IndexNotReadyException;
@@ -49,19 +45,12 @@ public abstract class ExecutorAction extends DumbAwareAction {
       return;
     }
     JBIterable<RunDashboardRunConfigurationNode> targetNodes = getLeafTargets(e);
-    if (RunDashboardManager.getInstance(project).isShowConfigurations()) {
-      boolean running = targetNodes.filter(node -> {
-        Content content = node.getContent();
-        return content != null && !RunContentManagerImpl.isTerminated(content);
-      }).isNotEmpty();
-      update(e, running);
-      e.getPresentation().setEnabled(targetNodes.filter(this::canRun).isNotEmpty());
-    }
-    else {
-      Content content = RunDashboardManager.getInstance(project).getDashboardContentManager().getSelectedContent();
-      update(e, content != null && !RunContentManagerImpl.isTerminated(content));
-      e.getPresentation().setEnabled(content != null);
-    }
+    boolean running = targetNodes.filter(node -> {
+      Content content = node.getContent();
+      return content != null && !RunContentManagerImpl.isTerminated(content);
+    }).isNotEmpty();
+    update(e, running);
+    e.getPresentation().setEnabled(targetNodes.filter(this::canRun).isNotEmpty());
   }
 
   private boolean canRun(@NotNull RunDashboardRunConfigurationNode node) {
@@ -98,7 +87,7 @@ public abstract class ExecutorAction extends DumbAwareAction {
 
     ProgramRunner<?> runner = ProgramRunner.getRunner(executorId, configuration);
     return runner != null && ExecutionTargetManager.canRun(configuration, target) &&
-          !ExecutorRegistry.getInstance().isStarting(project, executorId, runner.getRunnerId());
+          !ExecutionManager.getInstance(project).isStarting(executorId, runner.getRunnerId());
   }
 
   private static boolean isValid(RunnerAndConfigurationSettings settings) {
@@ -122,29 +111,8 @@ public abstract class ExecutorAction extends DumbAwareAction {
     Project project = e.getProject();
     if (project == null) return;
 
-    if (RunDashboardManager.getInstance(project).isShowConfigurations()) {
-      for (RunDashboardRunConfigurationNode node : getLeafTargets(e)) {
-        doActionPerformed(node);
-      }
-    }
-    else {
-      Content content = RunDashboardManager.getInstance(project).getDashboardContentManager().getSelectedContent();
-      if (content != null) {
-        RunContentDescriptor descriptor = RunContentManagerImpl.getRunContentDescriptorByContent(content);
-        JComponent component = content.getComponent();
-        if (component == null) {
-          return;
-        }
-        ExecutionEnvironment environment = LangDataKeys.EXECUTION_ENVIRONMENT.getData(DataManager.getInstance().getDataContext(component));
-        if (environment == null) {
-          return;
-        }
-        ExecutionManager.getInstance(project).restartRunProfile(project,
-                                                                getExecutor(),
-                                                                ExecutionTargetManager.getActiveTarget(project),
-                                                                environment.getRunnerAndConfigurationSettings(),
-                                                                descriptor == null ? null : descriptor.getProcessHandler());
-      }
+    for (RunDashboardRunConfigurationNode node : getLeafTargets(e)) {
+      doActionPerformed(node);
     }
   }
 

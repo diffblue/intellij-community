@@ -39,6 +39,9 @@
   <action id="EditorEscape">
     <keyboard-shortcut first-keystroke="ESCAPE"/>
   </action>
+  <action id="FocusEditor">
+    <keyboard-shortcut first-keystroke="ESCAPE"/>
+  </action>
   <action id="StepInto">
     <keyboard-shortcut first-keystroke="F7"/>
   </action>
@@ -129,6 +132,9 @@
   </action>
   <action id="EditorCreateRectangularSelection">
     <mouse-shortcut keystroke="alt shift button2"/>
+  </action>
+  <action id="EditorAddCaretPerSelectedLine">
+    <keyboard-shortcut first-keystroke="shift alt G"/>
   </action>
   <action id="GotoDeclaration">
     <keyboard-shortcut first-keystroke="control B"/>
@@ -301,6 +307,9 @@
   <action id="SwitcherRecentEditedChangedToggleCheckBox">
     <keyboard-shortcut first-keystroke="control E"/>
   </action>
+  <action id="SwitcherIterateItems">
+    <keyboard-shortcut first-keystroke="control E"/>
+  </action>
   <action id="RecentChangedFiles"/>
   <action id="RecentLocations">
     <keyboard-shortcut first-keystroke="control shift E"/>
@@ -321,6 +330,9 @@
     <keyboard-shortcut first-keystroke="control Q"/>
     <mouse-shortcut keystroke="alt button2"/>
   </action>
+  <action id="ToggleRenderedDocPresentation">
+    <keyboard-shortcut first-keystroke="control alt Q"/>
+  </action>
   <action id="ShowBookmarks">
     <keyboard-shortcut first-keystroke="shift F11"/>
   </action>
@@ -332,9 +344,6 @@
   </action>
   <action id="ActivateTerminalToolWindow">
     <keyboard-shortcut first-keystroke="alt F12"/>
-  </action>
-  <action id="ActivateMessagesToolWindow">
-    <keyboard-shortcut first-keystroke="alt 0"/>
   </action>
   <action id="CloseContent">
     <keyboard-shortcut first-keystroke="control F4"/>
@@ -895,7 +904,7 @@
   <action id="ActivateDebugToolWindow">
     <keyboard-shortcut first-keystroke="alt 5"/>
   </action>
-  <action id="ActivateTODOToolWindow">
+  <action id="ActivateProblemsViewToolWindow">
     <keyboard-shortcut first-keystroke="alt 6"/>
   </action>
   <action id="ActivateStructureToolWindow">
@@ -907,11 +916,13 @@
   </action>
   <action id="ActivateVersionControlToolWindow">
     <keyboard-shortcut first-keystroke="alt 9"/>
-    <keyboard-shortcut first-keystroke="alt shift 9"/>
+  </action>
+  <action id="ActivateCommitToolWindow">
+    <keyboard-shortcut first-keystroke="alt 0"/>
   </action>
   <action id="NewElement">
-     <keyboard-shortcut first-keystroke="alt INSERT"/>
-   </action>
+    <keyboard-shortcut first-keystroke="alt INSERT"/>
+  </action>
   <action id="NewElementSamePlace">
     <keyboard-shortcut first-keystroke="control alt INSERT"/>
   </action>
@@ -957,6 +968,9 @@
   </action>
   <action id="SafeDelete">
     <keyboard-shortcut first-keystroke="alt DELETE"/>
+  </action>
+  <action id="SelectVirtualTemplateElement">
+    <keyboard-shortcut first-keystroke="TAB"/>
   </action>
   <action id="NextTemplateVariable">
     <keyboard-shortcut first-keystroke="TAB"/>
@@ -1109,6 +1123,11 @@
     <keyboard-shortcut first-keystroke="Shift F6"/>
   </action>
 
+  <action id="Git.Rename.Local.Branch">
+    <keyboard-shortcut first-keystroke="F2" />
+    <keyboard-shortcut first-keystroke="Shift F6"/>
+  </action>
+
   <action id="ChangesView.SetDefault">
     <keyboard-shortcut first-keystroke="control SPACE" />
   </action>
@@ -1125,7 +1144,7 @@
     <keyboard-shortcut first-keystroke="control ENTER"/>
   </action>
 
-  <action id="RunDashboard.ShowConfigurations">
+  <action id="ServiceView.ShowServices">
     <keyboard-shortcut first-keystroke="control shift T"/>
   </action>
 
@@ -1177,11 +1196,39 @@
     <keyboard-shortcut first-keystroke="control alt C"/>
   </action>
 
+  <action id="ServiceView.GroupByContributor">
+    <keyboard-shortcut first-keystroke="control alt T"/>
+  </action>
   <action id="ServiceView.GroupByServiceGroups">
     <keyboard-shortcut first-keystroke="control alt P"/>
   </action>
 
   <action id="ViewInplaceComments">
     <keyboard-shortcut first-keystroke="alt shift BACK_SLASH"/>
+  </action>
+  <action id="ToggleFindInSelection">
+    <keyboard-shortcut first-keystroke="control alt E"/>
+  </action>
+
+  <action id="UsageGrouping.Module">
+    <keyboard-shortcut first-keystroke="control alt M"/>
+  </action>
+  <action  id="UsageGrouping.Directory">
+    <keyboard-shortcut first-keystroke="control alt P"/>
+  </action>
+  <action id="UsageGrouping.UsageType">
+    <keyboard-shortcut first-keystroke="control alt T"/>
+  </action>
+  <action id="UsageGrouping.FlattenModules">
+    <keyboard-shortcut first-keystroke="control alt O"/>
+  </action>
+  <action id="UsageGrouping.FileStructure">
+    <keyboard-shortcut first-keystroke="control alt F"/>
+  </action>
+  <action id="UsageGrouping.DirectoryStructure">
+    <keyboard-shortcut first-keystroke="control alt D"/>
+  </action>
+  <action id="UsageGrouping.Package">
+    <keyboard-shortcut first-keystroke="control alt P"/>
   </action>
 </keymap>

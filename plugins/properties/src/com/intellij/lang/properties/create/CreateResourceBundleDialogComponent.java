@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.properties.create;
 
 import com.intellij.icons.AllIcons;
@@ -8,8 +6,8 @@ import com.intellij.ide.fileTemplates.FileTemplate;
 import com.intellij.ide.fileTemplates.FileTemplateManager;
 import com.intellij.ide.fileTemplates.FileTemplateUtil;
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.lang.properties.*;
 import com.intellij.lang.properties.ResourceBundle;
+import com.intellij.lang.properties.*;
 import com.intellij.lang.properties.psi.PropertiesFile;
 import com.intellij.lang.properties.xml.XmlPropertiesFile;
 import com.intellij.openapi.application.ReadAction;
@@ -31,7 +29,6 @@ import com.intellij.ui.components.JBList;
 import com.intellij.util.NotNullFunction;
 import com.intellij.util.PathUtil;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,7 +41,7 @@ import java.util.*;
 /**
  * @author Dmitry Batkovich
  */
-public class CreateResourceBundleDialogComponent {
+public final class CreateResourceBundleDialogComponent {
   private final static Logger LOG = Logger.getInstance(CreateResourceBundleDialogComponent.class);
 
   private static final Comparator<Locale> LOCALE_COMPARATOR = (l1, l2) -> {
@@ -74,7 +71,7 @@ public class CreateResourceBundleDialogComponent {
     myProject = project;
     myDirectory = directory;
     myResourceBundle = resourceBundle;
-    myLocaleSuffixes = new THashMap<>();
+    myLocaleSuffixes = new HashMap<>();
     if (resourceBundle != null) {
       myResourceBundleNamePanel.setVisible(false);
       myUseXMLBasedPropertiesCheckBox.setVisible(false);
@@ -266,7 +263,7 @@ public class CreateResourceBundleDialogComponent {
       return Collections.emptyMap();
     }
     final String[] splitRawLocales = rawLocales.split(",");
-    final Map<Locale, String> locales = new THashMap<>(splitRawLocales.length);
+    final Map<Locale, String> locales = new HashMap<>(splitRawLocales.length);
 
     for (String rawLocale : splitRawLocales) {
       final Pair<Locale, String> localeAndSuffix = PropertiesUtil.getLocaleAndTrimmedSuffix("_" + rawLocale + ".properties");
@@ -427,7 +424,7 @@ public class CreateResourceBundleDialogComponent {
                                                                                  }
                                                                                  return true;
                                                                                }, BundleNameEvaluator.DEFAULT);
-      Collections.sort(myLocales, LOCALE_COMPARATOR);
+      myLocales.sort(LOCALE_COMPARATOR);
     }
 
     @Override

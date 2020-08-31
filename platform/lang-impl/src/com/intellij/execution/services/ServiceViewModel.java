@@ -8,6 +8,7 @@ import com.intellij.execution.services.ServiceModel.ServiceViewItem;
 import com.intellij.execution.services.ServiceModelFilter.ServiceViewFilter;
 import com.intellij.execution.services.ServiceViewState.ServiceState;
 import com.intellij.openapi.Disposable;
+import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.Invoker;
 import com.intellij.util.concurrency.InvokerSupplier;
 import com.intellij.util.containers.ContainerUtil;
@@ -20,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-abstract class ServiceViewModel implements Disposable, InvokerSupplier {
+abstract class ServiceViewModel implements Disposable, InvokerSupplier, ServiceModel.ServiceModelEventListener {
   protected final ServiceModel myModel;
   protected final ServiceModelFilter myModelFilter;
   private final ServiceViewFilter myFilter;
@@ -32,18 +33,29 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     myModel = model;
     myModelFilter = modelFilter;
     myFilter = filter;
+    myModel.addEventListener(this);
   }
 
   @NotNull
   List<? extends ServiceViewItem> getRoots() {
-    List<? extends ServiceViewItem> roots = processGroups(doGetRoots());
+    return getRoots(false);
+  }
+
+  @NotNull
+  List<? extends ServiceViewItem> getVisibleRoots() {
+    return getRoots(true);
+  }
+
+  @NotNull
+  private List<? extends ServiceViewItem> getRoots(boolean visible) {
+    List<? extends ServiceViewItem> roots = processGroups(doGetRoots(), visible);
     if (roots.stream().anyMatch(ContributorNode.class::isInstance)) {
       if (myShowContributorRoots) {
-        roots = ContainerUtil.filter(roots, item -> !(item instanceof ContributorNode) || !getChildren(item).isEmpty());
+        roots = ContainerUtil.filter(roots, item -> !(item instanceof ContributorNode) || !getChildren(item, visible).isEmpty());
       }
       else {
         roots = roots.stream()
-          .flatMap(item -> item instanceof ContributorNode ? getChildren(item).stream() : Stream.of(item))
+          .flatMap(item -> item instanceof ContributorNode ? getChildren(item, visible).stream() : Stream.of(item))
           .collect(Collectors.toList());
       }
     }
@@ -52,8 +64,6 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
 
   @NotNull
   protected abstract List<? extends ServiceViewItem> doGetRoots();
-
-  abstract void eventProcessed(ServiceEvent e);
 
   void saveState(ServiceViewState viewState) {
     viewState.groupByServiceGroups = myShowGroups;
@@ -71,7 +81,12 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
 
   @NotNull
   List<? extends ServiceViewItem> getChildren(@NotNull ServiceViewItem parent) {
-    return processGroups(myModelFilter.filter(parent.getChildren(), myFilter));
+    return getChildren(parent, true);
+  }
+
+  @NotNull
+  protected List<? extends ServiceViewItem> getChildren(@NotNull ServiceViewItem parent, boolean visible) {
+    return processGroups(myModelFilter.filter(parent.getChildren(), myFilter), visible);
   }
 
   @Nullable
@@ -113,14 +128,21 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     }
   }
 
+  protected void notifyListeners(ServiceEvent e) {
+    for (ServiceViewModelListener listener : myListeners) {
+      listener.eventProcessed(e);
+    }
+  }
+
   protected void notifyListeners() {
     for (ServiceViewModelListener listener : myListeners) {
-      listener.rootsChanged();
+      listener.structureChanged();
     }
   }
 
   @Override
   public void dispose() {
+    myModel.removeEventListener(this);
   }
 
   @NotNull
@@ -129,27 +151,34 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     return myModel.getInvoker();
   }
 
+  public void initRootsIfNeeded() {
+  }
+
   @NotNull
-  private List<? extends ServiceViewItem> processGroups(@NotNull List<? extends ServiceViewItem> items) {
+  private List<? extends ServiceViewItem> processGroups(@NotNull List<? extends ServiceViewItem> items, boolean visible) {
+    if (visible) {
+      items = ContainerUtil.filter(items, item -> item.getViewDescriptor().isVisible());
+    }
     if (myShowGroups) {
-      return filterEmptyGroups(items);
+      return filterEmptyGroups(items, visible);
     }
     return items.stream()
-      .flatMap(item -> item instanceof ServiceGroupNode ? getChildren(item).stream() : Stream.of(item))
+      .flatMap(item -> item instanceof ServiceGroupNode ? getChildren(item, visible).stream() : Stream.of(item))
       .collect(Collectors.toList());
   }
 
   @NotNull
-  private List<? extends ServiceViewItem> filterEmptyGroups(@NotNull List<? extends ServiceViewItem> items) {
-    return ContainerUtil.filter(items, item -> !(item instanceof ServiceGroupNode) || !filterEmptyGroups(getChildren(item)).isEmpty());
+  private List<? extends ServiceViewItem> filterEmptyGroups(@NotNull List<? extends ServiceViewItem> items, boolean visible) {
+    return ContainerUtil.filter(items, item -> !(item instanceof ServiceGroupNode) ||
+                                               !filterEmptyGroups(getChildren(item, visible), visible).isEmpty());
   }
 
   static ServiceViewModel createModel(@NotNull List<ServiceViewItem> items,
-                                      @Nullable ServiceViewContributor contributor,
+                                      @Nullable ServiceViewContributor<?> contributor,
                                       @NotNull ServiceModel model,
                                       @NotNull ServiceModelFilter modelFilter,
                                       @Nullable ServiceViewFilter parentFilter) {
-    if (contributor != null) {
+    if (contributor != null && items.size() > 1) {
       ServiceViewItem contributorRoot = null;
       for (ServiceViewItem root : model.getRoots()) {
         if (contributor == root.getContributor()) {
@@ -171,7 +200,7 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
         AtomicReference<ServiceGroupNode> ref = new AtomicReference<>((ServiceGroupNode)item);
         return new GroupModel(model, modelFilter, ref, parentFilter);
       }
-      else {
+      else if (item.getChildren().isEmpty()) {
         AtomicReference<ServiceViewItem> ref = new AtomicReference<>(item);
         return new SingeServiceModel(model, modelFilter, ref, parentFilter);
       }
@@ -184,47 +213,51 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
                                     @NotNull ServiceModel model,
                                     @NotNull ServiceModelFilter modelFilter,
                                     @Nullable ServiceViewFilter parentFilter,
-                                    @NotNull Map<String, ServiceViewContributor> contributors) {
-    if (viewState.viewType.equals(ContributorModel.TYPE)) {
-      ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
-      ServiceViewContributor contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
-      return contributor == null ? null : new ContributorModel(model, modelFilter, contributor, parentFilter);
-    }
-    else if (viewState.viewType.equals(GroupModel.TYPE)) {
-      ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
-      ServiceViewContributor contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
-      if (contributor == null) return null;
+                                    @NotNull Map<String, ServiceViewContributor<?>> contributors) {
+    switch (viewState.viewType) {
+      case ContributorModel.TYPE: {
+        ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
+        ServiceViewContributor<?> contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
+        return contributor == null ? null : new ContributorModel(model, modelFilter, contributor, parentFilter);
+      }
+      case GroupModel.TYPE: {
+        ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
+        ServiceViewContributor<?> contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
+        if (contributor == null) return null;
 
-      ServiceViewItem groupItem = model.findItemById(serviceState.path, contributor);
-      if (groupItem instanceof ServiceGroupNode) {
+        ServiceViewItem groupItem = model.findItemById(serviceState.path, contributor);
+        if (!(groupItem instanceof ServiceGroupNode)) return null;
         AtomicReference<ServiceGroupNode> ref = new AtomicReference<>((ServiceGroupNode)groupItem);
         return new GroupModel(model, modelFilter, ref, parentFilter);
       }
-    }
-    else if (viewState.viewType.equals(SingeServiceModel.TYPE)) {
-      ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
-      ServiceViewContributor contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
-      if (contributor == null) return null;
+      case SingeServiceModel.TYPE: {
+        ServiceState serviceState = ContainerUtil.getOnlyItem(viewState.roots);
+        ServiceViewContributor<?> contributor = serviceState == null ? null : contributors.get(serviceState.contributor);
+        if (contributor == null) return null;
 
-      ServiceViewItem serviceItem = model.findItemById(serviceState.path, contributor);
-      if (serviceItem != null) {
-        AtomicReference<ServiceViewItem> ref = new AtomicReference<>(serviceItem);
-        return new SingeServiceModel(model, modelFilter, ref, parentFilter);
-      }
-    }
-    else if (viewState.viewType.equals(ServiceListModel.TYPE)) {
-      List<ServiceViewItem> items = new ArrayList<>();
-      for (ServiceState serviceState : viewState.roots) {
-        ServiceViewContributor contributor = contributors.get(serviceState.contributor);
-        if (contributor != null) {
-          ContainerUtil.addIfNotNull(items, model.findItemById(serviceState.path, contributor));
+        ServiceViewItem serviceItem = model.findItemById(serviceState.path, contributor);
+        if (serviceItem == null) return null;
+
+        if (serviceItem.getChildren().isEmpty()) {
+          AtomicReference<ServiceViewItem> ref = new AtomicReference<>(serviceItem);
+          return new SingeServiceModel(model, modelFilter, ref, parentFilter);
+        }
+        else {
+          new ServiceListModel(model, modelFilter, new SmartList<>(serviceItem), parentFilter);
         }
       }
-      if (!items.isEmpty()) {
-        return new ServiceListModel(model, modelFilter, items, parentFilter);
-      }
+      case ServiceListModel.TYPE:
+        List<ServiceViewItem> items = new ArrayList<>();
+        for (ServiceState serviceState : viewState.roots) {
+          ServiceViewContributor<?> contributor = contributors.get(serviceState.contributor);
+          if (contributor != null) {
+            ContainerUtil.addIfNotNull(items, model.findItemById(serviceState.path, contributor));
+          }
+        }
+        return items.isEmpty() ? null : new ServiceListModel(model, modelFilter, items, parentFilter);
+      default:
+        return null;
     }
-    return null;
   }
 
   @Nullable
@@ -287,12 +320,16 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
   }
 
   interface ServiceViewModelListener {
-    void rootsChanged();
+    default void eventProcessed(@NotNull ServiceEvent e) {
+      structureChanged();
+    }
+
+    void structureChanged();
   }
 
   static class AllServicesModel extends ServiceViewModel {
     AllServicesModel(@NotNull ServiceModel model, @NotNull ServiceModelFilter modelFilter,
-                     @NotNull Collection<ServiceViewContributor> contributors) {
+                     @NotNull Collection<ServiceViewContributor<?>> contributors) {
       super(model, modelFilter, new ServiceViewFilter(null) {
         @Override
         public boolean value(ServiceViewItem item) {
@@ -308,17 +345,22 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     }
 
     @Override
-    void eventProcessed(ServiceEvent e) {
-      notifyListeners();
+    public void eventProcessed(ServiceEvent e) {
+      notifyListeners(e);
+    }
+
+    @Override
+    public void initRootsIfNeeded() {
+      myModel.initRoots();
     }
   }
 
   static class ContributorModel extends ServiceViewModel {
     private static final String TYPE = "contributor";
 
-    private final ServiceViewContributor myContributor;
+    private final ServiceViewContributor<?> myContributor;
 
-    ContributorModel(@NotNull ServiceModel model, @NotNull ServiceModelFilter modelFilter, @NotNull ServiceViewContributor contributor,
+    ContributorModel(@NotNull ServiceModel model, @NotNull ServiceModelFilter modelFilter, @NotNull ServiceViewContributor<?> contributor,
                      @Nullable ServiceViewFilter parentFilter) {
       super(model, modelFilter, new ServiceViewFilter(parentFilter) {
         @Override
@@ -336,9 +378,9 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     }
 
     @Override
-    void eventProcessed(ServiceEvent e) {
+    public void eventProcessed(ServiceEvent e) {
       if (e.contributorClass.isInstance(myContributor)) {
-        notifyListeners();
+        notifyListeners(e);
       }
     }
 
@@ -348,10 +390,10 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
       viewState.viewType = TYPE;
       ServiceState serviceState = new ServiceState();
       serviceState.contributor = myContributor.getClass().getName();
-      viewState.roots = ContainerUtil.newSmartList(serviceState);
+      viewState.roots = new SmartList<>(serviceState);
     }
 
-    ServiceViewContributor getContributor() {
+    ServiceViewContributor<?> getContributor() {
       return myContributor;
     }
   }
@@ -378,16 +420,16 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     @Override
     protected List<? extends ServiceViewItem> doGetRoots() {
       ServiceGroupNode group = myGroupRef.get();
-      return group == null ? Collections.emptyList() : getChildren(group);
+      return group == null ? Collections.emptyList() : getChildren(group, false);
     }
 
     @Override
-    void eventProcessed(ServiceEvent e) {
+    public void eventProcessed(ServiceEvent e) {
       ServiceGroupNode group = myGroupRef.get();
       if (group == null || !e.contributorClass.isInstance(group.getRootContributor())) return;
 
       myGroupRef.set((ServiceGroupNode)findItem(group, myModel.getRoots()));
-      notifyListeners();
+      notifyListeners(e);
     }
 
     @Override
@@ -426,12 +468,12 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     }
 
     @Override
-    void eventProcessed(ServiceEvent e) {
+    public void eventProcessed(ServiceEvent e) {
       ServiceViewItem service = myServiceRef.get();
       if (service == null || !e.contributorClass.isInstance(service.getRootContributor())) return;
 
       myServiceRef.set(findItem(service));
-      notifyListeners();
+      notifyListeners(e);
     }
 
     @Override
@@ -469,7 +511,7 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
     }
 
     @Override
-    void eventProcessed(ServiceEvent e) {
+    public void eventProcessed(ServiceEvent e) {
       boolean update = false;
 
       List<ServiceViewItem> toRemove = new ArrayList<>();
@@ -491,7 +533,7 @@ abstract class ServiceViewModel implements Disposable, InvokerSupplier {
       myRoots.removeAll(toRemove);
 
       if (update) {
-        notifyListeners();
+        notifyListeners(e);
       }
     }
 

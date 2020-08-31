@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.breakpoints;
 
 import com.intellij.AppTopics;
@@ -6,6 +6,7 @@ import com.intellij.execution.impl.ConsoleViewUtil;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diff.impl.DiffUtil;
 import com.intellij.openapi.editor.Document;
@@ -18,7 +19,6 @@ import com.intellij.openapi.editor.event.*;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.fileEditor.*;
-import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.io.FileUtil;
@@ -42,7 +42,7 @@ import com.intellij.xdebugger.breakpoints.XBreakpointManager;
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint;
 import com.intellij.xdebugger.impl.XSourcePositionImpl;
 import com.intellij.xdebugger.impl.ui.DebuggerUIUtil;
-import gnu.trove.TIntHashSet;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,9 +53,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
-/**
- * @author nik
- */
 public final class XLineBreakpointManager {
   private final BidirectionalMap<XLineBreakpointImpl, String> myBreakpoints = new BidirectionalMap<>();
   private final MergingUpdateQueue myBreakpointsUpdateQueue;
@@ -111,9 +108,12 @@ public final class XLineBreakpointManager {
       return;
     }
 
-    //noinspection CodeBlock2Expr
-    StartupManager.getInstance(myProject).runWhenProjectIsInitialized((DumbAwareRunnable)() -> {
-      myBreakpoints.keySet().forEach(XLineBreakpointImpl::updateUI);
+    StartupManager.getInstance(myProject).runAfterOpened(() -> {
+      for (XLineBreakpointImpl<?> breakpoint : myBreakpoints.keySet()) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+          breakpoint.updateUI();
+        }, ModalityState.NON_MODAL, myProject.getDisposed());
+      }
     });
   }
 
@@ -151,7 +151,7 @@ public final class XLineBreakpointManager {
       return;
     }
 
-    TIntHashSet lines = new TIntHashSet();
+    IntOpenHashSet lines = new IntOpenHashSet();
     List<XLineBreakpoint> toRemove = new SmartList<>();
     for (XLineBreakpointImpl breakpoint : breakpoints) {
       breakpoint.updatePosition();
@@ -172,7 +172,7 @@ public final class XLineBreakpointManager {
     WriteAction.run(() -> toRemove.forEach(manager::removeBreakpoint));
   }
 
-  public void breakpointChanged(final XLineBreakpointImpl breakpoint) {
+  public void breakpointChanged(XLineBreakpointImpl breakpoint) {
     if (ApplicationManager.getApplication().isDispatchThread()) {
       breakpoint.updateUI();
     }
@@ -253,7 +253,7 @@ public final class XLineBreakpointManager {
       }
 
       PsiDocumentManager.getInstance(myProject).commitAllDocuments();
-      final int line = EditorUtil.yPositionToLogicalLine(editor, mouseEvent);
+      final int line = EditorUtil.yToLogicalLineNoBlockInlays(editor, mouseEvent.getY());
       final Document document = editor.getDocument();
       final VirtualFile file = FileDocumentManager.getInstance().getFile(document);
       if (line >= 0 && line < document.getLineCount() && file != null) {

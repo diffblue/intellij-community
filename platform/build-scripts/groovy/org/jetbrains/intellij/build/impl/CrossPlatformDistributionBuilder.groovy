@@ -11,9 +11,6 @@ import org.jetbrains.intellij.build.impl.productInfo.ProductInfoValidator
 
 import java.util.regex.Pattern
 
-/**
- * @author nik
- */
 class CrossPlatformDistributionBuilder {
   private final BuildContext buildContext
 
@@ -92,6 +89,7 @@ class CrossPlatformDistributionBuilder {
           exclude(name: "bin/${executableName}*.exe")
           exclude(name: "bin/idea.properties")
           exclude(name: "help/**")
+          exclude(name: "build.txt")
         }
         zipfileset(dir: "$winDistPath/bin", prefix: "bin/win") {
           include(name: "fsnotifier*.exe")

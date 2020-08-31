@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * Class MethodBreakpoint
@@ -6,8 +6,8 @@
  */
 package com.intellij.debugger.ui.breakpoints;
 
-import com.intellij.debugger.DebuggerBundle;
 import com.intellij.debugger.DebuggerManagerEx;
+import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.SourcePosition;
 import com.intellij.debugger.engine.DebugProcessImpl;
 import com.intellij.debugger.engine.DebuggerManagerThreadImpl;
@@ -16,6 +16,7 @@ import com.intellij.debugger.engine.JVMNameUtil;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.EvaluationContextImpl;
 import com.intellij.debugger.engine.requests.RequestManagerImpl;
+import com.intellij.debugger.impl.DebuggerUtilsAsync;
 import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.impl.DebuggerUtilsImpl;
 import com.intellij.debugger.impl.PositionUtil;
@@ -32,7 +33,6 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.util.ProgressWindow;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.JDOMExternalizerUtil;
 import com.intellij.openapi.util.Key;
@@ -59,13 +59,18 @@ import org.jetbrains.org.objectweb.asm.MethodVisitor;
 import org.jetbrains.org.objectweb.asm.Opcodes;
 
 import javax.swing.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
 public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakpointProperties> implements MethodBreakpointBase {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.debugger.ui.breakpoints.MethodBreakpoint");
+  private static final Logger LOG = Logger.getInstance(MethodBreakpoint.class);
   @Nullable private JVMName mySignature;
   private boolean myIsStatic;
 
@@ -134,7 +139,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     ApplicationManager.getApplication().invokeAndWait(
       () -> {
         ProgressWindow progress =
-          new ProgressWindow(true, false, debugProcess.getProject(), "Cancel emulation");
+          new ProgressWindow(true, false, debugProcess.getProject(), JavaDebuggerBundle.message("cancel.emulation"));
         progress.setDelayInMillis(2000);
         indicatorRef.set(progress);
       });
@@ -297,7 +302,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
 
       if(!hasMethod) {
         debugProcess.getRequestsManager().setInvalid(
-          this, DebuggerBundle.message("error.invalid.breakpoint.method.not.found", classType.name())
+          this, JavaDebuggerBundle.message("error.invalid.breakpoint.method.not.found", classType.name())
         );
         return;
       }
@@ -358,11 +363,11 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     String locationQName = DebuggerUtilsEx.getLocationMethodQName(location);
     String locationFileName = DebuggerUtilsEx.getSourceName(location, e -> defaultFileName);
     int locationLine = location.lineNumber();
-    return DebuggerBundle.message(entry ? "status.method.entry.breakpoint.reached" : "status.method.exit.breakpoint.reached",
+    return JavaDebuggerBundle.message(entry ? "status.method.entry.breakpoint.reached" : "status.method.exit.breakpoint.reached",
                                   method.declaringType().name() + "." + method.name() + "()",
-                                  locationQName,
-                                  locationFileName,
-                                  locationLine
+                                      locationQName,
+                                      locationFileName,
+                                      locationLine
     );
   }
 
@@ -408,7 +413,7 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
       }
     }
     else {
-      buffer.append(DebuggerBundle.message("status.breakpoint.invalid"));
+      buffer.append(JavaDebuggerBundle.message("status.breakpoint.invalid"));
     }
     return buffer.toString();
   }
@@ -520,11 +525,11 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
   }
 
   @Override
-  public StreamEx matchingMethods(StreamEx<Method> methods, DebugProcessImpl debugProcess) {
+  public StreamEx<Method> matchingMethods(StreamEx<Method> methods, DebugProcessImpl debugProcess) {
     try {
       String methodName = getMethodName();
       String signature = mySignature != null ? mySignature.getName(debugProcess) : null;
-      return methods.filter(m -> Comparing.equal(methodName, m.name()) && Comparing.equal(signature, m.signature())).limit(1);
+      return methods.filter(m -> Objects.equals(methodName, m.name()) && Objects.equals(signature, m.signature())).limit(1);
     }
     catch (EvaluateException e) {
       LOG.warn(e);
@@ -557,47 +562,63 @@ public class MethodBreakpoint extends BreakpointWithHighlighter<JavaMethodBreakp
     }
     progressIndicator.setIndeterminate(false);
     progressIndicator.start();
-    progressIndicator.setText(DebuggerBundle.message("label.method.breakpoints.processing.classes"));
+    progressIndicator.setText(JavaDebuggerBundle.message("label.method.breakpoints.processing.classes"));
     try {
-      MultiMap<ReferenceType, ReferenceType> inheritance = new MultiMap<>();
+      MultiMap<ReferenceType, ReferenceType> inheritance = MultiMap.createConcurrentSet();
       List<ReferenceType> allTypes = classType.virtualMachine().allClasses();
-      for (int i = 0; i < allTypes.size(); i++) {
+      int allSize = allTypes.size();
+      List<CompletableFuture> futures = new ArrayList<>();
+      AtomicInteger processed = new AtomicInteger();
+      for (ReferenceType type : allTypes) {
         if (progressIndicator.isCanceled()) {
           return;
         }
-        ReferenceType type = allTypes.get(i);
         if (type.isPrepared()) {
-          try {
-            DebuggerUtilsImpl.supertypes(type).forEach(st -> inheritance.putValue(st, type));
-          }
-          catch (ObjectCollectedException ignored) {
-          }
+          futures.add(DebuggerUtilsAsync.supertypes(type)
+                        .thenAccept(supertypes -> supertypes.forEach(st -> inheritance.putValue(st, type)))
+                        .exceptionally(throwable -> {
+                          throwable = DebuggerUtilsAsync.unwrap(throwable);
+                          if (throwable instanceof ObjectCollectedException) {
+                            return null;
+                          }
+                          throw new CompletionException(throwable);
+                        })
+                        .thenRun(() -> updateProgress(progressIndicator, processed.incrementAndGet(), allSize)));
         }
-        progressIndicator.setText2(i + "/" + allTypes.size());
-        progressIndicator.setFraction((double)i / allTypes.size());
       }
+      CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
       List<ReferenceType> types = StreamEx.ofTree(classType, t -> StreamEx.of(inheritance.get(t))).skip(1).toList();
 
-      progressIndicator.setText(DebuggerBundle.message("label.method.breakpoints.setting.breakpoints"));
+      if (LOG.isDebugEnabled()) {
+        long current = System.currentTimeMillis();
+        LOG.debug("Processed  " + allSize + " classes in " + (current - start) + "ms");
+        start = current;
+      }
+
+      progressIndicator.setText(JavaDebuggerBundle.message("label.method.breakpoints.setting.breakpoints"));
 
       ClassesByNameProvider classesByName = ClassesByNameProvider.createCache(allTypes);
 
-      for (int i = 0; i < types.size(); i++) {
+      int typesSize = types.size();
+      for (int i = 0; i < typesSize; i++) {
         if (progressIndicator.isCanceled()) {
           return;
         }
         consumer.accept(types.get(i), classesByName);
-
-        progressIndicator.setText2(i + "/" + types.size());
-        progressIndicator.setFraction((double)i / types.size());
+        updateProgress(progressIndicator, i, typesSize);
       }
 
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Processed " + types.size() + " classes in " + (System.currentTimeMillis() - start) + "ms");
+        LOG.debug("Created " + typesSize + " requests in " + (System.currentTimeMillis() - start) + "ms");
       }
     }
     finally {
       progressIndicator.stop();
     }
+  }
+
+  private static void updateProgress(ProgressIndicator progressIndicator, int current, int total) {
+    progressIndicator.setText2(current + "/" + total);
+    progressIndicator.setFraction((double)current / total);
   }
 }

@@ -1,11 +1,13 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.terminal
 
+import com.intellij.internal.statistic.collectors.fus.TerminalFusAwareHandler
 import com.intellij.internal.statistic.collectors.fus.os.OsVersionUsageCollector
 import com.intellij.internal.statistic.eventLog.FeatureUsageData
 import com.intellij.internal.statistic.service.fus.collectors.FUCounterUsageLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.terminal.TerminalShellCommandHandler
 import com.intellij.util.PathUtil
 import java.util.*
 
@@ -13,14 +15,38 @@ class TerminalUsageTriggerCollector {
   companion object {
     @JvmStatic
     fun triggerSshShellStarted(project: Project) {
-      FUCounterUsageLogger.getInstance().logEvent(project, GROUP_ID, "ssh.exec", FeatureUsageData().addOS())
+      FUCounterUsageLogger.getInstance().logEvent(project, GROUP_ID, "ssh.exec")
+    }
+
+    @JvmStatic
+    fun triggerCommandExecuted(project: Project) {
+      FUCounterUsageLogger.getInstance().logEvent(project, GROUP_ID, "terminal.command.executed")
+    }
+
+    @JvmStatic
+    fun triggerSmartCommand(project: Project,
+                            workingDirectory: String?,
+                            localSession: Boolean,
+                            command: String,
+                            handler: TerminalShellCommandHandler,
+                            executed: Boolean) {
+      val data = FeatureUsageData().addData("terminalCommandHandler", handler::class.java.name)
+      if (handler is TerminalFusAwareHandler) {
+        handler.fillData(project, workingDirectory, localSession, command, data)
+      }
+      val eventId = if (executed) {
+        "terminal.smart.command.executed"
+      }
+      else {
+        "terminal.smart.command.not.executed"
+      }
+      FUCounterUsageLogger.getInstance().logEvent(project, GROUP_ID, eventId, data)
     }
 
     @JvmStatic
     fun triggerLocalShellStarted(project: Project, shellCommand: Array<String>) {
       val osVersion = OsVersionUsageCollector.parse(SystemInfo.OS_VERSION)
       FUCounterUsageLogger.getInstance().logEvent(project, GROUP_ID, "local.exec", FeatureUsageData()
-        .addOS()
         .addData("os-version", if (osVersion == null) "unknown" else osVersion.toCompactString())
         .addData("shell", getShellNameForStat(shellCommand.firstOrNull()))
       )

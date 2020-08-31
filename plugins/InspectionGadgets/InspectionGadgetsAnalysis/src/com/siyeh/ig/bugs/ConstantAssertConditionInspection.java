@@ -21,20 +21,10 @@ import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.BoolUtils;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
 public class ConstantAssertConditionInspection extends BaseInspection {
-
-  @Override
-  @Nls
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "constant.assert.condition.display.name");
-  }
 
   @Override
   @NotNull
@@ -57,7 +47,7 @@ public class ConstantAssertConditionInspection extends BaseInspection {
       final PsiExpression assertCondition =
         statement.getAssertCondition();
       final PsiExpression expression =
-        ParenthesesUtils.stripParentheses(assertCondition);
+        PsiUtil.skipParenthesizedExprDown(assertCondition);
       if (expression == null) {
         return;
       }

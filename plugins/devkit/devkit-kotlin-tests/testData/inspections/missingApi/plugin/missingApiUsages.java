@@ -59,7 +59,7 @@ class A {
 
   public void m4() {
     Object o = new <error descr="'OldClass(java.lang.String)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">OldClass</error>("");
-    Object o2 = new <error descr="'OldKotlinClass(java.lang.String)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">OldKotlinClass</error>("");
+    Object o2 = new <error descr="'OldKotlinClass(java.lang.@org.jetbrains.annotations.NotNull String)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">OldKotlinClass</error>("");
   }
 
   public void m5() {
@@ -75,8 +75,8 @@ class A {
 
   public void m7(String s) {
     RecentKotlinUtilsKt.<error descr="'recentTopLevelFunction()' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">recentTopLevelFunction</error>();
-    RecentKotlinUtilsKt.<error descr="'recentExtensionFunction(java.lang.String)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">recentExtensionFunction</error>(s);
-    RecentKotlinUtilsKt.<error descr="'recentInlineExtensionFunction(java.lang.String, kotlin.jvm.functions.Function0<java.lang.String>)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">recentInlineExtensionFunction</error>(s, new Function0<String>() {
+    RecentKotlinUtilsKt.<error descr="'recentExtensionFunction(java.lang.@org.jetbrains.annotations.NotNull String)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">recentExtensionFunction</error>(s);
+    RecentKotlinUtilsKt.<error descr="'recentInlineExtensionFunction(java.lang.@org.jetbrains.annotations.NotNull String, kotlin.jvm.functions.@org.jetbrains.annotations.NotNull Function0<java.lang.String>)' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">recentInlineExtensionFunction</error>(s, new Function0<String>() {
       @Override
       public String invoke() {
         return null;
@@ -135,7 +135,7 @@ class KotlinNonDirectOverrideOfRecentMethod extends KOverrider {
   }
 }
 
-class <error descr="Default constructor of 'library.OldClassWithDefaultConstructor' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0.">D</error> extends OldClassWithDefaultConstructor {
+class <error descr="'OldClassWithDefaultConstructor()' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">D</error> extends OldClassWithDefaultConstructor {
   //implicit call to default "recent" constructor that is NOT available in source code.
 }
 
@@ -145,10 +145,10 @@ class <error descr="'OldKotlinClassWithDefaultConstructor()' is available only s
 
 //Class with constructors delegating to default "recent" constructor.
 class E extends OldClassWithDefaultConstructor {
-  public <error descr="Default constructor of 'library.OldClassWithDefaultConstructor' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0.">E</error>() {}
+  public <error descr="'OldClassWithDefaultConstructor()' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">E</error>() {}
 
   public E(int x) {
-    <error descr="Default constructor of 'library.OldClassWithDefaultConstructor' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0.">super</error>();
+    <error descr="'OldClassWithDefaultConstructor()' is available only since 2.0 but the module is targeted for 1.0 - 999.0. It may lead to compatibility problems with IDEs prior to 2.0. Note that this method might have had a different full signature in the previous IDEs.">super</error>();
   }
 }
 

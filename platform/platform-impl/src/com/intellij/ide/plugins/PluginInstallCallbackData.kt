@@ -8,20 +8,22 @@ import java.io.File
  */
 data class PluginInstallCallbackData(
   val file: File,
-  val pluginDescriptor: IdeaPluginDescriptor,
+  val pluginDescriptor: IdeaPluginDescriptorImpl,
   val restartNeeded: Boolean
 )
 
 data class PendingDynamicPluginInstall(
   val file: File,
-  val pluginDescriptor: IdeaPluginDescriptor
+  val pluginDescriptor: IdeaPluginDescriptorImpl
 )
 
 fun installPluginFromCallbackData(callbackData: PluginInstallCallbackData) {
   if (callbackData.restartNeeded) {
-    PluginManagerConfigurable.shutdownOrRestartApp()
+    PluginManagerConfigurable.shutdownOrRestartAppAfterInstall(callbackData.pluginDescriptor.name)
   }
   else {
-    PluginInstaller.installAndLoadDynamicPlugin(callbackData.file, null, callbackData.pluginDescriptor as IdeaPluginDescriptorImpl)
+    if (!PluginInstaller.installAndLoadDynamicPlugin(callbackData.file, null, callbackData.pluginDescriptor)) {
+      PluginManagerConfigurable.shutdownOrRestartAppAfterInstall(callbackData.pluginDescriptor.name)
+    }
   }
 }

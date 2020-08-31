@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.io;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -11,7 +11,7 @@ import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
-public class StreamUtil {
+public final class StreamUtil {
   private static final Logger LOG = Logger.getInstance(StreamUtil.class);
 
   private StreamUtil() {
@@ -35,8 +35,7 @@ public class StreamUtil {
     return total;
   }
 
-  @NotNull
-  public static byte[] loadFromStream(@NotNull InputStream inputStream) throws IOException {
+  public static byte @NotNull [] loadFromStream(@NotNull InputStream inputStream) throws IOException {
     final UnsyncByteArrayOutputStream outputStream = new UnsyncByteArrayOutputStream();
     try {
       copyStreamContent(inputStream, outputStream);
@@ -73,15 +72,13 @@ public class StreamUtil {
     return StringFactory.createShared(convertSeparators(s.toCharArray()));
   }
 
-  @NotNull
-  public static char[] readTextAndConvertSeparators(@NotNull Reader reader) throws IOException {
+  public static char @NotNull [] readTextAndConvertSeparators(@NotNull Reader reader) throws IOException {
     char[] buffer = readText(reader);
 
     return convertSeparators(buffer);
   }
 
-  @NotNull
-  private static char[] convertSeparators(@NotNull char[] buffer) {
+  private static char @NotNull [] convertSeparators(char @NotNull [] buffer) {
     int dst = 0;
     char prev = ' ';
     for (char c : buffer) {
@@ -114,8 +111,7 @@ public class StreamUtil {
     return StringFactory.createShared(readText(reader));
   }
 
-  @NotNull
-  private static char[] readText(@NotNull Reader reader) throws IOException {
+  private static char @NotNull [] readText(@NotNull Reader reader) throws IOException {
     CharArrayWriter writer = new CharArrayWriter();
 
     char[] buffer = new char[2048];

@@ -2,14 +2,16 @@
 package com.intellij.java.codeInsight.daemon
 
 import com.intellij.JavaTestUtil
+import com.intellij.codeInspection.redundantCast.RedundantCastInspection
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 
 class JavaSwitchExpressionsHighlightingTest : LightJavaCodeInsightFixtureTestCase() {
-  override fun getProjectDescriptor() = JAVA_13
+  override fun getProjectDescriptor() = JAVA_14
   override fun getBasePath() = "${JavaTestUtil.getRelativeJavaTestDataPath()}/codeInsight/daemonCodeAnalyzer/switchExpressions"
 
   fun testEnhancedSwitchStatements() = doTest()
   fun testSwitchExpressions() = doTest()
+  fun testSwitchExpressionsNoResult() = doTest()
   fun testSwitchExpressionsEnumResolve() = doTest()
   fun testSwitchNumericPromotion() = doTest()
   fun testSimpleInferenceCases() = doTest()
@@ -17,6 +19,10 @@ class JavaSwitchExpressionsHighlightingTest : LightJavaCodeInsightFixtureTestCas
   fun testEnhancedSwitchUnreachable() = doTest()
   fun testSwitchExpressionHasResult() = doTest()
   fun testYieldStatements() = doTest()
+  fun testRedundantCastInSwitchBranch() {
+    myFixture.enableInspections(RedundantCastInspection())
+    doTest()
+  }
 
   private fun doTest() {
     myFixture.configureByFile("${getTestName(false)}.java")

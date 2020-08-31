@@ -17,8 +17,10 @@ package com.intellij.java.codeInsight.completion
 
 import com.intellij.JavaTestUtil
 import com.intellij.codeInsight.completion.LightFixtureCompletionTestCase
+import com.intellij.codeInsight.lookup.LookupElementPresentation
 import com.intellij.ide.highlighter.JavaFileType
 import com.intellij.psi.codeStyle.JavaCodeStyleSettings
+import com.intellij.testFramework.NeedsIndex
 import groovy.transform.CompileStatic
 
 @CompileStatic
@@ -40,6 +42,7 @@ class VariablesCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(FILE_PREFIX + "locals/" + getTestName(false) + "_after.java")
   }
 
+  @NeedsIndex.Full
   void testInputMethodEventVariable() throws Exception {
     myFixture.addClass("package java.awt.event; public interface InputMethodEvent {}")
 
@@ -47,6 +50,7 @@ class VariablesCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(FILE_PREFIX + "locals/" + getTestName(false) + "_after.java")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testLocals1() throws Exception {
     doSelectTest("TestSource1.java", "TestResult1.java")
   }
@@ -66,6 +70,7 @@ class VariablesCompletionTest extends LightFixtureCompletionTestCase {
     doTest("TestSource3.java", "TestResult3.java")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testLocals4() throws Exception {
     doSelectTest("TestSource4.java", "TestResult4.java")
   }
@@ -115,6 +120,7 @@ class VariablesCompletionTest extends LightFixtureCompletionTestCase {
     doTest("TestSource8.java", "TestResult8.java")
   }
 
+  @NeedsIndex.ForStandardLibrary(reason = "With empty indices 'Object' may be considered variable name, and instanceof is ok here; Object is not resolved thus not replaced with 'o'")
   void testUnresolvedReference() throws Exception {
     configureByFile(FILE_PREFIX + "locals/" + getTestName(false) + ".java")
     assertStringItems("o", "psiClass")
@@ -188,6 +194,22 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'field'
   }
 
+  void "test suggest fields in their modification inside constructor"() {
+    myFixture.configureByText(JavaFileType.INSTANCE, """
+class Foo {
+  int total;
+
+  Foo() {
+    this.total = 0;
+    this.total += this.to<caret>tal
+  }
+}
+""")
+    complete()
+    myFixture.assertPreferredCompletionItems 0, 'total'
+  }
+
+  @NeedsIndex.ForStandardLibrary(reason = "On empty indices String is not resolved and replaced with name 's', filtered out in JavaMemberNameCompletionContributor.getOverlappedNameVersions for being short")
   void testInitializerMatters() throws Exception {
     myFixture.configureByText(JavaFileType.INSTANCE, "class Foo {{ String f<caret>x = getFoo(); }; String getFoo() {}; }")
     complete()
@@ -229,11 +251,13 @@ class Foo {
     checkResultByFile(FILE_PREFIX + getTestName(false) + "_after.java")
   }
 
+  @NeedsIndex.ForStandardLibrary(reason = "On empty indices String is not resolved and replaced with name 's', filtered out in JavaMemberNameCompletionContributor.getOverlappedNameVersions for being short")
   void testConstructorParameterName() {
     configure()
     assertStringItems("color")
   }
 
+  @NeedsIndex.ForStandardLibrary(reason = "On empty indices String is not resolved and replaced with name 's', filtered out in JavaMemberNameCompletionContributor.getOverlappedNameVersions for being short; P is from PARAMETER_NAME_PREFIX")
   void testConstructorParameterNameWithPrefix() {
     JavaCodeStyleSettings settings = JavaCodeStyleSettings.getInstance(getProject())
     settings.FIELD_NAME_PREFIX = "my"
@@ -283,6 +307,7 @@ class Rectangle2D {
     myFixture.assertPreferredCompletionItems 0, 'aDouble', 'rectangle2D'
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test suggest field-shadowing parameter name"() {
     myFixture.configureByText 'a.java', '''
 class FooFoo {
@@ -296,6 +321,22 @@ class FooFoo {
     myFixture.assertPreferredCompletionItems 0, 'materialQualities', 'materialQualities1', 'qualities', 'materialQualityIterable', 'qualityIterable', 'iterable'
   }
 
+  void "test suggest parameter name from javadoc"() {
+    myFixture.configureByText 'a.java', '''
+class FooFoo {
+    /**
+    * @param existing
+    * @param abc
+    * @param def
+    * @param <T>
+    */
+    void set(int existing, int <caret>) {}
+}
+'''
+    myFixture.completeBasic()
+    assert myFixture.lookupElementStrings as Set == ['abc', 'def', 'i'] as Set
+  }
+
   void "test no name suggestions when the type is unresolved because it is actually a mistyped keyword"() {
     myFixture.configureByText 'a.java', '''
 class C {
@@ -305,6 +346,48 @@ class C {
     }
 '''
     assert myFixture.completeBasic()?.size() == 0
+  }
+
+  void "test suggest variable name when the type is unresolved but does not seem a mistyped keyword"() {
+    myFixture.configureByText 'a.java', '''
+class C {
+    { 
+      UndefinedType <caret>
+    }
+    }
+'''
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'undefinedType', 'type'
+  }
+
+  void "test class-based suggestions for exception type"() {
+    myFixture.configureByText 'a.java', '''
+class C {
+    { 
+      try { } catch (java.io.IOException <caret>)
+    }
+}
+'''
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'e', 'ioException', 'exception'
+  }
+
+  void "test no shadowed static field suggestions"() {
+    myFixture.configureByText 'a.java', '''
+class C extends Super {
+    static final String FOO = "c";
+    { 
+      C.FO<caret>x
+    }
+}
+
+class Super {
+  static final String FOO = "super";
+}
+'''
+    def items = myFixture.completeBasic()
+    assertStringItems('FOO')
+    assert LookupElementPresentation.renderElement(items[0]).tailText == ' ( = "c")'
   }
 
 }

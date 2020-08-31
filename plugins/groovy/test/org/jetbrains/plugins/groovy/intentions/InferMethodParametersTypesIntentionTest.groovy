@@ -266,6 +266,10 @@ class InferMethodParametersTypesIntentionTest extends GrIntentionTestCase {
     doTest(true)
   }
 
+  void testCallWithArrayParameter() {
+    doTest(true)
+  }
+
   void testDifferentCallPlaces() {
     doTest(true)
   }
@@ -513,4 +517,51 @@ class AA { static void fo<caret>o(Integer a) {} }
     doTest(true)
   }
 
+  void testUnresolvedCode() {
+    doTest(true)
+  }
+
+  void testUnresolvedCode2() {
+    doTest(true)
+  }
+
+  void testCallWithInnerTypeParameter() {
+    doTest(true)
+  }
+
+  void testUnresolvedCode3() {
+    doTest(true)
+  }
+
+  void testPassClosureInClosure() {
+    doTest(true)
+  }
+
+  void testRequiredBoxingForPrimitiveType() {
+    doTest(true)
+  }
+
+  void testOffsetSensitiveMethodCreating() {
+    doTest(true)
+  }
+
+  void testAvoidInfiniteLoopForPlusAssignment() {
+    doTest(true)
+  }
+
+  void testOverriddenVarargParameter() {
+    doTest(true)
+  }
+
+  void testForInLoop() {
+    doTest(true)
+  }
+
+  void testForInLoopWithMap() {
+    doTest(true)
+  }
+
+  void testRecursiveCalls() {
+    doTest(true)
+  }
 }

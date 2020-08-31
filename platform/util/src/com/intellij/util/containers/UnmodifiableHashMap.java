@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * An immutable unordered hash-based map which optimizes incremental growth and may have custom equals/hashCode strategy.
@@ -24,10 +25,16 @@ import java.util.function.BiConsumer;
  */
 public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
   private final @NotNull TObjectHashingStrategy<K> strategy;
-  private final @NotNull Object[] data;
-  private final @Nullable K k1, k2, k3;
-  private final @Nullable V v1, v2, v3;
+  private final Object @NotNull [] data;
+  private final K k1;
+  private final K k2;
+  private final K k3;
+  private final V v1;
+  private final V v2;
+  private final V v3;
   private final int size;
+  private Set<K> keySet;
+  private Collection<V> values; 
 
   /**
    * Returns an empty {@code UnmodifiableHashMap} with canonical equals/hashCode strategy.
@@ -36,10 +43,8 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * @return an empty {@code UnmodifiableHashMap}.
    * @see TObjectHashingStrategy#CANONICAL
    */
-  @NotNull
-  public static <K, V> UnmodifiableHashMap<K, V> empty() {
-    //noinspection unchecked
-    return empty(TObjectHashingStrategy.CANONICAL);
+  public static @NotNull <K, V> UnmodifiableHashMap<K, V> empty() {
+    return empty(ContainerUtil.canonicalStrategy());
   }
 
   /**
@@ -49,8 +54,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * @param <V> type of map values
    * @return an empty {@code UnmodifiableHashMap}.
    */
-  @NotNull
-  public static <K, V> UnmodifiableHashMap<K, V> empty(TObjectHashingStrategy<K> strategy) {
+  public static @NotNull <K, V> UnmodifiableHashMap<K, V> empty(TObjectHashingStrategy<K> strategy) {
     return new UnmodifiableHashMap<>(strategy, ArrayUtil.EMPTY_OBJECT_ARRAY, null, null, null, null, null, null);
   }
 
@@ -62,10 +66,8 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * @return a pre-populated {@code UnmodifiableHashMap}. Map return the supplied map if
    * it's already an {@code UnmodifiableHashMap} which uses the same equals/hashCode strategy.
    */
-  @NotNull
-  public static <K, V> UnmodifiableHashMap<K, V> fromMap(@NotNull Map<K, V> map) {
-    //noinspection unchecked
-    return fromMap(TObjectHashingStrategy.CANONICAL, map);
+  public static @NotNull <K, V> UnmodifiableHashMap<K, V> fromMap(@NotNull Map<? extends K, ? extends V> map) {
+    return fromMap(ContainerUtil.canonicalStrategy(), map);
   }
 
   /**
@@ -78,18 +80,22 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * @return a pre-populated {@code UnmodifiableHashMap}. Map return the supplied map if
    * it's already an {@code UnmodifiableHashMap} which uses the same equals/hashCode strategy.
    */
-  @NotNull
-  public static <K, V> UnmodifiableHashMap<K, V> fromMap(@NotNull TObjectHashingStrategy<K> strategy, @NotNull Map<K, V> map) {
-    if (map instanceof UnmodifiableHashMap &&
-        ((UnmodifiableHashMap<K, V>)map).strategy == strategy) {
+  public static @NotNull <K, V> UnmodifiableHashMap<K, V> fromMap(@NotNull TObjectHashingStrategy<K> strategy, @NotNull Map<? extends K, ? extends V> map) {
+    //noinspection unchecked
+    if (map instanceof UnmodifiableHashMap && ((UnmodifiableHashMap<K, V>)map).strategy == strategy) {
+      //noinspection unchecked
       return (UnmodifiableHashMap<K, V>)map;
     }
     if (map.size() <= 3) {
-      K k1 = null, k2 = null, k3 = null;
-      V v1 = null, v2 = null, v3 = null;
-      Iterator<Entry<K, V>> iterator = map.entrySet().iterator();
+      K k1 = null;
+      K k2 = null;
+      K k3 = null;
+      V v1 = null;
+      V v2 = null;
+      V v3 = null;
+      Iterator<? extends Entry<? extends K, ? extends V>> iterator = map.entrySet().iterator();
       if (iterator.hasNext()) {
-        Entry<K, V> e = iterator.next();
+        Entry<? extends K, ? extends V> e = iterator.next();
         k1 = e.getKey();
         v1 = e.getValue();
         if (iterator.hasNext()) {
@@ -111,7 +117,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
     return new UnmodifiableHashMap<>(strategy, newData, null, null, null, null, null, null);
   }
 
-  private UnmodifiableHashMap(@NotNull TObjectHashingStrategy<K> strategy, @NotNull Object[] data, @Nullable K k1, @Nullable V v1,
+  private UnmodifiableHashMap(@NotNull TObjectHashingStrategy<K> strategy, Object @NotNull [] data, @Nullable K k1, @Nullable V v1,
                               @Nullable K k2, @Nullable V v2, @Nullable K k3, @Nullable V v3) {
     this.strategy = strategy;
     this.data = data;
@@ -129,8 +135,8 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * @param key a key to exclude from the result
    * @return an {@code UnmodifiableHashMap} which contains all the entries as this map except the supplied key
    */
-  @Contract(pure = true) @NotNull
-  public UnmodifiableHashMap<K, V> without(@NotNull K key) {
+  @Contract(pure = true)
+  public @NotNull UnmodifiableHashMap<K, V> without(@NotNull K key) {
     int pos = data.length == 0 ? -1 : tablePos(strategy, data, key);
     if (pos >= 0) {
       Object[] newData = new Object[(size - 1) * 4];
@@ -179,8 +185,8 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * not the same but equal object, the new map will be created as sometimes it's desired to replace the object with
    * another one which is equal to the old object.
    */
-  @Contract(pure = true) @NotNull
-  public UnmodifiableHashMap<K, V> with(@NotNull K key, @Nullable V value) {
+  @Contract(pure = true)
+  public @NotNull UnmodifiableHashMap<K, V> with(@NotNull K key, @Nullable V value) {
     int pos = data.length == 0 ? -1 : tablePos(strategy, data, key);
     if (pos >= 0) {
       if (data[pos + 1] == value) return this;
@@ -229,8 +235,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
    * mappings already exist in this map (assuming values are compared by reference). The equals/hashCode strategy
    * of the resulting map is the same as the strategy of this map.
    */
-  @NotNull
-  public UnmodifiableHashMap<K, V> withAll(@NotNull Map<? extends K, ? extends V> map) {
+  public @NotNull UnmodifiableHashMap<K, V> withAll(@NotNull Map<? extends K, ? extends V> map) {
     if (map.isEmpty()) return this;
     if (map.size() == 1) {
       Entry<? extends K, ? extends V> entry = map.entrySet().iterator().next();
@@ -270,7 +275,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
       if (k2 != null) {
         if (strategy.equals(k2, typedKey)) return true;
         if (k3 != null) {
-          if (strategy.equals(k3, typedKey)) return true;
+          return strategy.equals(k3, typedKey);
         }
       }
     }
@@ -326,7 +331,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
   }
 
   private static <K> int tablePos(TObjectHashingStrategy<K> strategy, Object[] data, K key) {
-    int pos = Math.floorMod(strategy.computeHashCode(key), (data.length / 2)) * 2;
+    int pos = Math.floorMod(strategy.computeHashCode(key), data.length / 2) * 2;
     while (true) {
       @SuppressWarnings("unchecked") K candidate = (K)data[pos];
       if (candidate == null) {
@@ -461,7 +466,7 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
      */
     int pos;
 
-    protected MyIterator() {
+    MyIterator() {
       if (k1 == null) {
         pos = -1;
         advance();
@@ -508,76 +513,119 @@ public final class UnmodifiableHashMap<K, V> implements Map<K, V> {
     abstract E tableElement(int offset);
   }
 
-  @NotNull
   @Override
-  public Set<K> keySet() {
-    return new AbstractSet<K>() {
-      @Override
-      public Iterator<K> iterator() {
-        return new MyIterator<K>() {
-          @Override
-          K fieldElement(int offset) {
-            return offset == 0 ? k1 : offset == 1 ? k2 : k3;
+  public @NotNull Set<K> keySet() {
+    if (keySet == null) {
+      keySet = new AbstractSet<K>() {
+        @Override
+        public @NotNull Iterator<K> iterator() {
+          return new MyIterator<K>() {
+            @Override
+            K fieldElement(int offset) {
+              return offset == 0 ? k1 : offset == 1 ? k2 : k3;
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            K tableElement(int offset) {
+              return (K)data[offset];
+            }
+          };
+        }
+
+        @Override
+        public void forEach(Consumer<? super K> action) {
+          if (k1 != null) {
+            if (k2 != null) {
+              if (k3 != null) {
+                action.accept(k3);
+              }
+              action.accept(k2);
+            }
+            action.accept(k1);
           }
-
-          @SuppressWarnings("unchecked")
-          @Override
-          K tableElement(int offset) {
-            return (K)data[offset];
+          for (int i = 0; i < data.length; i += 2) {
+            Object key = data[i];
+            if (key != null) {
+              @SuppressWarnings("unchecked") K k = (K)data[i];
+              action.accept(k);
+            }
           }
-        };
-      }
+        }
 
-      @Override
-      public boolean contains(Object o) {
-        return containsKey(o);
-      }
+        @Override
+        public boolean contains(Object o) {
+          return containsKey(o);
+        }
 
-      @Override
-      public int size() {
-        return UnmodifiableHashMap.this.size();
-      }
-    };
+        @Override
+        public int size() {
+          return UnmodifiableHashMap.this.size();
+        }
+      };
+    }
+    return keySet;
   }
 
-  @NotNull
   @Override
-  public Collection<V> values() {
-    return new AbstractSet<V>() {
-      @Override
-      public Iterator<V> iterator() {
-        return new MyIterator<V>() {
-          @Override
-          V fieldElement(int offset) {
-            return offset == 0 ? v1 : offset == 1 ? v2 : v3;
+  public @NotNull Collection<V> values() {
+    if (values == null) {
+      values = new AbstractCollection<V>() {
+        @Override
+        public @NotNull Iterator<V> iterator() {
+          return new MyIterator<V>() {
+            @Override
+            V fieldElement(int offset) {
+              return offset == 0 ? v1 : offset == 1 ? v2 : v3;
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            V tableElement(int offset) {
+              return (V)data[offset + 1];
+            }
+          };
+        }
+
+        @Override
+        public void forEach(Consumer<? super V> action) {
+          if (k1 != null) {
+            if (k2 != null) {
+              if (k3 != null) {
+                action.accept(v3);
+              }
+              action.accept(v2);
+            }
+            action.accept(v1);
           }
-
-          @SuppressWarnings("unchecked")
-          @Override
-          V tableElement(int offset) {
-            return (V)data[offset + 1];
+          for (int i = 0; i < data.length; i += 2) {
+            Object key = data[i];
+            if (key != null) {
+              @SuppressWarnings("unchecked") V v = (V)data[i + 1];
+              action.accept(v);
+            }
           }
-        };
-      }
+        }
 
-      @Override
-      public boolean contains(Object o) {
-        return containsValue(o);
-      }
+        @Override
+        public boolean contains(Object o) {
+          return containsValue(o);
+        }
 
-      @Override
-      public int size() {
-        return UnmodifiableHashMap.this.size();
-      }
-    };
+        @Override
+        public int size() {
+          return UnmodifiableHashMap.this.size();
+        }
+      };
+    }
+    return values;
   }
 
-  @NotNull
   @Override
-  public Set<Entry<K, V>> entrySet() {
+  public @NotNull Set<Entry<K, V>> entrySet() {
     return new AbstractSet<Entry<K, V>>() {
       @Override
-      public Iterator<Entry<K, V>> iterator() {
+      public @NotNull Iterator<Entry<K, V>> iterator() {
         return new MyIterator<Entry<K, V>>() {
           @Override
           Entry<K, V> fieldElement(int offset) {

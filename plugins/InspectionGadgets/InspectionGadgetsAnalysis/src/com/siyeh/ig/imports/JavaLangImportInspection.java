@@ -16,7 +16,9 @@
 package com.siyeh.ig.imports;
 
 import com.intellij.codeInspection.CleanupLocalInspectionTool;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiImportStatement;
+import com.intellij.psi.PsiJavaCodeReferenceElement;
 import com.intellij.psi.util.FileTypeUtils;
 import com.siyeh.HardcodedMethodConstants;
 import com.siyeh.InspectionGadgetsBundle;
@@ -28,13 +30,6 @@ import com.siyeh.ig.psiutils.ImportUtils;
 import org.jetbrains.annotations.NotNull;
 
 public class JavaLangImportInspection extends BaseInspection implements CleanupLocalInspectionTool{
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "java.lang.import.display.name");
-  }
 
   @Override
   @NotNull
@@ -77,7 +72,7 @@ public class JavaLangImportInspection extends BaseInspection implements CleanupL
         }
       }
       else {
-        final int classNameIndex = text.lastIndexOf((int)'.');
+        final int classNameIndex = text.lastIndexOf('.');
         if (classNameIndex < 0) {
           return;
         }

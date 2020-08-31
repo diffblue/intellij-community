@@ -15,6 +15,7 @@
  */
 package com.intellij.find.impl.livePreview;
 
+import com.intellij.find.EditorSearchSession;
 import com.intellij.find.FindResult;
 import com.intellij.find.FindUtil;
 import com.intellij.openapi.editor.*;
@@ -34,7 +35,7 @@ public class SelectionManager {
     myHadSelectionInitially = results.getEditor().getSelectionModel().hasSelection();
   }
 
-  public void updateSelection(boolean removePreviousSelection, boolean removeAllPreviousSelections) {
+  public void updateSelection(boolean removePreviousSelection, boolean removeAllPreviousSelections, boolean adjustScrollPosition) {
     Editor editor = mySearchResults.getEditor();
     if (removeAllPreviousSelections) {
       editor.getCaretModel().removeSecondaryCarets();
@@ -64,15 +65,16 @@ public class SelectionManager {
             }
           }
         });
-        editor.getSelectionModel().setSelection(cursor.getStartOffset(), cursor.getEndOffset());
         editor.getCaretModel().moveToOffset(cursor.getEndOffset());
+        editor.getSelectionModel().setSelection(cursor.getStartOffset(), cursor.getEndOffset());
+        EditorSearchSession.logSelectionUpdate();
       }
       else {
         FindUtil.selectSearchResultInEditor(editor, cursor, -1);
       }
-      editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
+      if (adjustScrollPosition) editor.getScrollingModel().scrollToCaret(ScrollType.CENTER);
     } else {
-      if (!SearchResults.insideVisibleArea(editor, cursor)) {
+      if (!SearchResults.insideVisibleArea(editor, cursor) && adjustScrollPosition) {
         LogicalPosition pos = editor.offsetToLogicalPosition(cursor.getStartOffset());
         editor.getScrollingModel().scrollTo(pos, ScrollType.CENTER);
       }

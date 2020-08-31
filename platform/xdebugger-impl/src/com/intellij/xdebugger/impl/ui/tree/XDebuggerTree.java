@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.ui.tree;
 
 import com.intellij.execution.configurations.RemoteRunProfile;
@@ -9,12 +9,10 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.changes.issueLinks.TreeLinkMouseListener;
 import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.PopupHandler;
-import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.util.SingleAlarm;
 import com.intellij.util.concurrency.EdtExecutorService;
 import com.intellij.util.containers.ContainerUtil;
@@ -47,9 +45,6 @@ import java.awt.datatransfer.Transferable;
 import java.awt.event.*;
 import java.util.List;
 
-/**
- * @author nik
- */
 public class XDebuggerTree extends DnDAwareTree implements DataProvider, Disposable {
   private final ComponentListener myMoveListener = new ComponentAdapter() {
     @Override
@@ -131,6 +126,7 @@ public class XDebuggerTree extends DnDAwareTree implements DataProvider, Disposa
   private final XValueMarkers<?,?> myValueMarkers;
   private final TreeExpansionListener myTreeExpansionListener;
   private final XDebuggerPinToTopManager myPinToTopManager;
+  XDebuggerTreeSpeedSearch mySpeedSearch;
 
   public XDebuggerTree(final @NotNull Project project,
                        final @NotNull XDebuggerEditorsProvider editorsProvider,
@@ -160,6 +156,9 @@ public class XDebuggerTree extends DnDAwareTree implements DataProvider, Disposa
       @Override
       public void mouseMoved(MouseEvent e) {
         super.mouseMoved(e);
+        if (!myPinToTopManager.isEnabled()) {
+          return;
+        }
         TreePath pathForLocation = getPathForLocation(e.getX(), e.getY());
         if (pathForLocation == null) {
           myPinToTopManager.onNodeHovered(null, XDebuggerTree.this);
@@ -175,7 +174,7 @@ public class XDebuggerTree extends DnDAwareTree implements DataProvider, Disposa
 
     new DoubleClickListener() {
       @Override
-      protected boolean onDoubleClick(MouseEvent e) {
+      protected boolean onDoubleClick(@NotNull MouseEvent e) {
         return expandIfEllipsis();
       }
     }.installOn(this);
@@ -190,12 +189,7 @@ public class XDebuggerTree extends DnDAwareTree implements DataProvider, Disposa
       }
     });
 
-    if (Registry.is("debugger.variablesView.rss")) {
-      new XDebuggerTreeSpeedSearch(this, SPEED_SEARCH_CONVERTER);
-    }
-    else {
-      new TreeSpeedSearch(this, SPEED_SEARCH_CONVERTER);
-    }
+    mySpeedSearch = new XDebuggerTreeSpeedSearch(this, SPEED_SEARCH_CONVERTER);
 
     final ActionManager actionManager = ActionManager.getInstance();
     addMouseListener(new PopupHandler() {

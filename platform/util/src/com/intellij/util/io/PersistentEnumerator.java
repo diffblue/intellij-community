@@ -18,8 +18,8 @@ package com.intellij.util.io;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * @author max
@@ -45,33 +45,34 @@ public class PersistentEnumerator<Data> extends PersistentEnumeratorBase<Data> {
   private int valuesCount; // TODO: valuesCount should be persistent
 
   static final int VERSION = 6;
-  private static final Version ourVersion = new Version(VERSION);
 
-  public PersistentEnumerator(@NotNull File file, @NotNull KeyDescriptor<Data> dataDescriptor, int initialSize) throws IOException {
+  public PersistentEnumerator(@NotNull Path file, @NotNull KeyDescriptor<Data> dataDescriptor, int initialSize) throws IOException {
     this(file, dataDescriptor, initialSize, null, 0);
   }
 
-  public PersistentEnumerator(@NotNull File file,
+  public PersistentEnumerator(@NotNull Path file,
                               @NotNull KeyDescriptor<Data> dataDescriptor,
                               int initialSize,
-                              @Nullable PagedFileStorage.StorageLockContext storageLockContext,
+                              @Nullable StorageLockContext storageLockContext,
                               int version) throws IOException {
     super(file, new ResizeableMappedFile(file, initialSize, storageLockContext, -1, false), dataDescriptor, initialSize, new Version(VERSION + version),
           new RecordBufferHandler(), true);
   }
 
   @Override
-  protected  void setupEmptyFile() throws IOException {
+  protected void setupEmptyFile() {
     allocVector(FIRST_VECTOR);
   }
 
   @Override
-  public synchronized boolean traverseAllRecords(@NotNull RecordsProcessor p) throws IOException {
-    return traverseRecords(FIRST_VECTOR_OFFSET, SLOTS_PER_FIRST_VECTOR, p);
+  public boolean traverseAllRecords(@NotNull RecordsProcessor p) throws IOException {
+    synchronized (getDataAccessLock()) {
+      return traverseRecords(FIRST_VECTOR_OFFSET, SLOTS_PER_FIRST_VECTOR, p);
+    }
   }
 
   private boolean traverseRecords(int vectorStart, int slotsCount, @NotNull RecordsProcessor p) throws IOException {
-    lockStorage();
+    lockStorageRead();
     try {
       for (int slotIdx = 0; slotIdx < slotsCount; slotIdx++) {
         final int vector = myStorage.getInt(vectorStart + slotIdx * 4L);
@@ -87,99 +88,111 @@ public class PersistentEnumerator<Data> extends PersistentEnumeratorBase<Data> {
       return true;
     }
     finally {
-      unlockStorage();
+      unlockStorageRead();
     }
   }
 
   @Override
-  protected synchronized int enumerateImpl(final Data value, final boolean onlyCheckForExisting, boolean saveNewValue) throws IOException {
-    lockStorage();
-    try {
-      int depth = 0;
-      final int valueHC = myDataDescriptor.getHashCode(value);
-      int hc = valueHC;
-      int vector = FIRST_VECTOR_OFFSET;
-      int pos;
-      int lastVector;
-
-      int levelMask = FIRST_LEVEL_MASK;
-      int bitsPerLevel = BITS_PER_FIRST_LEVEL;
-      do {
-        lastVector = vector;
-        pos = vector + (hc & levelMask) * 4;
-        hc >>>= bitsPerLevel;
-        vector = myStorage.getInt(pos);
-        depth++;
-
-        levelMask = LEVEL_MASK;
-        bitsPerLevel = BITS_PER_LEVEL;
-      }
-      while (vector > 0);
-
-      if (vector == 0) {
-        // Empty slot
-        if (onlyCheckForExisting) {
-          return NULL_ID;
-        }
-        final int newId = writeData(value, valueHC);
-        myStorage.putInt(pos, -newId);
-        return newId;
+  protected int enumerateImpl(final Data value, final boolean onlyCheckForExisting, boolean saveNewValue) throws IOException {
+    synchronized (getDataAccessLock()) {
+      if (onlyCheckForExisting) {
+        lockStorageWrite();
       }
       else {
-        int collision = -vector;
-        boolean splitVector = false;
-        int candidateHC;
+        lockStorageWrite();
+      }
+      try {
+        int depth = 0;
+        final int valueHC = myDataDescriptor.getHashCode(value);
+        int hc = valueHC;
+        int vector = FIRST_VECTOR_OFFSET;
+        int pos;
+        int lastVector;
+
+        int levelMask = FIRST_LEVEL_MASK;
+        int bitsPerLevel = BITS_PER_FIRST_LEVEL;
         do {
-          candidateHC = hashCodeOf(collision);
-          if (candidateHC != valueHC) {
-            splitVector = true;
-            break;
-          }
+          lastVector = vector;
+          pos = vector + (hc & levelMask) * 4;
+          hc >>>= bitsPerLevel;
+          vector = myStorage.getInt(pos);
+          depth++;
 
-          Data candidate = valueOf(collision);
-          if (myDataDescriptor.isEqual(value, candidate)) {
-            return collision;
-          }
-
-          collision = nextCandidate(collision);
+          levelMask = LEVEL_MASK;
+          bitsPerLevel = BITS_PER_LEVEL;
         }
-        while (collision != 0);
+        while (vector > 0);
 
-        if (onlyCheckForExisting) {
-          return NULL_ID;
-        }
-
-        final int newId = writeData(value, valueHC);
-
-        if (splitVector) {
-          depth--;
-          do {
-            final int valueHCByte = hcByte(valueHC, depth);
-            final int oldHCByte = hcByte(candidateHC, depth);
-            if (valueHCByte == oldHCByte) {
-              int newVector = allocVector(EMPTY_VECTOR);
-              myStorage.putInt(lastVector + oldHCByte * 4L, newVector);
-              lastVector = newVector;
-            }
-            else {
-              myStorage.putInt(lastVector + valueHCByte * 4L, -newId);
-              myStorage.putInt(lastVector + oldHCByte * 4L, vector);
-              break;
-            }
-            depth++;
+        if (vector == 0) {
+          // Empty slot
+          if (onlyCheckForExisting) {
+            return NULL_ID;
           }
-          while (true);
+          final int newId = writeData(value, valueHC);
+          myStorage.putInt(pos, -newId);
+          return newId;
         }
         else {
-          // Hashcode collision detected. Insert new string into the list of colliding.
-          myStorage.putInt(newId, vector);
-          myStorage.putInt(pos, -newId);
+          int collision = -vector;
+          boolean splitVector = false;
+          int candidateHC;
+          do {
+            candidateHC = hashCodeOf(collision);
+            if (candidateHC != valueHC) {
+              splitVector = true;
+              break;
+            }
+
+            Data candidate = valueOf(collision);
+            if (myDataDescriptor.isEqual(value, candidate)) {
+              return collision;
+            }
+
+            collision = nextCandidate(collision);
+          }
+          while (collision != 0);
+
+          if (onlyCheckForExisting) {
+            return NULL_ID;
+          }
+
+          final int newId = writeData(value, valueHC);
+
+          if (splitVector) {
+            depth--;
+            do {
+              final int valueHCByte = hcByte(valueHC, depth);
+              final int oldHCByte = hcByte(candidateHC, depth);
+              if (valueHCByte == oldHCByte) {
+                int newVector = allocVector(EMPTY_VECTOR);
+                myStorage.putInt(lastVector + oldHCByte * 4L, newVector);
+                lastVector = newVector;
+              }
+              else {
+                myStorage.putInt(lastVector + valueHCByte * 4L, -newId);
+                myStorage.putInt(lastVector + oldHCByte * 4L, vector);
+                break;
+              }
+              depth++;
+            }
+            while (true);
+          }
+          else {
+            // Hashcode collision detected. Insert new string into the list of colliding.
+            myStorage.putInt(newId, vector);
+            myStorage.putInt(pos, -newId);
+          }
+          return newId;
         }
-        return newId;
       }
-    }
-    finally {
-      unlockStorage();
+      finally {
+        if (onlyCheckForExisting) {
+          unlockStorageWrite();
+        }
+        else {
+          unlockStorageWrite();
+        }
+      }
     }
   }
 
@@ -205,17 +218,17 @@ public class PersistentEnumerator<Data> extends PersistentEnumeratorBase<Data> {
     return (hashcode >>> (byteN * BITS_PER_LEVEL)) & LEVEL_MASK;
   }
 
-  private int allocVector(@NotNull final byte[] empty) throws IOException {
+  private int allocVector(final byte @NotNull [] empty) {
     final int pos = (int)myStorage.length();
     myStorage.put(pos, empty, 0, empty.length);
     return pos;
   }
 
-  private int nextCandidate(final int idx) throws IOException {
+  private int nextCandidate(final int idx) {
     return -myStorage.getInt(idx);
   }
 
-  private int hashCodeOf(int idx) throws IOException {
+  private int hashCodeOf(int idx) {
     return myStorage.getInt(idx + KEY_HASHCODE_OFFSET);
   }
 
@@ -224,22 +237,21 @@ public class PersistentEnumerator<Data> extends PersistentEnumeratorBase<Data> {
     return myStorage.getInt(idx + KEY_REF_OFFSET);
   }
 
-  private static class RecordBufferHandler extends PersistentEnumeratorBase.RecordBufferHandler<PersistentEnumerator> {
-    private final byte[] myBuffer = new byte[RECORD_SIZE];
+  private static class RecordBufferHandler extends PersistentEnumeratorBase.RecordBufferHandler<PersistentEnumerator<?>> {
+    private final ThreadLocal<byte[]> myBuffer = ThreadLocal.withInitial(() -> new byte[RECORD_SIZE]);
 
     @Override
-    protected int recordWriteOffset(@NotNull PersistentEnumerator enumerator, byte[] buf) {
+    protected int recordWriteOffset(@NotNull PersistentEnumerator<?> enumerator, byte[] buf) {
       return (int)enumerator.myStorage.length();
     }
 
-    @NotNull
     @Override
-    byte[] getRecordBuffer(PersistentEnumerator t) {
-      return myBuffer;
+    byte @NotNull [] getRecordBuffer(PersistentEnumerator<?> t) {
+      return myBuffer.get();
     }
 
     @Override
-    void setupRecord(PersistentEnumerator enumerator, int hashCode, int dataOffset, byte[] buf) {
+    void setupRecord(PersistentEnumerator<?> enumerator, int hashCode, int dataOffset, byte[] buf) {
       Bits.putInt(buf, COLLISION_OFFSET, 0);
       Bits.putInt(buf, KEY_HASHCODE_OFFSET, hashCode);
       Bits.putInt(buf, KEY_REF_OFFSET, dataOffset);

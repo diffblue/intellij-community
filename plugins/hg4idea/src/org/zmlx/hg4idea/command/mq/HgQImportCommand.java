@@ -19,6 +19,7 @@ import com.intellij.openapi.progress.util.BackgroundTaskUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
+import org.zmlx.hg4idea.HgBundle;
 import org.zmlx.hg4idea.action.HgCommandResultNotifier;
 import org.zmlx.hg4idea.execution.HgCommandExecutor;
 import org.zmlx.hg4idea.execution.HgCommandResult;
@@ -36,7 +37,7 @@ public class HgQImportCommand {
   }
 
   public void execute(@NotNull final String startRevisionNumber) {
-    BackgroundTaskUtil.executeOnPooledThread(myRepository.getProject(), () -> executeInCurrentThread(startRevisionNumber));
+    BackgroundTaskUtil.executeOnPooledThread(myRepository, () -> executeInCurrentThread(startRevisionNumber));
   }
 
   public void executeInCurrentThread(@NotNull final String startRevisionNumber) {
@@ -46,7 +47,7 @@ public class HgQImportCommand {
     HgCommandResult result = new HgCommandExecutor(project).executeInCurrentThread(myRepository.getRoot(), "qimport", arguments);
     if (HgErrorUtil.hasErrorsInCommandExecution(result)) {
       new HgCommandResultNotifier(project)
-        .notifyError(result, "Import failed", "Import revision from " + startRevisionNumber + " to qparent failed");
+        .notifyError(result, HgBundle.message("action.hg4idea.QImport.error"), HgBundle.message("action.hg4idea.QImport.error.msg", startRevisionNumber));
     }
     myRepository.update();
   }

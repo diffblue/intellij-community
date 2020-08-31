@@ -1,20 +1,24 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInspection;
 
+import com.intellij.diagnostic.PluginException;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
 import org.intellij.lang.annotations.Language;
-import org.intellij.lang.annotations.Pattern;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
+/**
+ * Base class for local inspections.
+ */
 public abstract class LocalInspectionTool extends InspectionProfileEntry {
   public static final LocalInspectionTool[] EMPTY_ARRAY = new LocalInspectionTool[0];
 
@@ -33,7 +37,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
    */
   @NonNls @Language("RegExp")
   public static final String VALID_ID_PATTERN = "[a-zA-Z_0-9.-]+";
-  private static final java.util.regex.Pattern COMPILED_VALID_ID_PATTERN = java.util.regex.Pattern.compile(VALID_ID_PATTERN);
+  private static final Pattern COMPILED_VALID_ID_PATTERN = Pattern.compile(VALID_ID_PATTERN);
 
   public static boolean isValidID(@NotNull String id) {
     return !id.isEmpty() && COMPILED_VALID_ID_PATTERN.matcher(id).matches();
@@ -48,7 +52,6 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
    *
    * @return inspection tool ID.
    */
-  @Pattern(VALID_ID_PATTERN)
   @NonNls
   @NotNull
   public String getID() {
@@ -78,12 +81,12 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   }
 
   /**
-   * Override this method and return true if your inspection (unlike almost all others)
+   * Override and return {@code true} if your inspection (unlike almost all others)
    * must be called for every element in the whole file for each change, whatever small it was.
-   * <p/>
+   * <p>
    * For example, 'Field can be local' inspection can report the field declaration when reference to it was added inside method hundreds lines below.
    * Hence, this inspection must be rerun on every change.
-   * <p/>
+   * <p>
    * Please note that re-scanning the whole file can take considerable time and thus seriously impact the responsiveness, so
    * beg please use this mechanism once in a blue moon.
    *
@@ -94,20 +97,19 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   }
 
   /**
-   * Override this to report problems at file level.
+   * Override to report problems at file level.
    *
    * @param file       to check.
    * @param manager    InspectionManager to ask for ProblemDescriptor's from.
    * @param isOnTheFly true if called during on the fly editor highlighting. Called from Inspect Code action otherwise.
    * @return {@code null} if no problems found or not applicable at file level.
    */
-  @Nullable
-  public ProblemDescriptor[] checkFile(@NotNull PsiFile file, @NotNull InspectionManager manager, boolean isOnTheFly) {
+  public ProblemDescriptor @Nullable [] checkFile(@NotNull PsiFile file, @NotNull InspectionManager manager, boolean isOnTheFly) {
     return null;
   }
 
   /**
-   * Override the method to provide your own inspection visitor, if you need to store additional state in the
+   * Override to provide your own inspection visitor, if you need to store additional state in the
    * LocalInspectionToolSession user data or get information about the inspection scope.
    * Created visitor must not be recursive (e.g. it must not inherit {@link PsiRecursiveElementVisitor})
    * since it will be fed with every element in the file anyway.
@@ -125,7 +127,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   }
 
   /**
-   * Override the method to provide your own inspection visitor.
+   * Override to provide your own inspection visitor.
    * Created visitor must not be recursive (e.g. it must not inherit {@link PsiRecursiveElementVisitor})
    * since it will be fed with every element in the file anyway.
    * Visitor created must be thread-safe since it might be called on several elements concurrently.
@@ -139,15 +141,21 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   public PsiElementVisitor buildVisitor(@NotNull final ProblemsHolder holder, final boolean isOnTheFly) {
     return new PsiElementVisitor() {
       @Override
-      public void visitFile(PsiFile file) {
+      public void visitFile(@NotNull PsiFile file) {
         addDescriptors(checkFile(file, holder.getManager(), isOnTheFly));
       }
 
       private void addDescriptors(final ProblemDescriptor[] descriptors) {
         if (descriptors != null) {
           for (ProblemDescriptor descriptor : descriptors) {
-            LOG.assertTrue(descriptor != null, LocalInspectionTool.this.getClass().getName());
-            holder.registerProblem(descriptor);
+            if (descriptor != null) {
+              holder.registerProblem(descriptor);
+            }
+            else {
+              Class<?> inspectionToolClass = LocalInspectionTool.this.getClass();
+              LOG.error(PluginException.createByClass("Array returned from checkFile() method of " + inspectionToolClass + " contains null element",
+                                                      null, inspectionToolClass));
+            }
           }
         }
       }
@@ -155,7 +163,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
   }
 
   /**
-   * The method finds problem container (ex: method, class, file) that used to be shown as inspection view tree node.
+   * Returns problem container (e.g., method, class, file) that is used as inspection view tree node.
    *
    * Consider {@link com.intellij.codeInspection.lang.RefManagerExtension#getElementContainer(PsiElement)}
    * to override container element for any inspection for given language.
@@ -179,6 +187,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
    */
   @Deprecated
   public void inspectionFinished(@NotNull LocalInspectionToolSession session) {}
+  
   @NotNull
   public List<ProblemDescriptor> processFile(@NotNull PsiFile file, @NotNull InspectionManager manager) {
     final ProblemsHolder holder = new ProblemsHolder(manager, file, false);
@@ -196,7 +205,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
     final InjectedLanguageManager injectedLanguageManager = InjectedLanguageManager.getInstance(holder.getProject());
     file.accept(new PsiRecursiveElementWalkingVisitor() {
       @Override
-      public void visitElement(PsiElement element) {
+      public void visitElement(@NotNull PsiElement element) {
         element.accept(customVisitor);
         processInjectedFile(element);
 
@@ -210,7 +219,7 @@ public abstract class LocalInspectionTool extends InspectionProfileEntry {
             for (Pair<PsiElement, TextRange> pair : files) {
               pair.first.accept(new PsiRecursiveElementWalkingVisitor() {
                 @Override
-                public void visitElement(PsiElement injectedElement) {
+                public void visitElement(@NotNull PsiElement injectedElement) {
                   injectedElement.accept(customVisitor);
                   super.visitElement(injectedElement);
                 }

@@ -1,44 +1,48 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileTypes.impl;
 
 import com.intellij.openapi.fileTypes.ExactFileNameMatcher;
 import com.intellij.openapi.fileTypes.ExtensionFileNameMatcher;
 import com.intellij.openapi.fileTypes.FileNameMatcher;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.text.CharSequenceHashingStrategy;
-import gnu.trove.THashMap;
+import com.intellij.util.containers.CollectionFactory;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
-/**
- * @author max
- */
-public class FileTypeAssocTable<T> {
+public final class FileTypeAssocTable<T> {
   private final Map<CharSequence, T> myExtensionMappings;
   private final Map<CharSequence, T> myExactFileNameMappings;
   private final Map<CharSequence, T> myExactFileNameAnyCaseMappings;
   private final List<Pair<FileNameMatcher, T>> myMatchingMappings;
+  private final Map<String, T> myHashBangMap;
 
   private FileTypeAssocTable(@NotNull Map<? extends CharSequence, ? extends T> extensionMappings,
                              @NotNull Map<? extends CharSequence, ? extends T> exactFileNameMappings,
-                             @NotNull Map<? extends CharSequence, T> exactFileNameAnyCaseMappings,
+                             @NotNull Map<? extends CharSequence, ? extends T> exactFileNameAnyCaseMappings,
+                             @NotNull Map<String, ? extends T> hashBangMap,
                              @NotNull List<? extends Pair<FileNameMatcher, T>> matchingMappings) {
-    myExtensionMappings = new THashMap<>(Math.max(10, extensionMappings.size()), 0.5f, CharSequenceHashingStrategy.CASE_INSENSITIVE);
+    myExtensionMappings = CollectionFactory.createCharSequenceMap(false, Math.max(10, extensionMappings.size()), 0.5f);
     myExtensionMappings.putAll(extensionMappings);
-    myExactFileNameMappings = new THashMap<>(Math.max(10, exactFileNameMappings.size()), 0.5f, CharSequenceHashingStrategy.CASE_SENSITIVE);
+    myExactFileNameMappings = CollectionFactory.createCharSequenceMap(true, Math.max(10, exactFileNameMappings.size()), 0.5f);
     myExactFileNameMappings.putAll(exactFileNameMappings);
-    myExactFileNameAnyCaseMappings = new THashMap<>(Math.max(10, exactFileNameAnyCaseMappings.size()), 0.5f, CharSequenceHashingStrategy.CASE_INSENSITIVE);
+    myExactFileNameAnyCaseMappings = CollectionFactory.createCharSequenceMap(false, Math.max(10, exactFileNameAnyCaseMappings.size()), 0.5f);
     myExactFileNameAnyCaseMappings.putAll(exactFileNameAnyCaseMappings);
+    myHashBangMap = new Object2ObjectOpenHashMap<>(Math.max(10, hashBangMap.size()), 0.5f);
+    myHashBangMap.putAll(hashBangMap);
     myMatchingMappings = new ArrayList<>(matchingMappings);
   }
 
   public FileTypeAssocTable() {
-    this(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList());
+    this(Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList());
   }
 
   boolean isAssociatedWith(@NotNull T type, @NotNull FileNameMatcher matcher) {
@@ -68,14 +72,21 @@ public class FileTypeAssocTable<T> {
     }
   }
 
-  boolean removeAssociation(@NotNull FileNameMatcher matcher, @NotNull T type) {
+  void addHashBangPattern(@NotNull String hashBang, @NotNull T type) {
+    myHashBangMap.put(hashBang, type);
+  }
+  void removeHashBangPattern(@NotNull String hashBang, @NotNull T type) {
+    myHashBangMap.remove(hashBang, type);
+  }
+
+  void removeAssociation(@NotNull FileNameMatcher matcher, @NotNull T type) {
     if (matcher instanceof ExtensionFileNameMatcher) {
       String extension = ((ExtensionFileNameMatcher)matcher).getExtension();
       if (myExtensionMappings.get(extension) == type) {
         myExtensionMappings.remove(extension);
-        return true;
+        return;
       }
-      return false;
+      return;
     }
 
     if (matcher instanceof ExactFileNameMatcher) {
@@ -83,27 +94,26 @@ public class FileTypeAssocTable<T> {
       String fileName = exactFileNameMatcher.getFileName();
 
       final Map<CharSequence, T> mapToUse = exactFileNameMatcher.isIgnoreCase() ? myExactFileNameAnyCaseMappings : myExactFileNameMappings;
-      if(mapToUse.get(fileName) == type) {
+      if (mapToUse.get(fileName) == type) {
         mapToUse.remove(fileName);
-        return true;
       }
-      return false;
+      return;
     }
-
-    return myMatchingMappings.removeIf(assoc -> matcher.equals(assoc.getFirst()));
+    myMatchingMappings.removeIf(assoc -> matcher.equals(assoc.getFirst()));
   }
 
-  boolean removeAllAssociations(@NotNull T type) {
-    boolean changed = removeAssociationsFromMap(myExtensionMappings, type, false);
+  void removeAllAssociations(@NotNull T type) {
+    removeAssociationsFromMap(myExtensionMappings, type);
 
-    changed = removeAssociationsFromMap(myExactFileNameAnyCaseMappings, type, changed);
-    changed = removeAssociationsFromMap(myExactFileNameMappings, type, changed);
+    removeAssociationsFromMap(myExactFileNameAnyCaseMappings, type);
+    removeAssociationsFromMap(myExactFileNameMappings, type);
 
-    return myMatchingMappings.removeIf(assoc -> assoc.getSecond() == type);
+    myMatchingMappings.removeIf(assoc -> assoc.getSecond() == type);
+    myHashBangMap.entrySet().removeIf(e -> e.getValue().equals(type));
   }
 
-  private boolean removeAssociationsFromMap(@NotNull Map<CharSequence, T> extensionMappings, @NotNull T type, boolean changed) {
-    return extensionMappings.entrySet().removeIf(entry -> entry.getValue() == type) || changed;
+  private void removeAssociationsFromMap(@NotNull Map<CharSequence, T> extensionMappings, @NotNull T type) {
+    extensionMappings.entrySet().removeIf(entry -> entry.getValue() == type);
   }
 
   @Nullable
@@ -120,11 +130,20 @@ public class FileTypeAssocTable<T> {
 
     //noinspection ForLoopReplaceableByForEach
     for (int i = 0; i < myMatchingMappings.size(); i++) {
-      final Pair<FileNameMatcher, T> mapping = myMatchingMappings.get(i);
+      Pair<FileNameMatcher, T> mapping = myMatchingMappings.get(i);
       if (mapping.getFirst().acceptsCharSequence(fileName)) return mapping.getSecond();
     }
 
     return findByExtension(FileUtilRt.getExtension(fileName));
+  }
+
+  @Nullable
+  T findAssociatedFileTypeByHashBang(@NotNull CharSequence content) {
+    for (Map.Entry<String, T> entry : myHashBangMap.entrySet()) {
+      String hashBang = entry.getKey();
+      if (FileUtil.isHashBangLine(content, hashBang)) return entry.getValue();
+    }
+    return null;
   }
 
   @Nullable
@@ -151,21 +170,19 @@ public class FileTypeAssocTable<T> {
     return myExtensionMappings.get(extension);
   }
 
-  @Deprecated
-  @NotNull
-  String[] getAssociatedExtensions(@NotNull T type) {
-    List<String> exts = new ArrayList<>();
+  String @NotNull [] getAssociatedExtensions(@NotNull T type) {
+    List<String> extensions = new ArrayList<>();
     for (Map.Entry<CharSequence, T> entry : myExtensionMappings.entrySet()) {
       if (entry.getValue() == type) {
-        exts.add(entry.getKey().toString());
+        extensions.add(entry.getKey().toString());
       }
     }
-    return ArrayUtilRt.toStringArray(exts);
+    return ArrayUtilRt.toStringArray(extensions);
   }
 
   @NotNull
   public FileTypeAssocTable<T> copy() {
-    return new FileTypeAssocTable<>(myExtensionMappings, myExactFileNameMappings, myExactFileNameAnyCaseMappings, myMatchingMappings);
+    return new FileTypeAssocTable<>(myExtensionMappings, myExactFileNameMappings, myExactFileNameAnyCaseMappings, myHashBangMap, myMatchingMappings);
   }
 
   @NotNull
@@ -196,9 +213,18 @@ public class FileTypeAssocTable<T> {
     return result;
   }
 
+  @NotNull
+  public List<String> getHashBangPatterns(@NotNull T type) {
+    return myHashBangMap.entrySet().stream()
+      .filter(e -> e.getValue().equals(type))
+      .map(e->e.getKey())
+      .collect(Collectors.toList());
+  }
+
   boolean hasAssociationsFor(@NotNull T fileType) {
     if (myExtensionMappings.containsValue(fileType) ||
         myExactFileNameMappings.containsValue(fileType) ||
+        myHashBangMap.containsValue(fileType) ||
         myExactFileNameAnyCaseMappings.containsValue(fileType)) {
       return true;
     }
@@ -232,10 +258,11 @@ public class FileTypeAssocTable<T> {
       return false;
     }
 
-    FileTypeAssocTable<?> that = (FileTypeAssocTable)o;
+    FileTypeAssocTable<?> that = (FileTypeAssocTable<?>)o;
     return myExtensionMappings.equals(that.myExtensionMappings) &&
            myMatchingMappings.equals(that.myMatchingMappings) &&
            myExactFileNameMappings.equals(that.myExactFileNameMappings) &&
+           myHashBangMap.equals(that.myHashBangMap) &&
            myExactFileNameAnyCaseMappings.equals(that.myExactFileNameAnyCaseMappings);
   }
 
@@ -243,8 +270,13 @@ public class FileTypeAssocTable<T> {
   public int hashCode() {
     int result = myExtensionMappings.hashCode();
     result = 31 * result + myMatchingMappings.hashCode();
+    result = 31 * result + myHashBangMap.hashCode();
     result = 31 * result + myExactFileNameMappings.hashCode();
     result = 31 * result + myExactFileNameAnyCaseMappings.hashCode();
     return result;
+  }
+
+  @NotNull Map<String, T> getAllHashBangPatterns() {
+    return Object2ObjectMaps.unmodifiable(new Object2ObjectOpenHashMap<>(myHashBangMap));
   }
 }

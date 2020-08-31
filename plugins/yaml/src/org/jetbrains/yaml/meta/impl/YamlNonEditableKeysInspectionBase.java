@@ -20,7 +20,7 @@ import org.jetbrains.yaml.psi.YamlRecursivePsiElementVisitor;
 import java.util.ArrayList;
 import java.util.Objects;
 
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public abstract class YamlNonEditableKeysInspectionBase extends YamlMetaTypeInspectionBase {
 
   @Override
@@ -64,7 +64,7 @@ public abstract class YamlNonEditableKeysInspectionBase extends YamlMetaTypeInsp
       @NotNull
       @Override
       public String getFamilyName() {
-        return YAMLBundle.message("YamlNonEditableKeyInspectionBase.strip.noneditable.keys.quickfix.name", new Object[]{});
+        return YAMLBundle.message("YamlNonEditableKeyInspectionBase.strip.noneditable.keys.quickfix.name");
       }
 
       @Override

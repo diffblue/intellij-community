@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.codeStyle.statusbar;
 
 import com.intellij.application.options.CodeStyle;
@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.StatusBarWidget;
 import com.intellij.openapi.wm.impl.status.EditorBasedStatusBarPopup;
@@ -23,6 +24,7 @@ import com.intellij.util.concurrency.NonUrgentExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -31,6 +33,8 @@ import static com.intellij.psi.codeStyle.CommonCodeStyleSettings.IndentOptions;
 
 public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implements CodeStyleSettingsListener {
   public static final String WIDGET_ID = CodeStyleStatusBarWidget.class.getName();
+
+  private CodeStyleStatusBarPanel myPanel;
 
   public CodeStyleStatusBarWidget(@NotNull Project project) {
     super(project, true);
@@ -41,7 +45,7 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
   protected WidgetState getWidgetState(@Nullable VirtualFile file) {
     if (file == null) return WidgetState.HIDDEN;
     PsiFile psiFile = getPsiFile();
-    if (psiFile == null || !psiFile.isWritable()) return WidgetState.HIDDEN;
+    if (psiFile == null) return WidgetState.HIDDEN;
     CodeStyleSettings settings = CodeStyle.getSettings(psiFile);
     IndentOptions indentOptions = CodeStyle.getIndentOptions(psiFile);
     if (settings instanceof TransientCodeStyleSettings) {
@@ -95,12 +99,12 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
     }
   }
 
-
   @Nullable
   private PsiFile getPsiFile() {
     Editor editor = getEditor();
-    if (editor != null) {
-      return PsiDocumentManager.getInstance(getProject()).getPsiFile(editor.getDocument());
+    Project project = getProject();
+    if (editor != null && !project.isDisposed()) {
+      return PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument());
     }
     return null;
   }
@@ -115,9 +119,8 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
       final CodeStyleStatusBarUIContributor uiContributor = ((MyWidgetState)state).getContributor();
       AnAction[] actions = getActions(uiContributor, psiFile);
       ActionGroup actionGroup = new ActionGroup() {
-        @NotNull
         @Override
-        public AnAction[] getChildren(@Nullable AnActionEvent e) {
+        public AnAction @NotNull [] getChildren(@Nullable AnActionEvent e) {
           return actions;
         }
       };
@@ -128,8 +131,7 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
     return null;
   }
 
-  @NotNull
-  private static AnAction[] getActions(@Nullable final CodeStyleStatusBarUIContributor uiContributor, @NotNull PsiFile psiFile) {
+  private static AnAction @NotNull [] getActions(@Nullable final CodeStyleStatusBarUIContributor uiContributor, @NotNull PsiFile psiFile) {
     List<AnAction> allActions = new ArrayList<>();
     if (uiContributor != null) {
       AnAction[] actions = uiContributor.getActions(psiFile);
@@ -140,7 +142,7 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
     if (uiContributor == null ||
         (uiContributor instanceof IndentStatusBarUIContributor) &&
         ((IndentStatusBarUIContributor)uiContributor).isShowFileIndentOptionsEnabled()) {
-      allActions.add(CodeStyleStatusBarWidgetProvider.createDefaultIndentConfigureAction(psiFile));
+      allActions.add(CodeStyleStatusBarWidgetFactory.createDefaultIndentConfigureAction(psiFile));
     }
     if (uiContributor != null) {
       AnAction disabledAction = uiContributor.createDisableAction(psiFile.getProject());
@@ -220,5 +222,23 @@ public class CodeStyleStatusBarWidget extends EditorBasedStatusBarPopup implemen
     public PsiFile getPsiFile() {
       return myPsiFile;
     }
+  }
+
+  @Override
+  protected JPanel createComponent() {
+    myPanel = new CodeStyleStatusBarPanel();
+    return myPanel;
+  }
+
+  @Override
+  protected void updateComponent(@NotNull WidgetState state) {
+    myPanel.setIcon(state.getIcon());
+    myPanel.setText(state.getText());
+    myPanel.setToolTipText(state.getToolTip());
+  }
+
+  @Override
+  protected boolean isEmpty() {
+    return StringUtil.isEmpty(myPanel.getText());
   }
 }

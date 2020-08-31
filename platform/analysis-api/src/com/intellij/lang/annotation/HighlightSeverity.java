@@ -33,7 +33,6 @@ public class HighlightSeverity implements Comparable<HighlightSeverity> {
    * @deprecated use {@link #WEAK_WARNING}
    */
   @Deprecated
-  @SuppressWarnings("DeprecatedIsStillUsed")
   public static final HighlightSeverity INFO = new HighlightSeverity("INFO", 200);
 
   public static final HighlightSeverity WEAK_WARNING = new HighlightSeverity("WEAK WARNING", 200);
@@ -68,7 +67,7 @@ public class HighlightSeverity implements Comparable<HighlightSeverity> {
   }
 
   public HighlightSeverity(@NotNull Element element) {
-    this(readField(element, "myName"), Integer.valueOf(readField(element, "myVal")));
+    this(readField(element, "myName"), Integer.parseInt(readField(element, "myVal")));
   }
 
   private static String readField(Element element, String name) {

@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.importing
 
 import com.intellij.ide.actions.ImportModuleAction
+import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -16,15 +17,17 @@ import com.intellij.openapi.fileChooser.impl.FileChooserFactoryImpl
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.project.ex.ProjectManagerEx
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.use
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.platform.PlatformProjectOpenProcessor
 import com.intellij.testFramework.TestActionEvent
+import com.intellij.testFramework.replaceService
 import org.junit.Assert.assertEquals
-import org.picocontainer.MutablePicoContainer
 import java.awt.Component
+import com.intellij.openapi.externalSystem.util.use as utilUse
 
 interface ExternalSystemSetupProjectTestCase {
-
   data class ProjectInfo(val projectFile: VirtualFile, val modules: List<String>) {
     constructor(projectFile: VirtualFile, vararg modules: String) : this(projectFile, modules.toList())
   }
@@ -50,16 +53,15 @@ interface ExternalSystemSetupProjectTestCase {
   fun waitForImportCompletion(project: Project)
 
   fun openPlatformProjectFrom(projectDirectory: VirtualFile): Project {
-    return invokeAndWaitIfNeeded {
-      val openProcessor = PlatformProjectOpenProcessor.getInstance()
-      openProcessor.doOpenProject(projectDirectory, null, true)!!
-    }
+    return ProjectManagerEx.getInstanceEx().openProject(projectDirectory.toNioPath(), OpenProjectTask(forceOpenInNewFrame = true,
+                                                                                                      useDefaultProjectAsTemplate = false,
+                                                                                                      isRefreshVfsNeeded = false))!!
   }
 
   fun openProjectFrom(projectFile: VirtualFile): Project {
     return detectOpenedProject {
       invokeAndWaitIfNeeded {
-        ProjectUtil.openOrImport(projectFile.path, null, true)
+        ProjectUtil.openOrImport(projectFile.toNioPath())
       }
     }
   }
@@ -94,40 +96,23 @@ interface ExternalSystemSetupProjectTestCase {
 
   private fun <R> withSelectedFileIfNeeded(selectedFile: VirtualFile?, action: () -> R): R {
     if (selectedFile == null) return action()
-    val fileChooser = findApplicationComponent(FileChooserFactory::class.java)
-    replaceApplicationComponent(FileChooserFactory::class.java, object : FileChooserFactoryImpl() {
-      override fun createFileChooser(descriptor: FileChooserDescriptor, project: Project?, parent: Component?): FileChooserDialog {
-        return object : FileChooserDialog {
-          override fun choose(toSelect: VirtualFile?, project: Project?): Array<VirtualFile> {
-            return choose(project, toSelect)
-          }
 
-          override fun choose(project: Project?, vararg toSelect: VirtualFile?): Array<VirtualFile> {
-            return arrayOf(selectedFile)
+    Disposer.newDisposable().use {
+      ApplicationManager.getApplication().replaceService(FileChooserFactory::class.java, object : FileChooserFactoryImpl() {
+        override fun createFileChooser(descriptor: FileChooserDescriptor, project: Project?, parent: Component?): FileChooserDialog {
+          return object : FileChooserDialog {
+            override fun choose(toSelect: VirtualFile?, project: Project?): Array<VirtualFile> {
+              return choose(project, toSelect)
+            }
+
+            override fun choose(project: Project?, vararg toSelect: VirtualFile?): Array<VirtualFile> {
+              return arrayOf(selectedFile)
+            }
           }
         }
-      }
-    })
-    try {
+      }, it)
       return action()
     }
-    finally {
-      replaceApplicationComponent(FileChooserFactory::class.java, fileChooser)
-    }
-  }
-
-  private fun <T> replaceApplicationComponent(cls: Class<T>, instance: T) {
-    val key = cls.name
-    val container = ApplicationManager.getApplication().picoContainer as MutablePicoContainer
-    container.unregisterComponent(key)
-    container.registerComponentInstance(key, instance)
-  }
-
-  @Suppress("UNCHECKED_CAST")
-  private fun <T> findApplicationComponent(cls: Class<T>): T {
-    val key = cls.name
-    val container = ApplicationManager.getApplication().picoContainer as MutablePicoContainer
-    return container.getComponentInstance(key) as T
   }
 
   private fun detectOpenedProject(action: () -> Unit): Project {
@@ -135,5 +120,18 @@ interface ExternalSystemSetupProjectTestCase {
     val openProjects = projectManager.openProjects.map { it.name }.toSet()
     action()
     return projectManager.openProjects.first { it.name !in openProjects }
+  }
+
+  fun cleanupProjectTestResources(project: Project) {}
+
+  fun Project.use(save: Boolean = false, action: (Project) -> Unit) {
+    utilUse(save) {
+      try {
+        action(this)
+      }
+      finally {
+        cleanupProjectTestResources(this)
+      }
+    }
   }
 }

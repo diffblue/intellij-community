@@ -59,7 +59,7 @@ public class StubGenerator implements ClassItemGenerator {
   };
 
   private final ClassNameProvider classNameProvider;
-  private static final Logger LOG = Logger.getInstance("#org.jetbrains.plugins.groovy.refactoring.convertToJava.StubGenerator");
+  private static final Logger LOG = Logger.getInstance(StubGenerator.class);
 
   public StubGenerator(ClassNameProvider classNameProvider) {
     this.classNameProvider = classNameProvider;
@@ -362,7 +362,7 @@ public class StubGenerator implements ClassItemGenerator {
     final LightMethodBuilder builder = new LightMethodBuilder(method.getManager(), method.getName());
     substitutor = substitutor.putAll(TypeConversionUtil.getSuperClassSubstitutor(baseClass, typeDefinition, PsiSubstitutor.EMPTY));
     for (PsiParameter parameter : method.getParameterList().getParameters()) {
-      builder.addParameter(StringUtil.notNullize(parameter.getName()), substitutor.substitute(parameter.getType()));
+      builder.addParameter(parameter.getName(), substitutor.substitute(parameter.getType()));
     }
     builder.setMethodReturnType(substitutor.substitute(method.getReturnType()));
     for (String modifier : STUB_MODIFIERS) {

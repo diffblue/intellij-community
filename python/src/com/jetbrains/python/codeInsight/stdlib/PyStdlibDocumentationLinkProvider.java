@@ -30,11 +30,11 @@ import com.jetbrains.python.psi.PyFile;
 import com.jetbrains.python.psi.PyFunction;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
 import com.jetbrains.python.psi.resolve.QualifiedNameFinder;
-import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jsoup.nodes.Document;
-import org.jsoup.select.Elements;
+import org.jsoup.nodes.Element;
 
 import java.util.Map;
 import java.util.function.Function;
@@ -961,7 +961,7 @@ public class PyStdlibDocumentationLinkProvider implements PythonDocumentationLin
     }
     Sdk sdk = PyBuiltinCache.findSdkForFile(file);
     VirtualFile vFile = file.getVirtualFile();
-    if (vFile != null && sdk != null && PythonSdkType.isStdLib(vFile, sdk)) {
+    if (vFile != null && sdk != null && PythonSdkUtil.isStdLib(vFile, sdk)) {
       QualifiedName qName = QualifiedNameFinder.findCanonicalImportPath(element, originalElement);
       return getStdlibUrlFor(element, qName, sdk);
     }
@@ -996,15 +996,18 @@ public class PyStdlibDocumentationLinkProvider implements PythonDocumentationLin
 
       final String elementId = (isBuiltins(moduleName) ? "" : moduleName + ".") + namedElement.getName();
       document.select("a.headerlink").remove();
-      final Elements parents = document.getElementsByAttributeValue("id", elementId).parents();
-      if (parents.isEmpty()) {
-        final Elements moduleElement = document.getElementsByAttributeValue("id", "module-" + moduleName);
-        if (moduleElement != null) {
-          return moduleElement.toString();
+      final Element definitionElement = document.getElementById(elementId);
+      if (definitionElement != null) {
+        final Element parent = definitionElement.parent();
+        if (parent != null) {
+          return parent.toString();
         }
-        return document.toString();
       }
-      return parents.get(0).toString();
+      final Element moduleElement = document.getElementById("module-" + moduleName);
+      if (moduleElement != null) {
+        return moduleElement.toString();
+      }
+      return document.toString();
     };
   }
 

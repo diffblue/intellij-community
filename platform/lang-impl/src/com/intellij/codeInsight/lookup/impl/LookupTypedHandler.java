@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.lookup.impl;
 
@@ -32,7 +32,7 @@ import com.intellij.psi.util.PsiUtilBase;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
+import static com.intellij.codeWithMe.ClientIdKt.isForeignClientOnServer;
 
 public class LookupTypedHandler extends TypedActionHandlerBase {
   private static final Logger LOG = Logger.getInstance(LookupTypedHandler.class);
@@ -46,7 +46,7 @@ public class LookupTypedHandler extends TypedActionHandlerBase {
     final Project project = CommonDataKeys.PROJECT.getData(dataContext);
     PsiFile file = project == null ? null : PsiUtilBase.getPsiFileInEditor(originalEditor, project);
 
-    if (file == null) {
+    if (file == null || isForeignClientOnServer()) {
       if (myOriginalHandler != null){
         myOriginalHandler.execute(originalEditor, charTyped, dataContext);
       }
@@ -115,9 +115,10 @@ public class LookupTypedHandler extends TypedActionHandlerBase {
         }
       }
 
-      AutoHardWrapHandler.getInstance().wrapLineIfNecessary(originalEditor,
-                                                            DataManager.getInstance().getDataContext(originalEditor.getContentComponent()),
-                                                            modificationStamp);
+      originalEditor.getCaretModel().runForEachCaret(caret -> {
+        DataContext context = DataManager.getInstance().getDataContext(originalEditor.getContentComponent());
+        AutoHardWrapHandler.getInstance().wrapLineIfNecessary(originalEditor, context, modificationStamp);
+      });
 
       final CompletionProgressIndicator completion = CompletionServiceImpl.getCurrentCompletionProgressIndicator();
       if (completion != null) {
@@ -181,7 +182,7 @@ public class LookupTypedHandler extends TypedActionHandlerBase {
     LookupElement item = lookup.getCurrentItem();
     int prefixLength = item == null ? lookup.getAdditionalPrefix().length(): lookup.itemPattern(item).length();
 
-    for (CharFilter extension : getFilters()) {
+    for (CharFilter extension : CharFilter.EP_NAME.getExtensionList()) {
       CharFilter.Result result = extension.acceptChar(charTyped, prefixLength, lookup);
       if (result != null) {
         if (LOG.isDebugEnabled()) {
@@ -194,9 +195,5 @@ public class LookupTypedHandler extends TypedActionHandlerBase {
       }
     }
     return null;
-  }
-
-  private static List<CharFilter> getFilters() {
-    return CharFilter.EP_NAME.getExtensionList();
   }
 }

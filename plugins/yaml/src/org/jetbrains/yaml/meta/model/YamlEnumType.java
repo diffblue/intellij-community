@@ -18,7 +18,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public class YamlEnumType extends YamlScalarType {
   private String[] myLiterals = ArrayUtilRt.EMPTY_STRING_ARRAY;
   private String[] myHiddenLiterals = ArrayUtilRt.EMPTY_STRING_ARRAY;
@@ -88,7 +88,7 @@ public class YamlEnumType extends YamlScalarType {
 
   @NotNull
   @Override
-  public List<LookupElement> getValueLookups(@NotNull YAMLScalar context) {
+  public List<LookupElement> getValueLookups(@NotNull YAMLScalar insertedScalar, @Nullable CompletionContext completionContext) {
     return Stream.concat(
       Arrays.stream(myLiterals).map((String literal) -> createValueLookup(literal, false)),
       Arrays.stream(myDeprecatedLiterals).map((String literal) -> createValueLookup(literal, true))
@@ -103,8 +103,7 @@ public class YamlEnumType extends YamlScalarType {
   }
 
 
-  @NotNull
-  private static String[] cloneArray(@NotNull String[] array) {
+  private static String @NotNull [] cloneArray(String @NotNull [] array) {
     return array.length == 0 ? ArrayUtilRt.EMPTY_STRING_ARRAY : array.clone();
   }
 }

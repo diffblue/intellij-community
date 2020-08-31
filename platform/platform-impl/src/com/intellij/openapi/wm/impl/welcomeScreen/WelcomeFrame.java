@@ -1,10 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.welcomeScreen;
 
 import com.intellij.ide.GeneralSettings;
+import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.idea.SplashManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.MnemonicHelper;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.ModalityState;
@@ -17,7 +19,6 @@ import com.intellij.openapi.util.DimensionService;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.wm.*;
-import com.intellij.openapi.wm.impl.IdeFrameImpl;
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl;
 import com.intellij.openapi.wm.impl.IdeMenuBar;
 import com.intellij.openapi.wm.impl.WindowManagerImpl;
@@ -36,7 +37,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.File;
 
 public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleContextAccessor {
   public static final ExtensionPointName<WelcomeFrameProvider> EP = ExtensionPointName.create("com.intellij.welcomeFrameProvider");
@@ -50,18 +50,20 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
     SplashManager.hideBeforeShow(this);
 
     JRootPane rootPane = getRootPane();
-    final WelcomeScreen screen = createScreen(rootPane);
+    WelcomeScreen screen = createScreen(rootPane);
 
-    final IdeGlassPaneImpl glassPane = new IdeGlassPaneImpl(rootPane);
+    IdeGlassPaneImpl glassPane = new IdeGlassPaneImpl(rootPane);
     setGlassPane(glassPane);
     glassPane.setVisible(false);
     setContentPane(screen.getWelcomePanel());
     setTitle(ApplicationNamesInfo.getInstance().getFullProductName());
     AppUIUtil.updateWindowIcon(this);
 
-    ApplicationManager.getApplication().getMessageBus().connect().subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
+    Disposable listenerDisposable = Disposer.newDisposable();
+    ApplicationManager.getApplication().getMessageBus().connect(listenerDisposable).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
       public void projectOpened(@NotNull Project project) {
+        Disposer.dispose(listenerDisposable);
         dispose();
       }
     });
@@ -100,20 +102,19 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
     DimensionService.getInstance().setLocation(DIMENSION_KEY, middle, null);
   }
 
-  static void setupCloseAction(final JFrame frame) {
+  static void setupCloseAction(@NotNull JFrame frame) {
     frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-    frame.addWindowListener(
-      new WindowAdapter() {
-        @Override
-        public void windowClosing(final WindowEvent e) {
-          if (ProjectManager.getInstance().getOpenProjects().length == 0) {
-            ApplicationManager.getApplication().exit();
-          }
-          else {
-            frame.dispose();
-          }
+    frame.addWindowListener(new WindowAdapter() {
+      @Override
+      public void windowClosing(WindowEvent e) {
+        if (ProjectUtil.getOpenProjects().length == 0) {
+          ApplicationManager.getApplication().exit();
         }
-      });
+        else {
+          frame.dispose();
+        }
+      }
+    });
   }
 
   private static WelcomeScreen createScreen(JRootPane rootPane) {
@@ -158,6 +159,9 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
       return null;
     }
 
+    // ActionManager is used on Welcome Frame, but should be initialized in a pooled thread and not in EDT.
+    ApplicationManager.getApplication().executeOnPooledThread(() -> ActionManager.getInstance());
+
     IdeFrame frame = createWelcomeFrame();
     return () -> {
       if (ourInstance != null) {
@@ -176,13 +180,8 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
 
   @NotNull
   private static IdeFrame createWelcomeFrame() {
-    for (WelcomeFrameProvider provider : EP.getIterable()) {
-      IdeFrame frame = provider.createFrame();
-      if (frame != null) {
-        return frame;
-      }
-    }
-    return new WelcomeFrame();
+    IdeFrame frame = EP.computeSafeIfAny(provider -> provider.createFrame());
+    return frame == null ? new WelcomeFrame() : frame;
   }
 
   public static void showIfNoProjectOpened() {
@@ -193,24 +192,26 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
     ApplicationManager.getApplication().invokeLater(() -> {
       WindowManagerImpl windowManager = (WindowManagerImpl)WindowManager.getInstance();
       windowManager.disposeRootFrame();
-      IdeFrameImpl[] frames = windowManager.getAllProjectFrames();
-      if (frames.length == 0) {
+      if (windowManager.getProjectFrameHelpers().isEmpty()) {
         showNow();
       }
     }, ModalityState.NON_MODAL);
   }
 
+  @Nullable
   @Override
   public StatusBar getStatusBar() {
     Container pane = getContentPane();
     return pane instanceof JComponent ? UIUtil.findComponentOfType((JComponent)pane, IdeStatusBarImpl.class) : null;
   }
 
+  @Nullable
   @Override
   public BalloonLayout getBalloonLayout() {
     return myBalloonLayout;
   }
 
+  @NotNull
   @Override
   public Rectangle suggestChildFrameBounds() {
     return getBounds();
@@ -225,16 +226,6 @@ public final class WelcomeFrame extends JFrame implements IdeFrame, AccessibleCo
   @Override
   public void setFrameTitle(String title) {
     setTitle(title);
-  }
-
-  @Override
-  public void setFileTitle(String fileTitle, File ioFile) {
-    setTitle(fileTitle);
-  }
-
-  @Override
-  public IdeRootPaneNorthExtension getNorthExtension(String key) {
-    return null;
   }
 
   @Override

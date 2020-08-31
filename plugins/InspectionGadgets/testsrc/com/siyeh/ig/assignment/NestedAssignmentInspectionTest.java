@@ -2,12 +2,11 @@
 package com.siyeh.ig.assignment;
 
 import com.intellij.codeInspection.InspectionProfileEntry;
-import com.intellij.testFramework.LightProjectDescriptor;
 import com.siyeh.ig.LightJavaInspectionTestCase;
-import org.jetbrains.annotations.NotNull;
 
 public class NestedAssignmentInspectionTest extends LightJavaInspectionTestCase {
 
+  @SuppressWarnings("MismatchedReadAndWriteOfArray")
   public void testLambda() {
     doTest("class Test {" +
            " {" +
@@ -33,9 +32,4 @@ public class NestedAssignmentInspectionTest extends LightJavaInspectionTestCase 
     return new NestedAssignmentInspection();
   }
 
-  @NotNull
-  @Override
-  protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_13;
-  }
 }

@@ -39,7 +39,7 @@ public class SyntheticCodeBlock implements Block, JavaBlock{
   private final JavaCodeStyleSettings myJavaSettings;
   private final Wrap myWrap;
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.formatter.newXmlFormatter.java.SyntheticCodeBlock");
+  private static final Logger LOG = Logger.getInstance(SyntheticCodeBlock.class);
 
   private final TextRange myTextRange;
 
@@ -179,7 +179,7 @@ public class SyntheticCodeBlock implements Block, JavaBlock{
   private static boolean isDotFirst(final Block block) {
     Block current = block;
     while (!current.getSubBlocks().isEmpty()) {
-      current = block.getSubBlocks().get(0);
+      current = current.getSubBlocks().get(0);
     }
     ASTNode node = current instanceof LeafBlock ? ((LeafBlock)current).getNode() : null;
     return node != null && node.getElementType() == JavaTokenType.DOT;

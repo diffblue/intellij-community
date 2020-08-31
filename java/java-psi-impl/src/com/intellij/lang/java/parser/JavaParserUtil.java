@@ -1,12 +1,14 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.java.parser;
 
-import com.intellij.codeInsight.daemon.JavaErrorMessages;
+import com.intellij.core.JavaPsiBundle;
 import com.intellij.lang.*;
 import com.intellij.lang.impl.PsiBuilderAdapter;
+import com.intellij.lang.impl.TokenSequence;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.lang.java.JavaParserDefinition;
 import com.intellij.lexer.Lexer;
+import com.intellij.lexer.TokenList;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Key;
@@ -15,12 +17,15 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.JavaTokenType;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.tree.ElementType;
 import com.intellij.psi.impl.source.tree.JavaDocElementType;
 import com.intellij.psi.impl.source.tree.JavaElementType;
 import com.intellij.psi.impl.source.tree.TreeUtil;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
+import com.intellij.psi.util.CachedValueProvider;
+import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.indexing.IndexingDataKeys;
 import org.jetbrains.annotations.NotNull;
@@ -30,8 +35,17 @@ import org.jetbrains.annotations.PropertyKey;
 import java.util.List;
 
 public class JavaParserUtil {
+  public static final TokenSet WS_COMMENTS = TokenSet.orSet(ElementType.JAVA_COMMENT_BIT_SET, TokenSet.WHITE_SPACE);
   private static final Key<LanguageLevel> LANG_LEVEL_KEY = Key.create("JavaParserUtil.LanguageLevel");
   private static final Key<Boolean> DEEP_PARSE_BLOCKS_IN_STATEMENTS = Key.create("JavaParserUtil.ParserExtender");
+
+  @NotNull
+  public static TokenList obtainTokens(@NotNull PsiFile file) {
+    return CachedValuesManager.getCachedValue(file, () ->
+      CachedValueProvider.Result.create(
+        TokenSequence.performLexing(file.getViewProvider().getContents(), JavaParserDefinition.createLexer(PsiUtil.getLanguageLevel(file))),
+        file));
+  }
 
   @FunctionalInterface
   public interface ParserWrapper {
@@ -135,21 +149,23 @@ public class JavaParserUtil {
     assert psi != null : chameleon;
     final Project project = psi.getProject();
 
+    CharSequence indexedText = psi.getUserData(IndexingDataKeys.FILE_TEXT_CONTENT_KEY);
+
     CharSequence text;
     if (TreeUtil.isCollapsedChameleon(chameleon)) {
       text = chameleon.getChars();
     }
     else {
-      text = psi.getUserData(IndexingDataKeys.FILE_TEXT_CONTENT_KEY);
+      text = indexedText;
       if (text == null) text = chameleon.getChars();
     }
 
-    final PsiBuilderFactory factory = PsiBuilderFactory.getInstance();
-    final LanguageLevel level = PsiUtil.getLanguageLevel(psi);
-    final Lexer lexer = JavaParserDefinition.createLexer(level);
+    LanguageLevel level = PsiUtil.getLanguageLevel(psi);
+    Lexer lexer = psi instanceof PsiFile && indexedText != null ? obtainTokens((PsiFile)psi).asLexer()
+                                                                : JavaParserDefinition.createLexer(level);
     Language language = psi.getLanguage();
     if (!language.isKindOf(JavaLanguage.INSTANCE)) language = JavaLanguage.INSTANCE;
-    final PsiBuilder builder = factory.createBuilder(project, chameleon, lexer, language, text);
+    PsiBuilder builder = PsiBuilderFactory.getInstance().createBuilder(project, chameleon, lexer, language, text);
     setLanguageLevel(builder, level);
 
     return builder;
@@ -193,7 +209,7 @@ public class JavaParserUtil {
       if (!eatAll) throw new AssertionError("Unexpected token: '" + builder.getTokenText() + "'");
       final PsiBuilder.Marker extras = builder.mark();
       while (!builder.eof()) builder.advanceLexer();
-      extras.error(JavaErrorMessages.message("unexpected.tokens"));
+      extras.error(JavaPsiBundle.message("unexpected.tokens"));
     }
     root.done(chameleon.getElementType());
 
@@ -226,17 +242,17 @@ public class JavaParserUtil {
     }
   }
 
-  public static boolean expectOrError(PsiBuilder builder, TokenSet expected, @PropertyKey(resourceBundle = JavaErrorMessages.BUNDLE) String key) {
+  public static boolean expectOrError(PsiBuilder builder, TokenSet expected, @PropertyKey(resourceBundle = JavaPsiBundle.BUNDLE) String key) {
     if (!PsiBuilderUtil.expect(builder, expected)) {
-      error(builder, JavaErrorMessages.message(key));
+      error(builder, JavaPsiBundle.message(key));
       return false;
     }
     return true;
   }
 
-  public static boolean expectOrError(PsiBuilder builder, IElementType expected, @PropertyKey(resourceBundle = JavaErrorMessages.BUNDLE) String key) {
+  public static boolean expectOrError(PsiBuilder builder, IElementType expected, @PropertyKey(resourceBundle = JavaPsiBundle.BUNDLE) String key) {
     if (!PsiBuilderUtil.expect(builder, expected)) {
-      error(builder, JavaErrorMessages.message(key));
+      error(builder, JavaPsiBundle.message(key));
       return false;
     }
     return true;

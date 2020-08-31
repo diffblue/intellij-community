@@ -17,13 +17,14 @@ import com.intellij.util.IncorrectOperationException;
 import com.jetbrains.python.PythonFileType;
 import com.jetbrains.python.codeInsight.imports.AddImportHelper;
 import com.jetbrains.python.psi.*;
-import com.jetbrains.python.testing.PythonUnitTestUtil;
+import com.jetbrains.python.refactoring.PyRefactoringUtil;
+import com.jetbrains.python.testing.PythonUnitTestDetectorsBasedOnSettings;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
 public class PyTestCreator implements TestCreator {
-  private static final Logger LOG = Logger.getInstance("#com.jetbrains.python.codeInsight.testIntegration.PyTestCreator");
+  private static final Logger LOG = Logger.getInstance(PyTestCreator.class);
 
   @Override
   public boolean isAvailable(Project project, Editor editor, PsiFile file) {
@@ -84,7 +85,7 @@ public class PyTestCreator implements TestCreator {
     if (!fileName.endsWith(".py")) {
       fileName = fileName + "." + PythonFileType.INSTANCE.getDefaultExtension();
     }
-    final PyFile psiFile = PyUtil.getOrCreateFile(model.getTargetDir() + "/" + fileName, project);
+    final PyFile psiFile = PyRefactoringUtil.getOrCreateFile(model.getTargetDir() + "/" + fileName, project);
 
     final String className = model.getClassName();
     final List<String> methods = model.getMethods();
@@ -95,7 +96,7 @@ public class PyTestCreator implements TestCreator {
 
     PyElement result = psiFile;
     if (classBased) {
-      final boolean unitTestClassRequired = PythonUnitTestUtil.isTestCaseClassRequired(anchor);
+      final boolean unitTestClassRequired = PythonUnitTestDetectorsBasedOnSettings.isTestCaseClassRequired(anchor);
       final StringBuilder fileText = new StringBuilder();
       fileText.append("class ").append(className);
       if (unitTestClassRequired) {

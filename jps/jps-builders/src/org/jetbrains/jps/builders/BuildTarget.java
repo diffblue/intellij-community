@@ -39,12 +39,11 @@ import java.util.List;
  * time in different threads.
  *
  * @see BuildTargetType
- * @author nik
  */
 public abstract class BuildTarget<R extends BuildRootDescriptor> {
-  private final BuildTargetType<?> myTargetType;
+  private final BuildTargetType<? extends BuildTarget<R>> myTargetType;
 
-  protected BuildTarget(BuildTargetType<?> targetType) {
+  protected BuildTarget(BuildTargetType<? extends BuildTarget<R>> targetType) {
     myTargetType = targetType;
   }
 
@@ -54,7 +53,7 @@ public abstract class BuildTarget<R extends BuildRootDescriptor> {
    */
   public abstract String getId();
 
-  public final BuildTargetType<?> getTargetType() {
+  public final BuildTargetType<? extends BuildTarget<R>> getTargetType() {
     return myTargetType;
   }
 
@@ -108,7 +107,7 @@ public abstract class BuildTarget<R extends BuildRootDescriptor> {
    * Returns the list of output directories in which this target is going to produce its output. (The specific
    * files produced need to be reported by {@link org.jetbrains.jps.incremental.TargetBuilder#build} through
    *
-   * {@link org.jetbrains.jps.builders.BuildOutputConsumer#registerOutputFile}.)
+   * {@link BuildOutputConsumer#registerOutputFile}.)
    * @param context the compilation context.
    * @return the collection of output roots.
    */

@@ -63,24 +63,24 @@ public class SemanticEditorPosition {
     return copyAnd(position -> position.moveBeforeOptional(syntaxElement));
   }
   
-  public void moveBeforeOptionalMix(@NotNull SyntaxElement... elements) {
+  public void moveBeforeOptionalMix(SyntaxElement @NotNull ... elements) {
     while (isAtAnyOf(elements)) {
       myIterator.retreat();
     }
   }
 
-  public SemanticEditorPosition beforeOptionalMix(@NotNull SyntaxElement... elements) {
+  public SemanticEditorPosition beforeOptionalMix(SyntaxElement @NotNull ... elements) {
     return copyAnd(position -> position.moveBeforeOptionalMix(elements));
   }
   
-  public void moveAfterOptionalMix(@NotNull SyntaxElement... elements)  {
+  public void moveAfterOptionalMix(SyntaxElement @NotNull ... elements)  {
     while (isAtAnyOf(elements)) {
       myIterator.advance();
     }
   }
 
 
-  public SemanticEditorPosition afterOptionalMix(@NotNull SyntaxElement... elements) {
+  public SemanticEditorPosition afterOptionalMix(SyntaxElement @NotNull ... elements) {
     return copyAnd(position -> position.moveAfterOptionalMix(elements));
   }
 
@@ -142,10 +142,23 @@ public class SemanticEditorPosition {
   }
   
   public void moveBeforeParentheses(@NotNull SyntaxElement leftParenthesis, @NotNull SyntaxElement rightParenthesis) {
+    skipParentheses(false, leftParenthesis, rightParenthesis);
+  }
+
+  public void moveAfterParentheses(@NotNull SyntaxElement leftParenthesis, @NotNull SyntaxElement rightParenthesis) {
+    skipParentheses(true, leftParenthesis, rightParenthesis);
+  }
+
+  protected void skipParentheses(boolean forward, @NotNull SyntaxElement leftParenthesis, @NotNull SyntaxElement rightParenthesis) {
     int parenLevel = 0;
     while (!myIterator.atEnd()) {
       SyntaxElement currElement = map(myIterator.getTokenType());
-      myIterator.retreat();
+      if (forward) {
+        myIterator.advance();
+      }
+      else {
+        myIterator.retreat();
+      }
       if (rightParenthesis.equals(currElement)) {
         parenLevel++;
       }
@@ -199,12 +212,12 @@ public class SemanticEditorPosition {
       leftParenthesis, rightParenthesis, terminationCondition));
   }
 
-  public boolean isAfterOnSameLine(@NotNull SyntaxElement... syntaxElements) {
+  public boolean isAfterOnSameLine(SyntaxElement @NotNull ... syntaxElements) {
     return elementAfterOnSameLine(syntaxElements) != null;
   }
 
   @Nullable
-  public SyntaxElement elementAfterOnSameLine(@NotNull SyntaxElement... syntaxElements) {
+  public SyntaxElement elementAfterOnSameLine(SyntaxElement @NotNull ... syntaxElements) {
     myIterator.retreat();
     while (!myIterator.atEnd() && !isAtMultiline()) {
       SyntaxElement currElement = map(myIterator.getTokenType());
@@ -232,7 +245,7 @@ public class SemanticEditorPosition {
     return myIterator.getStart();
   }
 
-  public boolean isAtAnyOf(@NotNull SyntaxElement... syntaxElements) {
+  public boolean isAtAnyOf(SyntaxElement @NotNull ... syntaxElements) {
     if (!myIterator.atEnd()) {
       SyntaxElement currElement = map(myIterator.getTokenType());
       for (SyntaxElement element : syntaxElements) {

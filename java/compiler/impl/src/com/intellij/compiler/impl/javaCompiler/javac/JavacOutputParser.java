@@ -17,12 +17,12 @@ package com.intellij.compiler.impl.javaCompiler.javac;
 
 import com.intellij.application.options.CodeStyle;
 import com.intellij.compiler.OutputParser;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
-import com.intellij.openapi.compiler.CompilerBundle;
 import com.intellij.openapi.compiler.CompilerMessageCategory;
+import com.intellij.openapi.compiler.JavaCompilerBundle;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -42,7 +42,7 @@ public class JavacOutputParser extends OutputParser {
   @NonNls private String WARNING_PREFIX = "warning:"; // default value
 
   public JavacOutputParser(Project project) {
-    myTabSize = CodeStyle.getSettings(project).getTabSize(StdFileTypes.JAVA);
+    myTabSize = CodeStyle.getSettings(project).getTabSize(JavaFileType.INSTANCE);
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       // emulate patterns setup if 'embedded' javac is used (javac is started not via JavacRunner)
       addJavacPattern(JavacResourcesReader.MSG_PARSING_STARTED + JavacResourcesReader.CATEGORY_VALUE_DIVIDER + "[parsing started {0}]");
@@ -155,7 +155,7 @@ public class JavacOutputParser extends OutputParser {
     }
 
     if(line.endsWith("java.lang.OutOfMemoryError")) {
-      addMessage(callback, CompilerMessageCategory.ERROR, CompilerBundle.message("error.javac.out.of.memory"));
+      addMessage(callback, CompilerMessageCategory.ERROR, JavaCompilerBundle.message("error.javac.out.of.memory"));
       return true;
     }
 
@@ -208,7 +208,7 @@ public class JavacOutputParser extends OutputParser {
       myParserActions.add(new JavacParserAction(createMatcher(resourceBundleValue)) {
         @Override
         protected void doExecute(final String line, String parsedData, final Callback callback) {
-          callback.setProgressText(CompilerBundle.message("progress.compiling.class", parsedData));
+          callback.setProgressText(JavaCompilerBundle.message("progress.compiling.class", parsedData));
         }
       });
     }
@@ -216,7 +216,7 @@ public class JavacOutputParser extends OutputParser {
       myParserActions.add(new JavacParserAction(createMatcher(resourceBundleValue)) {
         @Override
         protected void doExecute(final String line, @Nullable String parsedData, final Callback callback) {
-          callback.setProgressText(CompilerBundle.message("progress.loading.classes"));
+          callback.setProgressText(JavaCompilerBundle.message("progress.loading.classes"));
         }
       });
     }

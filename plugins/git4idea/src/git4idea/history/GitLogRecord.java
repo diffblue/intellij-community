@@ -19,7 +19,7 @@ import static git4idea.history.GitLogParser.GitLogOption.*;
  * The access methods try heavily to return some default value if real is unavailable, for example, blank string is better than null.
  * BUT if one tries to get an option which was not specified to the GitLogParser, one will get null.
  *
- * @see git4idea.history.GitLogParser
+ * @see GitLogParser
  */
 class GitLogRecord {
   private static final Logger LOG = Logger.getInstance(GitLogRecord.class);
@@ -42,7 +42,7 @@ class GitLogRecord {
       LOG.error("Missing value for option " + key + ", while executing " + myHandler);
       return "";
     }
-    return shortBuffer(value);
+    return value;
   }
 
   // trivial access methods
@@ -127,8 +127,7 @@ class GitLogRecord {
     return mySupportsRawBody ? getRawBody().trim() : ((getSubject() + "\n\n" + getBody()).trim());
   }
 
-  @NotNull
-  String[] getParentsHashes() {
+  String @NotNull [] getParentsHashes() {
     final String parents = lookup(PARENTS);
     if (parents.trim().length() == 0) return ArrayUtilRt.EMPTY_STRING_ARRAY;
     return parents.split(" ");
@@ -155,7 +154,7 @@ class GitLogRecord {
       return ContainerUtil.emptyList();
     }
     final int startParentheses = decoration.indexOf("(");
-    final int endParentheses = decoration.indexOf(")");
+    final int endParentheses = decoration.lastIndexOf(")");
     if ((startParentheses == -1) || (endParentheses == -1)) return Collections.emptyList();
     String refs = decoration.substring(startParentheses + 1, endParentheses);
     String[] names = refs.split(", ");
@@ -164,23 +163,19 @@ class GitLogRecord {
       final String POINTER = " -> ";   // HEAD -> refs/heads/master in Git 2.4.3+
       if (item.contains(POINTER)) {
         List<String> parts = StringUtil.split(item, POINTER);
-        result.addAll(ContainerUtil.map(parts, s -> shortBuffer(s.trim())));
+        result.addAll(ContainerUtil.map(parts, String::trim));
       }
       else {
         int colon = item.indexOf(':'); // tags have the "tag:" prefix.
-        result.add(shortBuffer(colon > 0 ? item.substring(colon + 1).trim() : item));
+        String raw = colon > 0 ? item.substring(colon + 1).trim() : item;
+        result.add(raw);
       }
     }
     return result;
   }
 
-  @NotNull
-  private static String shortBuffer(@NotNull String raw) {
-    return new String(raw);
-  }
-
   /**
-   * for debugging purposes - see {@link GitUtil#parseTimestampWithNFEReport(String, git4idea.commands.GitHandler, String)}.
+   * for debugging purposes - see {@link GitUtil#parseTimestampWithNFEReport(String, GitHandler, String)}.
    */
   public void setUsedHandler(GitHandler handler) {
     myHandler = handler;

@@ -1,20 +1,8 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.dom.references;
 
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
 import com.intellij.openapi.util.SystemInfo;
@@ -37,6 +25,7 @@ import org.jetbrains.idea.maven.dom.model.MavenDomProjectModel;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 
 /**
  * @author Sergey Evdokimov
@@ -62,8 +51,7 @@ public class MavenPathReferenceConverter extends PathReferenceConverter {
   public static PsiReference[] createReferences(final DomElement genericDomValue,
                                                 PsiElement element,
                                                 @NotNull final Condition<PsiFileSystemItem> fileFilter, boolean isAbsolutePath) {
-    ElementManipulator<PsiElement> manipulator = ElementManipulators.getManipulator(element);
-    TextRange range = manipulator.getRangeInElement(element);
+    TextRange range = ElementManipulators.getValueTextRange(element);
     String text = range.substring(element.getText());
 
     FileReferenceSet set = new FileReferenceSet(text, element, range.getStartOffset(), null, SystemInfo.isFileSystemCaseSensitive, false) {
@@ -108,6 +96,22 @@ public class MavenPathReferenceConverter extends PathReferenceConverter {
                   }
                 }
               }
+              else if (getIndex() == getAllReferences().length - 1 &&
+                       Objects.equals("relativePath", genericDomValue.getXmlElementName()) &&
+                       context.getVirtualFile() != null) {
+                // it is a last context and should be resolved to pom.xml
+
+                VirtualFile parentFile = context.getVirtualFile().findChild(text);
+                if (parentFile != null) {
+                  VirtualFile parentPom = parentFile.isDirectory() ? parentFile.findChild("pom.xml") : parentFile;
+                  if (parentPom != null) {
+                    PsiFile psiFile = context.getManager().findFile(parentPom);
+                    if (psiFile != null) {
+                      result.add(new PsiElementResolveResult(psiFile));
+                    }
+                  }
+                }
+              }
               else if ("..".equals(resolvedText)) {
                 PsiFileSystemItem resolved = context.getParent();
                 if (resolved != null) {
@@ -115,7 +119,7 @@ public class MavenPathReferenceConverter extends PathReferenceConverter {
                     resolved = resolved.getParent();  // calculated regarding parent directory, not the pom itself
                   }
                   if (resolved != null) {
-                    result.add(new PsiElementResolveResult(resolved));
+                  result.add(new PsiElementResolveResult(resolved));
                   }
                 }
               }
@@ -172,15 +176,13 @@ public class MavenPathReferenceConverter extends PathReferenceConverter {
     return set.getAllReferences();
   }
 
-  @NotNull
   @Override
-  public PsiReference[] createReferences(final GenericDomValue genericDomValue, PsiElement element, ConvertContext context) {
+  public PsiReference @NotNull [] createReferences(final GenericDomValue genericDomValue, PsiElement element, ConvertContext context) {
     return createReferences(genericDomValue, element, myCondition);
   }
 
-  @NotNull
   @Override
-  public PsiReference[] createReferences(@NotNull PsiElement psiElement, boolean soft) {
+  public PsiReference @NotNull [] createReferences(@NotNull PsiElement psiElement, boolean soft) {
     throw new UnsupportedOperationException();
   }
 }

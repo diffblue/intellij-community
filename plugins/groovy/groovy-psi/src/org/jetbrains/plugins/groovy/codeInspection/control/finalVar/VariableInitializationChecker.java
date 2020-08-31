@@ -1,7 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.codeInspection.control.finalVar;
 
 import com.intellij.openapi.util.Ref;
+import com.intellij.psi.util.CachedValueProvider.Result;
+import com.intellij.psi.util.CachedValuesManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.groovy.lang.psi.GroovyPsiElement;
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.GrVariable;
@@ -12,7 +14,6 @@ import org.jetbrains.plugins.groovy.lang.psi.controlFlow.impl.VariableDescriptor
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.DFAEngine;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.DfaInstance;
 import org.jetbrains.plugins.groovy.lang.psi.dataFlow.Semilattice;
-import org.jetbrains.plugins.groovy.util.LightCacheKey;
 
 import java.util.HashMap;
 import java.util.List;
@@ -21,10 +22,9 @@ import java.util.Map;
 /**
  * @author Max Medvedev
  */
-public class VariableInitializationChecker {
-  private static final LightCacheKey<Map<GroovyPsiElement, Boolean>> KEY = LightCacheKey.createByFileModificationCount();
+public final class VariableInitializationChecker {
 
-  private static boolean isVariableDefinitelyInitialized(@NotNull GrVariable var, @NotNull Instruction[] controlFlow) {
+  private static boolean isVariableDefinitelyInitialized(@NotNull GrVariable var, Instruction @NotNull [] controlFlow) {
     DFAEngine<Data> engine = new DFAEngine<>(controlFlow, new MyDfaInstance(VariableDescriptorFactory.createDescriptor(var)), new MySemilattice());
     final List<Data> result = engine.performDFAWithTimeout();
     if (result == null) return false;
@@ -34,12 +34,8 @@ public class VariableInitializationChecker {
 
   public static boolean isVariableDefinitelyInitializedCached(@NotNull GrVariable var,
                                                               @NotNull GroovyPsiElement context,
-                                                              @NotNull Instruction[] controlFlow) {
-    Map<GroovyPsiElement, Boolean> map = KEY.getCachedValue(var);
-    if (map == null) {
-      map = new HashMap<>();
-      KEY.putCachedValue(var, map);
-    }
+                                                              Instruction @NotNull [] controlFlow) {
+    Map<GroovyPsiElement, Boolean> map = CachedValuesManager.getCachedValue(var, () -> Result.create(new HashMap<>(), var));
 
     final Boolean cached = map.get(context);
     if (cached != null) return cached.booleanValue();

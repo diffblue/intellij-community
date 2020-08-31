@@ -21,6 +21,7 @@ import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ProcessingContext;
 import com.intellij.xml.util.HtmlUtil;
 import com.intellij.xml.util.XmlUtil;
+import com.intellij.xml.util.documentation.MimeTypeDictionary;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -84,9 +85,8 @@ public class HtmlCompletionContributor extends CompletionContributor implements 
     return xmlTag != null && xmlTag.getLanguage() == XHTMLLanguage.INSTANCE;
   }
 
-  @NotNull
   @NonNls
-  public static String[] addSpecificCompletions(final XmlAttribute attribute) {
+  public static String @NotNull [] addSpecificCompletions(final XmlAttribute attribute) {
     @NonNls String name = attribute.getName();
     final XmlTag tag = attribute.getParent();
     if (tag == null) return ArrayUtilRt.EMPTY_STRING_ARRAY;
@@ -128,10 +128,10 @@ public class HtmlCompletionContributor extends CompletionContributor implements 
         return HtmlUtil.RFC2616_HEADERS;
       }
       else if ("content".equals(name) && "meta".equals(tagName) && tag.getAttribute("name") == null) {
-        return HtmlUtil.CONTENT_TYPES;
+        return MimeTypeDictionary.HTML_CONTENT_TYPES;
       }
       else if ("accept".equals(name) && "input".equals(tagName)) {
-        return HtmlUtil.CONTENT_TYPES;
+        return MimeTypeDictionary.HTML_CONTENT_TYPES;
       }
       else if ("accept-charset".equals(name) || "charset".equals(name)) {
         Charset[] charSets = CharsetToolkit.getAvailableCharsets();

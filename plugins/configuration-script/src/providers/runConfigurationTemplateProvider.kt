@@ -12,9 +12,9 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.util.concurrency.SynchronizedClearableLazy
-import gnu.trove.THashMap
-import org.snakeyaml.engine.v1.nodes.MappingNode
-import org.snakeyaml.engine.v1.nodes.ScalarNode
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
+import org.snakeyaml.engine.v2.nodes.MappingNode
+import org.snakeyaml.engine.v2.nodes.ScalarNode
 
 private class FactoryEntry(state: Any) {
   var state: Any? = state
@@ -25,7 +25,7 @@ private class MyRunConfigurationTemplateProvider(private val project: Project) :
   private val map = SynchronizedClearableLazy<Map<ConfigurationFactory, FactoryEntry>> {
     val node = project.service<ConfigurationFileManager>().getConfigurationNode()
                ?: return@SynchronizedClearableLazy emptyMap()
-    val map = THashMap<ConfigurationFactory, FactoryEntry>()
+    val map = Object2ObjectOpenHashMap<ConfigurationFactory, FactoryEntry>()
     readRunConfigurations(node, isTemplatesOnly = true) { factory, state ->
       map.put(factory, FactoryEntry(state))
     }

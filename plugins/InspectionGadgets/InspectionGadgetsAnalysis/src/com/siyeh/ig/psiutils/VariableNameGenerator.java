@@ -11,10 +11,7 @@ import com.intellij.psi.codeStyle.VariableKind;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 
 /**
  * A convenience helper class to generate unique name for new variable. To use it, call several by* methods in chain, then call
@@ -47,6 +44,10 @@ public final class VariableNameGenerator {
     if (type != null) {
       SuggestedNameInfo info = myManager.suggestVariableName(myKind, null, null, type, true);
       candidates.addAll(Arrays.asList(info.names));
+      if (type.equals(PsiType.INT)) {
+        candidates.add("j");
+        candidates.add("k");
+      }
     }
     return this;
   }
@@ -108,5 +109,18 @@ public final class VariableNameGenerator {
       }
     }
     return suffixed;
+  }
+
+  @NotNull
+  public List<String> generateAll(boolean lookForward) {
+    List<String> suffixed = new ArrayList<>();
+    List<String> result = new ArrayList<>();
+    for (String candidate : candidates.isEmpty() ? Collections.singleton("v") : candidates) {
+      String name = myManager.suggestUniqueVariableName(candidate, myContext, lookForward);
+      if (name.equals(candidate)) result.add(name);
+      else suffixed.add(name);
+    }
+    result.addAll(suffixed);
+    return result;
   }
 }

@@ -1,45 +1,88 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.config;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil;
+import com.intellij.execution.wsl.WSLDistribution;
+import com.intellij.execution.wsl.WSLUtil;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.ThreeState;
+import git4idea.i18n.GitBundle;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static git4idea.config.GitExecutableManager.runUnderProgressIfNeeded;
+
 /**
  * Tries to detect the path to Git executable.
- *
- * @author Kirill Likhodedov
  */
 public class GitExecutableDetector {
 
   private static final Logger LOG = Logger.getInstance(GitExecutableDetector.class);
   private static final String[] UNIX_PATHS = {
     "/usr/local/bin",
-    "/usr/bin",
     "/opt/local/bin",
+    "/usr/bin",
     "/opt/bin",
     "/usr/local/git/bin"};
 
   private static final String GIT = "git";
   private static final String UNIX_EXECUTABLE = GIT;
 
-  private static final File WIN_ROOT = new File("C:"); // the constant is extracted to be able to create files in "Program Files" in tests
+  private static final File WIN_ROOT = new File("C:\\"); // the constant is extracted to be able to create files in "Program Files" in tests
   private static final String GIT_EXE = "git.exe";
 
   private static final String WIN_EXECUTABLE = GIT_EXE;
 
-  @NotNull
-  public String detect() {
+  @NotNull private final Object DETECTED_EXECUTABLE_LOCK = new Object();
+  @NotNull private final Map<WSLDistribution, String> myWslExecutables = new ConcurrentHashMap<>(); // concurrent to read without lock
+  @Nullable private volatile String myDetectedExecutable;
+  private boolean myDetectionComplete;
+
+  @Nullable
+  public String detect(@Nullable WSLDistribution distribution) {
+    return runUnderProgressIfNeeded(null, GitBundle.message("git.executable.detect.progress.title"), () -> {
+      synchronized (DETECTED_EXECUTABLE_LOCK) {
+        if (!myDetectionComplete) {
+          myDetectedExecutable = runDetect();
+          myDetectionComplete = true;
+        }
+        return getExecutable(distribution);
+      }
+    });
+  }
+
+  public void clear() {
+    synchronized (DETECTED_EXECUTABLE_LOCK) {
+      myWslExecutables.clear();
+      myDetectedExecutable = null;
+      myDetectionComplete = false;
+    }
+  }
+
+  @Nullable
+  public String getExecutable(@Nullable WSLDistribution projectWslDistribution) {
+    if (projectWslDistribution != null) {
+      String exec = myWslExecutables.get(projectWslDistribution);
+      if (exec != null) return exec;
+    }
+
+    return myDetectedExecutable;
+  }
+
+  @Nullable
+  private String runDetect() {
+    detectAvailableWsl();
+
     File gitExecutableFromPath = PathEnvironmentVariableUtil.findInPath(SystemInfo.isWindows ? GIT_EXE : GIT, getPath(), null);
     if (gitExecutableFromPath != null) return gitExecutableFromPath.getAbsolutePath();
 
@@ -47,6 +90,11 @@ public class GitExecutableDetector {
   }
 
   @NotNull
+  public static String getDefaultExecutable() {
+    return SystemInfo.isWindows ? WIN_EXECUTABLE : UNIX_EXECUTABLE;
+  }
+
+  @Nullable
   private static String detectForUnix() {
     for (String p : UNIX_PATHS) {
       File f = new File(p, UNIX_EXECUTABLE);
@@ -54,10 +102,10 @@ public class GitExecutableDetector {
         return f.getPath();
       }
     }
-    return UNIX_EXECUTABLE;
+    return null;
   }
 
-  @NotNull
+  @Nullable
   private String detectForWindows() {
     String exec = checkProgramFiles();
     if (exec != null) {
@@ -69,7 +117,12 @@ public class GitExecutableDetector {
       return exec;
     }
 
-    return WIN_EXECUTABLE;
+    exec = checkWsl();
+    if (exec != null) {
+      return exec;
+    }
+
+    return null;
   }
 
   @Nullable
@@ -88,7 +141,7 @@ public class GitExecutableDetector {
     }
 
     // greater is better => sorting in the descending order to match the best version first, when iterating
-    Collections.sort(distrs, Collections.reverseOrder(new VersionDirsComparator()));
+    distrs.sort(Collections.reverseOrder(new VersionDirsComparator()));
 
     for (File distr : distrs) {
       String exec = checkDistributive(distr);
@@ -106,6 +159,39 @@ public class GitExecutableDetector {
       File file = new File(getWinRoot(), otherPath);
       if (file.exists()) {
         return file.getPath();
+      }
+    }
+    return null;
+  }
+
+  @Nullable
+  private String checkWsl() {
+    if (myWslExecutables.size() == 1) {
+      return myWslExecutables.values().iterator().next();
+    }
+    return null;
+  }
+
+  private void detectAvailableWsl() {
+    if (!GitExecutableManager.supportWslExecutable()) return;
+
+    List<WSLDistribution> distributions = WSLUtil.getAvailableDistributions();
+    for (WSLDistribution distribution : distributions) {
+      String path = checkWslDistribution(distribution);
+      if (path != null) myWslExecutables.put(distribution, path);
+    }
+  }
+
+  @Nullable
+  private static String checkWslDistribution(@NotNull WSLDistribution distribution) {
+    if (WSLUtil.isWsl1(distribution) != ThreeState.NO) return null;
+
+    File root = distribution.getUNCRoot();
+    for (String p : UNIX_PATHS) {
+      File d = new File(root, p);
+      File f = new File(d, UNIX_EXECUTABLE);
+      if (f.exists()) {
+        return f.getPath();
       }
     }
     return null;

@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi;
 
 import com.intellij.injected.editor.DocumentWindow;
@@ -38,6 +24,7 @@ import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.openapi.vfs.NonPhysicalFileSystem;
 import com.intellij.openapi.vfs.VFileProperty;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.psi.impl.*;
 import com.intellij.psi.impl.file.PsiBinaryFileImpl;
 import com.intellij.psi.impl.file.PsiLargeBinaryFileImpl;
@@ -52,6 +39,8 @@ import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.LocalTimeCounter;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.JBIterable;
+import com.intellij.util.containers.JBTreeTraverser;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -62,28 +51,23 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 
 public abstract class AbstractFileViewProvider extends UserDataHolderBase implements FileViewProvider {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.AbstractFileViewProvider");
+  private static final Logger LOG = Logger.getInstance(AbstractFileViewProvider.class);
   public static final Key<Object> FREE_THREADED = Key.create("FREE_THREADED");
   private static final Key<Set<AbstractFileViewProvider>> KNOWN_COPIES = Key.create("KNOWN_COPIES");
-  @NotNull
-  private final PsiManagerEx myManager;
-  @NotNull
-  private final VirtualFile myVirtualFile;
+
+  private final @NotNull PsiManagerEx myManager;
+  private final @NotNull VirtualFile myVirtualFile;
   private final boolean myEventSystemEnabled;
   private final boolean myPhysical;
   private volatile Content myContent;
   private volatile Reference<Document> myDocument;
-  @NotNull
-  private final FileType myFileType;
   private final PsiLock myPsiLock = new PsiLock();
 
   protected AbstractFileViewProvider(@NotNull PsiManager manager,
                                      @NotNull VirtualFile virtualFile,
-                                     boolean eventSystemEnabled,
-                                     @NotNull FileType type) {
+                                     boolean eventSystemEnabled) {
     myManager = (PsiManagerEx)manager;
     myVirtualFile = virtualFile;
     myEventSystemEnabled = eventSystemEnabled;
@@ -92,20 +76,19 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
                  !(virtualFile instanceof LightVirtualFile) &&
                  !(virtualFile.getFileSystem() instanceof NonPhysicalFileSystem);
     virtualFile.putUserData(FREE_THREADED, isFreeThreaded(this));
-    myFileType = type;
-    if (virtualFile instanceof VirtualFileWindow && !(this instanceof FreeThreadedFileViewProvider)) {
+    if (virtualFile instanceof VirtualFileWindow && !(this instanceof FreeThreadedFileViewProvider) && !isFreeThreaded(this)) {
       throw new IllegalArgumentException("Must not create "+getClass()+" for injected file "+virtualFile+"; InjectedFileViewProvider must be used instead");
     }
   }
 
-  final boolean shouldCreatePsi() {
+  protected boolean shouldCreatePsi() {
     if (isIgnored()) return false;
 
     VirtualFile vFile = getVirtualFile();
     if (isPhysical() && vFile.isInLocalFileSystem()) { // check directories consistency
       VirtualFile parent = vFile.getParent();
       if (parent == null) return false;
-      
+
       PsiDirectory psiDir = getManager().findDirectory(parent);
       if (psiDir == null) {
         FileIndexFacade indexFacade = FileIndexFacade.getInstance(getManager().getProject());
@@ -220,7 +203,7 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
   @Override
   public FileViewProvider clone() {
     VirtualFile origFile = getVirtualFile();
-    LightVirtualFile copy = new LightVirtualFile(origFile.getName(), myFileType, getContents(), origFile.getCharset(), getModificationStamp());
+    LightVirtualFile copy = new LightVirtualFile(origFile.getName(), origFile.getFileType(), getContents(), origFile.getCharset(), getModificationStamp());
     origFile.copyCopyableDataTo(copy);
     copy.setOriginalFile(origFile);
     copy.putUserData(UndoConstants.DONT_RECORD_UNDO, Boolean.TRUE);
@@ -403,7 +386,9 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
   @NonNls
   @Override
   public String toString() {
-    return getClass().getName() + "{myVirtualFile=" + myVirtualFile + ", content=" + getContent() + '}';
+    return getClass().getName() + "{vFile=" + myVirtualFile
+           + (myVirtualFile instanceof VirtualFileWithId ? ", vFileId=" + ((VirtualFileWithId)myVirtualFile).getId() : "")
+           + ", content=" + getContent() + ", eventSystemEnabled=" + isEventSystemEnabled() + '}';
   }
 
   public abstract PsiFile getCachedPsi(@NotNull Language target);
@@ -416,12 +401,16 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
 
   public final void markInvalidated() {
     invalidateCachedPsi();
-    forKnownCopies(copy -> myManager.getFileManager().setViewProvider(copy.getVirtualFile(), null));
+    for (AbstractFileViewProvider copy : getKnownCopies()) {
+      myManager.getFileManager().setViewProvider(copy.getVirtualFile(), null);
+    }
   }
 
   public final void markPossiblyInvalidated() {
     invalidateCachedPsi();
-    forKnownCopies(FileManagerImpl::markPossiblyInvalidated);
+    for (AbstractFileViewProvider copy : getKnownCopies()) {
+      FileManagerImpl.markPossiblyInvalidated(copy);
+    }
   }
 
   private void invalidateCachedPsi() {
@@ -432,15 +421,12 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
     }
   }
 
-  private void forKnownCopies(Consumer<? super AbstractFileViewProvider> action) {
-    Set<AbstractFileViewProvider> knownCopies = getUserData(KNOWN_COPIES);
-    if (knownCopies != null) {
-      for (AbstractFileViewProvider copy : knownCopies) {
-        if (copy.getCachedPsiFiles().stream().anyMatch(f -> f.getOriginalFile().getViewProvider() == this)) {
-          action.accept(copy);
-        }
-      }
+  private Iterable<AbstractFileViewProvider> getKnownCopies() {
+    Set<AbstractFileViewProvider> copies = getUserData(KNOWN_COPIES);
+    if (copies != null) {
+      return JBIterable.from(copies).filter(copy -> copy.getCachedPsiFiles().stream().anyMatch(f -> f.getOriginalFile().getViewProvider() == this));
     }
+    return Collections.emptySet();
   }
 
   public final void registerAsCopy(@NotNull AbstractFileViewProvider copy) {
@@ -452,7 +438,10 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
       copies = putUserDataIfAbsent(KNOWN_COPIES, Collections.newSetFromMap(ContainerUtil.createConcurrentWeakMap()));
     }
     if (copy.getUserData(KNOWN_COPIES) != null) {
-      LOG.error("A view provider copy must be registered before it may have its own copies, to avoid cycles");
+      List<AbstractFileViewProvider> derivations = JBTreeTraverser.from(AbstractFileViewProvider::getKnownCopies).withRoot(copy).toList();
+      if (derivations.contains(this)) {
+        throw new IllegalStateException("An attempted cycle in view provider copy graph involving " + this + " and " + copy);
+      }
     }
     copies.add(copy);
   }
@@ -549,6 +538,6 @@ public abstract class AbstractFileViewProvider extends UserDataHolderBase implem
   @NotNull
   @Override
   public final FileType getFileType() {
-    return myFileType;
+    return myVirtualFile.getFileType();
   }
 }

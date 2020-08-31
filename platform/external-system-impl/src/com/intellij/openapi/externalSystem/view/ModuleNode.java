@@ -40,6 +40,10 @@ public class ModuleNode extends ExternalSystemNode<ModuleData> {
     myAllModules = allModules;
   }
 
+  public boolean isRoot() {
+    return myIsRoot;
+  }
+
   @Override
   protected void update(@NotNull PresentationData presentation) {
     super.update(presentation);
@@ -56,7 +60,7 @@ public class ModuleNode extends ExternalSystemNode<ModuleData> {
 
   @NotNull
   @Override
-  protected List<? extends ExternalSystemNode> doBuildChildren() {
+  protected List<ExternalSystemNode<?>> doBuildChildren() {
     List<ExternalSystemNode<?>> myChildNodes = new ArrayList<>();
     if (getExternalProjectsView().getGroupModules()) {
       List<ModuleNode> childModules = ContainerUtil.findAll(
@@ -66,7 +70,7 @@ public class ModuleNode extends ExternalSystemNode<ModuleData> {
       myChildNodes.addAll(childModules);
     }
     //noinspection unchecked
-    myChildNodes.addAll((Collection<? extends ExternalSystemNode<?>>)super.doBuildChildren());
+    myChildNodes.addAll(super.doBuildChildren());
     myChildNodes.add(myRunConfigurationsNode);
     return myChildNodes;
   }
@@ -95,21 +99,6 @@ public class ModuleNode extends ExternalSystemNode<ModuleData> {
       return myData.getExternalName();
     }
     return super.getName();
-  }
-
-  @Override
-  public boolean isVisible() {
-    if (!myIsRoot && getExternalProjectsView().getGroupModules()) {
-      ModuleNode parentModule = findParent(ModuleNode.class);
-      if (parentModule != null) {
-        return StringUtil.equals(parentModule.getIdeGrouping(), getIdeParentGrouping());
-      }
-      ProjectNode parentProject = findParent(ProjectNode.class);
-      if (parentProject != null) {
-        return StringUtil.equals(parentProject.getName(), getIdeParentGrouping());
-      }
-    }
-    return super.isVisible();
   }
 
   @Nullable

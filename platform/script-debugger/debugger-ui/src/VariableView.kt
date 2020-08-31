@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.debugger
 
 import com.intellij.icons.AllIcons
@@ -70,6 +70,7 @@ class VariableView(override val variableName: String, private val variable: Vari
               }
               else {
                 value = it.value
+                variable.value = it.value
                 computePresentation(it.value, node)
               }
             }
@@ -112,6 +113,11 @@ class VariableView(override val variableName: String, private val variable: Vari
   }
 
   private fun computePresentation(value: Value, node: XValueNode) {
+    if (variable is ObjectProperty && variable.name == PROTOTYPE_PROP) {
+      setObjectPresentation(value as ObjectValue, icon, node)
+      return
+    }
+
     when (value.type) {
       ValueType.OBJECT, ValueType.NODE -> context.viewSupport.computeObjectPresentation((value as ObjectValue), variable, context, node, icon)
 
@@ -421,6 +427,10 @@ class VariableView(override val variableName: String, private val variable: Vari
         return
       }
 
+      if (value is PresentationProvider && value.computePresentation(node, icon)) {
+        return
+      }
+
       val valueString = value.valueString
       // only WIP reports normal description
       if (valueString != null && (valueString.endsWith(")") || valueString.endsWith(']')) &&
@@ -485,7 +495,7 @@ private val ARRAY_DESCRIPTION_PATTERN = Pattern.compile("^[a-zA-Z\\d]+[\\[(]\\d+
 
 private class ArrayPresentation(length: Int, className: String?) : XValuePresentation() {
   private val length = Integer.toString(length)
-  private val className = if (className.isNullOrEmpty()) "Array" else className!!
+  private val className = if (className.isNullOrEmpty()) "Array" else className
 
   override fun renderValue(renderer: XValuePresentation.XValueTextRenderer) {
     renderer.renderSpecialSymbol(className)
@@ -495,4 +505,4 @@ private class ArrayPresentation(length: Int, className: String?) : XValuePresent
   }
 }
 
-private const val PROTOTYPE_PROP = "__proto__"
+const val PROTOTYPE_PROP = "__proto__"

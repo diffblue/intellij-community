@@ -1,13 +1,15 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.service.project;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.ExternalSystemAutoImportAware;
 import com.intellij.openapi.externalSystem.ExternalSystemManager;
+import com.intellij.openapi.externalSystem.importing.ProjectResolverPolicy;
 import com.intellij.openapi.externalSystem.settings.AbstractExternalSystemSettings;
 import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.module.ModuleManager;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.CompilerModuleExtension;
 import com.intellij.openapi.roots.CompilerProjectExtension;
@@ -126,14 +128,17 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
                                   FileUtil.pathsEqual(projectSettings.getExternalProjectPath(), projectPath)
                                   ? projectSettings.getModules() : ContainerUtil.set(projectPath);
     for (String path : subProjectPaths) {
+      ProgressManager.checkCanceled();
+
       try {
         Files.walkFileTree(Paths.get(path), EnumSet.noneOf(FileVisitOption.class), 1, new SimpleFileVisitor<Path>() {
           @Override
-          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-            String fileName = file.getFileName().toString();
+          public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
+            String fileName = path.getFileName().toString();
             if (fileName.endsWith('.' + GradleConstants.EXTENSION) ||
                 fileName.endsWith('.' + GradleConstants.KOTLIN_DSL_SCRIPT_EXTENSION)) {
-              files.add(file.toFile());
+              File file = path.toFile();
+              if (file.isFile()) files.add(file);
             }
             return FileVisitResult.CONTINUE;
           }
@@ -145,5 +150,10 @@ public class GradleAutoImportAware implements ExternalSystemAutoImportAware {
     }
 
     return files;
+  }
+
+  @Override
+  public boolean isApplicable(@Nullable ProjectResolverPolicy resolverPolicy) {
+    return resolverPolicy == null || !resolverPolicy.isPartialDataResolveAllowed();
   }
 }

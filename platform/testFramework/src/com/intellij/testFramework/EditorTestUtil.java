@@ -1,6 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
+import com.intellij.codeInsight.daemon.impl.HighlightInfo;
+import com.intellij.codeInsight.daemon.impl.IdentifierHighlighterPassFactory;
 import com.intellij.ide.DataManager;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.openapi.actionSystem.*;
@@ -13,6 +15,7 @@ import com.intellij.openapi.command.undo.UndoManager;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.actionSystem.EditorActionManager;
 import com.intellij.openapi.editor.actionSystem.TypedAction;
+import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
@@ -28,11 +31,13 @@ import com.intellij.openapi.fileEditor.impl.CurrentEditorProvider;
 import com.intellij.openapi.fileEditor.impl.text.AsyncEditorLoader;
 import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.testFramework.fixtures.CodeInsightTestFixture;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -43,13 +48,15 @@ import java.awt.*;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.locks.LockSupport;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 
 /**
  * @author Maxim.Mossienko
  */
-public class EditorTestUtil {
+public final class EditorTestUtil {
   public static final String CARET_TAG = "<caret>";
   public static final String CARET_TAG_PREFIX = CARET_TAG.substring(0, CARET_TAG.length() - 1);
 
@@ -61,14 +68,20 @@ public class EditorTestUtil {
   public static final char BACKSPACE_FAKE_CHAR = '\uFFFF';
   public static final char SMART_ENTER_FAKE_CHAR = '\uFFFE';
   public static final char SMART_LINE_SPLIT_CHAR = '\uFFFD';
+  private static final Comparator<Pair<Integer, String>> MARKERS_COMPARATOR = (o1, o2) -> {
+    int first = Comparing.compare(o1.first, o2.first);
+    return first != 0 ? first : Comparing.compare(o1.second, o2.second);
+  };
 
   public static void performTypingAction(Editor editor, char c) {
     EditorActionManager actionManager = EditorActionManager.getInstance();
     if (c == BACKSPACE_FAKE_CHAR) {
       executeAction(editor, IdeActions.ACTION_EDITOR_BACKSPACE);
-    } else if (c == SMART_ENTER_FAKE_CHAR) {
+    }
+    else if (c == SMART_ENTER_FAKE_CHAR) {
       executeAction(editor, IdeActions.ACTION_EDITOR_COMPLETE_STATEMENT);
-    } else if (c == SMART_LINE_SPLIT_CHAR) {
+    }
+    else if (c == SMART_LINE_SPLIT_CHAR) {
       executeAction(editor, IdeActions.ACTION_EDITOR_SPLIT);
     }
     else if (c == '\n') {
@@ -181,13 +194,21 @@ public class EditorTestUtil {
     return configureSoftWraps(editor, (charCountToWrapAt + 1) * charWidthInPixels + 1, charWidthInPixels);
   }
 
-  /**
-   * Configures given editor to wrap at given width, assuming characters are of given width
-   *
-   * @return whether any actual wraps of editor contents were created as a result of turning on soft wraps
-   */
+  @TestOnly
+  public static boolean configureSoftWrapsAndViewport(Editor editor, int charCountToWrapAt, int visibleLineCount) {
+    int charWidthInPixels = 10;
+    // we're adding 1 to charCountToWrapAt, to account for wrap character width, and 1 to overall width to overcome wrapping logic subtleties
+    return configureSoftWraps(editor, (charCountToWrapAt + 1) * charWidthInPixels + 1, visibleLineCount * editor.getLineHeight(),
+                              charWidthInPixels);
+  }
+
   @TestOnly
   public static boolean configureSoftWraps(Editor editor, final int visibleWidth, final int charWidthInPixels) {
+    return configureSoftWraps(editor, visibleWidth, 1000, charWidthInPixels);
+  }
+
+  @TestOnly
+  public static boolean configureSoftWraps(Editor editor, int visibleWidthInPixels, int visibleHeightInPixels, int charWidthInPixels) {
     editor.getSettings().setUseSoftWraps(true);
     SoftWrapModelImpl model = (SoftWrapModelImpl)editor.getSoftWrapModel();
     model.setSoftWrapPainter(new SoftWrapPainter() {
@@ -217,14 +238,14 @@ public class EditorTestUtil {
     model.reinitSettings();
 
     SoftWrapApplianceManager applianceManager = model.getApplianceManager();
-    applianceManager.setWidthProvider(() -> visibleWidth);
+    applianceManager.setWidthProvider(new TestWidthProvider(visibleWidthInPixels));
     model.setEditorTextRepresentationHelper(new DefaultEditorTextRepresentationHelper(editor) {
       @Override
       public int charWidth(int c, int fontType) {
         return charWidthInPixels;
       }
     });
-    setEditorVisibleSizeInPixels(editor, visibleWidth, 1000);
+    setEditorVisibleSizeInPixels(editor, visibleWidthInPixels, visibleHeightInPixels);
     applianceManager.registerSoftWrapIfNecessary();
     return !model.getRegisteredSoftWraps().isEmpty();
   }
@@ -439,29 +460,21 @@ public class EditorTestUtil {
   }
 
   public static Inlay addInlay(@NotNull Editor editor, int offset, boolean relatesToPrecedingText, int widthInPixels) {
-    return editor.getInlayModel().addInlineElement(offset, relatesToPrecedingText, new EditorCustomElementRenderer() {
-      @Override
-      public int calcWidthInPixels(@NotNull Inlay inlay) { return widthInPixels; }
-
-      @Override
-      public void paint(@NotNull Inlay inlay,
-                        @NotNull Graphics g,
-                        @NotNull Rectangle targetRegion,
-                        @NotNull TextAttributes textAttributes) {}
-    });
+    return editor.getInlayModel().addInlineElement(offset, relatesToPrecedingText, new EmptyInlayRenderer(widthInPixels));
   }
 
-  public static Inlay addBlockInlay(@NotNull Editor editor, int offset, boolean showAbove) {
-    return editor.getInlayModel().addBlockElement(offset, false, showAbove, 0, new EditorCustomElementRenderer() {
-      @Override
-      public int calcWidthInPixels(@NotNull Inlay inlay) { return 0;}
+  public static Inlay addBlockInlay(@NotNull Editor editor,
+                                    int offset,
+                                    boolean relatesToPrecedingText,
+                                    boolean showAbove,
+                                    int widthInPixels,
+                                    Integer heightInPixels) {
+    return editor.getInlayModel().addBlockElement(offset, relatesToPrecedingText, showAbove, 0,
+                                                  new EmptyInlayRenderer(widthInPixels, heightInPixels));
+  }
 
-      @Override
-      public void paint(@NotNull Inlay inlay,
-                        @NotNull Graphics g,
-                        @NotNull Rectangle targetRegion,
-                        @NotNull TextAttributes textAttributes) {}
-    });
+  public static Inlay addAfterLineEndInlay(@NotNull Editor editor, int offset, int widthInPixels) {
+    return editor.getInlayModel().addAfterLineEndElement(offset, false, new EmptyInlayRenderer(widthInPixels));
   }
 
   public static void waitForLoading(Editor editor) {
@@ -534,6 +547,74 @@ public class EditorTestUtil {
     return result;
   }
 
+  /**
+   * Loads file from the {@code sourcePath}, runs highlighting, collects highlights optionally filtered with {@code textAttributesKeysNames},
+   * serializes them and compares result with file from {@code answersFilePath}. If answers file is missing, it's going to be created and
+   * test will fail.
+   *
+   * @param acceptableKeyNames highlights filter by {@link TextAttributesKey#myExternalName key names} or null if all highlights should be collected
+   * @apiNote If source file has carets in it, runs checking once per each caret. Results MUST be the same. E.g: brace matching highlighting with
+   * cursor positioned on open and close brace.
+   */
+  public static void checkEditorHighlighting(@NotNull CodeInsightTestFixture fixture,
+                                             @NotNull String answersFilePath,
+                                             @Nullable Set<String> acceptableKeyNames) {
+    Editor editor = fixture.getEditor();
+    CaretModel caretModel = editor.getCaretModel();
+    List<Integer> caretsOffsets = ContainerUtil.map(caretModel.getAllCarets(), Caret::getOffset);
+    if (caretsOffsets.isEmpty()) {
+      caretsOffsets.add(-1);
+    }
+    caretModel.removeSecondaryCarets();
+    CharSequence documentSequence = editor.getDocument().getCharsSequence();
+
+
+    for (Integer caretsOffset : caretsOffsets) {
+      if (caretsOffset != -1) {
+        caretModel.moveToOffset(caretsOffset);
+      }
+
+      IdentifierHighlighterPassFactory.doWithHighlightingEnabled(() -> UsefulTestCase.assertSameLinesWithFile(
+        answersFilePath,
+        renderTextWithHighlihgtingInfos(fixture.doHighlighting(), documentSequence, acceptableKeyNames),
+        () -> "Failed at:\n " +
+              documentSequence.subSequence(0, caretsOffset) +
+              "<caret>" +
+              documentSequence.subSequence(caretsOffset, documentSequence.length()) +
+              "\n"));
+    }
+  }
+
+  private static @NotNull String renderTextWithHighlihgtingInfos(@NotNull List<HighlightInfo> highlightInfos,
+                                                                 @NotNull CharSequence documentSequence,
+                                                                 @Nullable Set<String> acceptableKeyNames) {
+    List<Pair<Integer, String>> sortedMarkers = highlightInfos.stream()
+      .flatMap(it -> {
+        String keyText = it.type.getAttributesKey().toString();
+        if (acceptableKeyNames != null && !acceptableKeyNames.contains(keyText)) {
+          return Stream.empty();
+        }
+        return Stream.of(
+          Pair.create(it.getStartOffset(), "<" + keyText + ">"),
+          Pair.create(it.getEndOffset(), "</" + keyText + ">")
+        );
+      })
+      .sorted(MARKERS_COMPARATOR).collect(Collectors.toList());
+
+    StringBuilder sb = new StringBuilder();
+    int lastEnd = 0;
+
+    for (Pair<Integer, String> marker : sortedMarkers) {
+      Integer startOffset = marker.first;
+      if (startOffset > lastEnd) {
+        sb.append(documentSequence.subSequence(lastEnd, startOffset));
+        lastEnd = startOffset;
+      }
+      sb.append(marker.second);
+    }
+    return sb.append(documentSequence.subSequence(lastEnd, documentSequence.length())).toString();
+  }
+
 
   public static class CaretAndSelectionState {
     public final List<CaretInfo> carets;
@@ -572,6 +653,51 @@ public class EditorTestUtil {
 
     public int getCaretOffset(Document document) {
       return position == null ? -1 : document.getLineStartOffset(position.line) + position.column;
+    }
+  }
+
+  private static class EmptyInlayRenderer implements EditorCustomElementRenderer {
+    private final int width;
+    private final Integer height;
+
+    private EmptyInlayRenderer(int width) {
+      this(width, null);
+    }
+
+    private EmptyInlayRenderer(int width, Integer height) {
+      this.width = width;
+      this.height = height;
+    }
+
+    @Override
+    public int calcWidthInPixels(@NotNull Inlay inlay) { return width;}
+
+    @Override
+    public int calcHeightInPixels(@NotNull Inlay inlay) {
+      return height == null ? EditorCustomElementRenderer.super.calcHeightInPixels(inlay) : height;
+    }
+
+    @Override
+    public void paint(@NotNull Inlay inlay,
+                      @NotNull Graphics g,
+                      @NotNull Rectangle targetRegion,
+                      @NotNull TextAttributes textAttributes) {}
+  }
+
+  public static class TestWidthProvider implements SoftWrapApplianceManager.VisibleAreaWidthProvider {
+    private int myWidth;
+
+    public TestWidthProvider(int width) {
+      setVisibleAreaWidth(width);
+    }
+
+    @Override
+    public int getVisibleAreaWidth() {
+      return myWidth;
+    }
+
+    public void setVisibleAreaWidth(int width) {
+      myWidth = width;
     }
   }
 }

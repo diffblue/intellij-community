@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.containers;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.UnfairTextRange;
@@ -10,15 +11,15 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
 import junit.framework.TestCase;
 import one.util.streamex.IntStreamEx;
+import org.junit.Assert;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static org.junit.Assert.assertArrayEquals;
-
 public class ContainerUtilTest extends TestCase {
+  private static final Logger LOG = Logger.getInstance(ContainerUtilTest.class);
   public void testFindInstanceOf() {
-    Iterator<Object> iterator = Arrays.<Object>asList(1, new ArrayList(), "1").iterator();
+    Iterator<Object> iterator = Arrays.<Object>asList(1, new ArrayList<>(), "1").iterator();
     String string = ContainerUtil.findInstance(iterator, String.class);
     assertEquals("1", string);
   }
@@ -115,7 +116,7 @@ public class ContainerUtilTest extends TestCase {
       log.append(s);
     }
 
-    assertEquals("abc" + "cba", log.toString());
+    assertEquals("abccba", log.toString());
   }
 
   public void testLockFreeSingleThreadPerformance() {
@@ -129,7 +130,7 @@ public class ContainerUtilTest extends TestCase {
       long stockElapsed = measure(stock);
       long myElapsed = measure(my);
 
-      System.out.println("LockFree my: " + myElapsed + "; stock: " + stockElapsed);
+      LOG.debug("LockFree my: " + myElapsed + "; stock: " + stockElapsed);
       assertTrue("lockFree: " + myElapsed + "; stock: " + stockElapsed, (myElapsed - stockElapsed + 0.0) / myElapsed < 0.1);
     }
   }
@@ -177,7 +178,7 @@ public class ContainerUtilTest extends TestCase {
           list.add(ints.get(i));
         }
       }
-    }).attempts(10).assertTiming();
+    }).reattemptUntilJitSettlesDown().assertTiming();
     for (int i = 0; i < list.size(); i++) {
       assertEquals(i, list.get(i));
     }
@@ -190,7 +191,7 @@ public class ContainerUtilTest extends TestCase {
     assertSame(ArrayUtilRt.EMPTY_OBJECT_ARRAY, objects);
 
     Iterator<Object> iterator = my.iterator();
-    assertSame(EmptyIterator.getInstance(), iterator);
+    assertSame(Collections.emptyIterator(), iterator);
   }
 
   public void testIdenticalItemsInLockFreeCOW() {
@@ -316,9 +317,9 @@ public class ContainerUtilTest extends TestCase {
     int[] a1 = {0, 4};
     int[] a2 = {4};
     int[] m = ArrayUtil.mergeSortedArrays(a1, a2, true);
-    assertArrayEquals(new int[]{0, 4}, m);
+    Assert.assertArrayEquals(new int[]{0, 4}, m);
     m = ArrayUtil.mergeSortedArrays(a2, a1, true);
-    assertArrayEquals(new int[]{0, 4}, m);
+    Assert.assertArrayEquals(new int[]{0, 4}, m);
   }
 
   public void testImmutableListSubList() {

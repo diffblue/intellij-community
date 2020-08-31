@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
 import com.intellij.codeInsight.CodeInsightUtil;
@@ -25,14 +11,12 @@ import com.intellij.psi.*;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.Processor;
-import com.intellij.util.containers.LinkedMultiMap;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
 abstract class StaticMembersProcessor<T extends PsiMember & PsiDocCommentOwner> implements Processor<T> {
-
   public enum SearchMode {
     MAX_2_MEMBERS(2),
     MAX_100_MEMBERS(100);
@@ -43,7 +27,7 @@ abstract class StaticMembersProcessor<T extends PsiMember & PsiDocCommentOwner> 
     }
   }
 
-  private final MultiMap<PsiClass, T> mySuggestions = new LinkedMultiMap<>();
+  private final MultiMap<PsiClass, T> mySuggestions = MultiMap.createLinked();
 
   private final Map<String, Boolean> myPossibleClasses = new HashMap<>();
 
@@ -73,7 +57,7 @@ abstract class StaticMembersProcessor<T extends PsiMember & PsiDocCommentOwner> 
     }
 
     List<T> result = !applicableOnly && applicableList.isEmpty() ? list : applicableList;
-    Collections.sort(result, CodeInsightUtil.createSortIdenticalNamedMembersComparator(myPlace));
+    result.sort(CodeInsightUtil.createSortIdenticalNamedMembersComparator(myPlace));
     return result;
   }
 

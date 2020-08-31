@@ -1,33 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.diagnostic.CompositeLogger
@@ -43,6 +14,7 @@ import org.apache.tools.ant.BuildException
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.NotNull
 import org.jetbrains.annotations.Nullable
+import org.jetbrains.groovy.compiler.rt.GroovyRtConstants
 import org.jetbrains.intellij.build.BuildMessages
 import org.jetbrains.intellij.build.CompilationContext
 import org.jetbrains.jps.api.CmdlineRemoteProto
@@ -55,6 +27,7 @@ import org.jetbrains.jps.incremental.MessageHandler
 import org.jetbrains.jps.incremental.artifacts.ArtifactBuildTargetType
 import org.jetbrains.jps.incremental.artifacts.impl.ArtifactSorter
 import org.jetbrains.jps.incremental.artifacts.impl.JpsArtifactUtil
+import org.jetbrains.jps.incremental.groovy.JpsGroovycRunner
 import org.jetbrains.jps.incremental.messages.*
 import org.jetbrains.jps.model.artifact.JpsArtifact
 import org.jetbrains.jps.model.artifact.JpsArtifactService
@@ -66,9 +39,6 @@ import org.jetbrains.jps.model.module.JpsModule
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-/**
- * @author nik
- */
 @CompileStatic
 class JpsCompilationRunner {
   private static boolean ourToolsJarAdded
@@ -159,6 +129,8 @@ class JpsCompilationRunner {
       addToolsJarToSystemClasspath(context.paths.jdkHome, context.messages)
     }
     System.setProperty(GlobalOptions.USE_DEFAULT_FILE_LOGGING_OPTION, "false")
+    System.setProperty(JpsGroovycRunner.GROOVYC_IN_PROCESS, "true")
+    System.setProperty(GroovyRtConstants.GROOVYC_ASM_RESOLVING_ONLY, "false")
     final AntMessageHandler messageHandler = new AntMessageHandler()
     AntLoggerFactory.ourMessageHandler = messageHandler
     AntLoggerFactory.ourFileLoggerFactory = compilationData.fileLoggerFactory
@@ -337,7 +309,7 @@ class JpsCompilationRunner {
 
     private void reportProgress(Collection<? extends BuildTarget<?>> targets, String targetSpecificMessage) {
       def targetsString = targets.collect { StringUtil.decapitalize(it.presentableName) }.join(", ")
-      String progressText = progress > 0 ? " (${(int)(100 * progress)}%)" : ""
+      String progressText = progress >= 0 ? " (${(int)(100 * progress)}%)" : ""
       String targetSpecificText = !targetSpecificMessage.isEmpty() ? ", $targetSpecificMessage" : ""
       context.messages.progress("Compiling$progressText: $targetsString$targetSpecificText")
     }

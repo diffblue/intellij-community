@@ -36,7 +36,7 @@ private class JavaSoftKeywordHighlightingPass(private val file: PsiJavaFile, doc
   }
 
   override fun doApplyInformationToEditor() {
-    UpdateHighlightersUtil.setHighlightersToEditor(myProject, myDocument!!, 0, file.textLength, results, colorsScheme, id)
+    UpdateHighlightersUtil.setHighlightersToEditor(myProject, myDocument, 0, file.textLength, results, colorsScheme, id)
   }
 }
 
@@ -45,10 +45,17 @@ private class JavaSoftKeywordHighlightingVisitor(private val results: MutableLis
 
   override fun visitKeyword(keyword: PsiKeyword) {
     if (JavaLexer.isSoftKeyword(keyword.node.chars, level)) {
-      val info = HighlightInfo.newHighlightInfo(JavaHighlightInfoTypes.JAVA_KEYWORD).range(keyword).create()
-      if (info != null) {
-        results += info
-      }
+      highlightAsKeyword(keyword)
+    }
+    else if (JavaTokenType.NON_SEALED_KEYWORD == keyword.tokenType) {
+      highlightAsKeyword(keyword)
+    }
+  }
+
+  private fun highlightAsKeyword(keyword: PsiKeyword) {
+    val info = HighlightInfo.newHighlightInfo(JavaHighlightInfoTypes.JAVA_KEYWORD).range(keyword).create()
+    if (info != null) {
+      results += info
     }
   }
 }

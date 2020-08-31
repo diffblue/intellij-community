@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.util;
 
 import com.intellij.codeInsight.NullableNotNullManager;
@@ -29,7 +29,6 @@ import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.members.GrAc
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.members.GrMethod;
 import org.jetbrains.plugins.groovy.lang.psi.impl.PsiImplUtil;
 import org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil;
-import org.jetbrains.plugins.groovy.lang.resolve.api.Argument;
 import org.jetbrains.plugins.groovy.lang.resolve.processors.AccessorProcessor;
 
 import java.beans.Introspector;
@@ -40,7 +39,7 @@ import java.util.List;
 /**
  * @author ilyas
  */
-public class GroovyPropertyUtils {
+public final class GroovyPropertyUtils {
   private static final Logger LOG = Logger.getInstance(GroovyPropertyUtils.class);
 
   public static final String IS_PREFIX = "is";
@@ -54,8 +53,7 @@ public class GroovyPropertyUtils {
     return getAllSetters(field.getContainingClass(), field.getName(), field.hasModifierProperty(PsiModifier.STATIC), false);
   }
 
-  @NotNull
-  public static PsiMethod[] getAllGettersByField(PsiField field) {
+  public static PsiMethod @NotNull [] getAllGettersByField(PsiField field) {
     return getAllGetters(field.getContainingClass(), field.getName(), field.hasModifierProperty(PsiModifier.STATIC), false);
   }
 
@@ -82,7 +80,7 @@ public class GroovyPropertyUtils {
       final GrExpression fromText = GroovyPsiElementFactory.getInstance(context.getProject()).createExpressionFromText("this", context);
       return findPropertySetter(fromText.getType(), propertyName, context);
     }
-    final AccessorProcessor processor = new AccessorProcessor(propertyName, PropertyKind.SETTER, (List<? extends Argument>)null, context);
+    final AccessorProcessor processor = new AccessorProcessor(propertyName, PropertyKind.SETTER, null, context);
     ResolveUtil.processAllDeclarations(type, processor, ResolveState.initial(), context);
     return PsiImplUtil.extractUniqueElement(processor.getResults().toArray(GroovyResolveResult.EMPTY_ARRAY));
   }
@@ -111,8 +109,7 @@ public class GroovyPropertyUtils {
     return null;
   }
 
-  @NotNull
-  public static PsiMethod[] getAllGetters(PsiClass aClass, @NotNull String propertyName, boolean isStatic, boolean checkSuperClasses) {
+  public static PsiMethod @NotNull [] getAllGetters(PsiClass aClass, @NotNull String propertyName, boolean isStatic, boolean checkSuperClasses) {
     if (aClass == null) return PsiMethod.EMPTY_ARRAY;
     PsiMethod[] methods;
     if (checkSuperClasses) {
@@ -136,8 +133,7 @@ public class GroovyPropertyUtils {
     return result.toArray(PsiMethod.EMPTY_ARRAY);
   }
 
-  @NotNull
-  public static PsiMethod[] getAllSetters(PsiClass aClass, @NotNull String propertyName, boolean isStatic, boolean checkSuperClasses) {
+  public static PsiMethod @NotNull [] getAllSetters(PsiClass aClass, @NotNull String propertyName, boolean isStatic, boolean checkSuperClasses) {
     if (aClass == null) return PsiMethod.EMPTY_ARRAY;
     PsiMethod[] methods;
     if (checkSuperClasses) {

@@ -1,10 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem;
 
 import org.jetbrains.annotations.NonNls;
 
 /**
- * Identifiers for standard actions and action groups supported by IDEA.
+ * Identifiers for standard actions and action groups.
  */
 public interface IdeActions {
   @NonNls String ACTION_EDITOR_CUT = "EditorCut";
@@ -62,6 +62,7 @@ public interface IdeActions {
   @NonNls String ACTION_EDITOR_CREATE_RECTANGULAR_SELECTION_ON_MOUSE_DRAG = "EditorCreateRectangularSelectionOnMouseDrag";
   @NonNls String ACTION_EDITOR_CLONE_CARET_BELOW= "EditorCloneCaretBelow";
   @NonNls String ACTION_EDITOR_CLONE_CARET_ABOVE= "EditorCloneCaretAbove";
+  @NonNls String ACTION_EDITOR_ADD_CARET_PER_SELECTED_LINE = "EditorAddCaretPerSelectedLine";
   @NonNls String ACTION_EDITOR_TOGGLE_STICKY_SELECTION= "EditorToggleStickySelection";
   @NonNls String ACTION_EDITOR_TOGGLE_OVERWRITE_MODE= "EditorToggleInsertState";
   @NonNls String ACTION_EDITOR_TOGGLE_CASE= "EditorToggleCase";
@@ -111,6 +112,7 @@ public interface IdeActions {
   @NonNls String GROUP_CONSOLE_EDITOR_POPUP = "ConsoleEditorPopupMenu";
   @NonNls String GROUP_CUT_COPY_PASTE = "CutCopyPasteGroup";
   @NonNls String GROUP_EDITOR_TAB_POPUP = "EditorTabPopupMenu";
+  @NonNls String GROUP_HELP_MENU = "HelpMenu";
 
   @NonNls String ACTION_CVS_ADD = "Cvs.Add";
   @NonNls String ACTION_CVS_COMMIT = "Cvs.Commit";
@@ -140,10 +142,10 @@ public interface IdeActions {
   @NonNls String ACTION_SELECT_ALL_OCCURRENCES = "SelectAllOccurrences";
   @NonNls String ACTION_UNSELECT_PREVIOUS_OCCURENCE = "UnselectPreviousOccurrence";
   @NonNls String ACTION_REPLACE = "Replace";
+  @NonNls String ACTION_TOGGLE_FIND_IN_SELECTION_ONLY = "ToggleFindInSelection";
   @NonNls String ACTION_COMPILE = "Compile";
   @NonNls String ACTION_COMPILE_PROJECT = "CompileProject";
   @NonNls String ACTION_MAKE_MODULE = "MakeModule";
-  @NonNls String ACTION_GENERATE_ANT_BUILD = "GenerateAntBuild";
   @NonNls String ACTION_INSPECT_CODE = "InspectCode";
 
   @NonNls String ACTION_FIND_USAGES = "FindUsages";
@@ -224,6 +226,7 @@ public interface IdeActions {
 
   @NonNls String GROUP_OTHER_MENU = "OtherMenu";
   @NonNls String GROUP_EDITOR = "EditorActions";
+  @NonNls String GROUP_EDITOR_BIDI_TEXT_DIRECTION = "EditorBidiTextDirection";
 
   @NonNls String ACTION_TOGGLE_LINE_BREAKPOINT = "ToggleLineBreakpoint";
 
@@ -255,6 +258,10 @@ public interface IdeActions {
   @NonNls String ACTION_QUICK_IMPLEMENTATIONS = "QuickImplementations";
   @NonNls String ACTION_CHECKIN_PROJECT = "CheckinProject";
   @NonNls String ACTION_FILE_STRUCTURE_POPUP = "FileStructurePopup";
+  @NonNls String ACTION_TOGGLE_RENDERED_DOC = "ToggleRenderedDocPresentation";
+  @NonNls String ACTION_TOGGLE_RENDERED_DOC_FOR_ALL = "ToggleRenderedDocPresentationForAll";
+
+  @NonNls String GROUP_DOC_COMMENT_GUTTER_ICON_CONTEXT_MENU = "DocCommentGutterIconContextMenu";
 
   @NonNls String GROUP_USAGE_VIEW_POPUP = "UsageView.Popup";
 
@@ -296,6 +303,8 @@ public interface IdeActions {
 
   @NonNls String ACTION_EDITOR_DUPLICATE = "EditorDuplicate";
   @NonNls String ACTION_EDITOR_DUPLICATE_LINES = "EditorDuplicateLines";
+  @NonNls String ACTION_EDITOR_SORT_LINES = "EditorSortLines";
+  @NonNls String ACTION_EDITOR_REVERSE_LINES = "EditorReverseLines";
 
   @NonNls String ACTION_EDIT_PROPERTY_VALUE = "EditPropertyValue";
 
@@ -339,4 +348,11 @@ public interface IdeActions {
   @NonNls String ACTION_BRACE_OR_QUOTE_OUT = "BraceOrQuoteOut";
 
   @NonNls String GROUP_TOUCHBAR = "TouchBar";
+
+  @NonNls String BREADCRUMBS_OPTIONS_GROUP = "EditorBreadcrumbsSettings";
+  @NonNls String BREADCRUMBS_SHOW_ABOVE = "EditorBreadcrumbsShowAbove";
+  @NonNls String BREADCRUMBS_SHOW_BELOW = "EditorBreadcrumbsShowBelow";
+  @NonNls String BREADCRUMBS_HIDE_BOTH = "EditorBreadcrumbsHideBoth";
+
+  @NonNls String ACTION_RESTORE_FONT_PREVIEW_TEXT = "RestoreFontPreviewTextAction";
 }

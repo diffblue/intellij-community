@@ -20,7 +20,7 @@ import java.util.*;
 public abstract class IStubElementType<StubT extends StubElement, PsiT extends PsiElement> extends IElementType implements StubSerializer<StubT> {
   private static volatile boolean ourInitializedStubs;
   private static volatile Set<String> ourLazyExternalIds = Collections.emptySet();
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.stubs.IStubElementType");
+  private static final Logger LOG = Logger.getInstance(IStubElementType.class);
 
   public IStubElementType(@NotNull @NonNls final String debugName, @Nullable final Language language) {
     super(debugName, language);
@@ -49,6 +49,10 @@ public abstract class IStubElementType<StubT extends StubElement, PsiT extends P
     }
   }
 
+  static void dropRegisteredTypes() {
+    ourInitializedStubs = false;
+  }
+
   static List<StubFieldAccessor> loadRegisteredStubElementTypes() {
     List<StubFieldAccessor> result = new ArrayList<>();
     for (StubElementTypeHolderEP bean : StubElementTypeHolderEP.EP_NAME.getExtensionList()) {
@@ -59,8 +63,8 @@ public abstract class IStubElementType<StubT extends StubElement, PsiT extends P
     for (StubFieldAccessor accessor : result) {
       lazyIds.add(accessor.externalId);
     }
-    ourLazyExternalIds = lazyIds;
     ourInitializedStubs = true;
+    ourLazyExternalIds = lazyIds;
     return result;
   }
 

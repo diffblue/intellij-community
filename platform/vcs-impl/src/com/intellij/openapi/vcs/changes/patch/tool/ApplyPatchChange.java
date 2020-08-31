@@ -27,6 +27,7 @@ import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.MarkupModelEx;
 import com.intellij.openapi.editor.markup.*;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.vcs.VcsBundle;
 import com.intellij.openapi.vcs.changes.patch.AppliedTextPatch.HunkStatus;
 import com.intellij.openapi.vcs.ex.LineStatusMarkerRenderer;
 import com.intellij.ui.ColorUtil;
@@ -50,7 +51,7 @@ class ApplyPatchChange {
   @NotNull private final HunkStatus myStatus;
 
   @Nullable private final List<DiffFragment> myPatchInnerDifferences;
-  @NotNull private final List<MyGutterOperation> myOperations = new ArrayList<>();
+  @NotNull private final List<DiffGutterOperation> myOperations = new ArrayList<>();
 
   @NotNull private final List<RangeHighlighter> myHighlighters = new ArrayList<>();
 
@@ -119,8 +120,9 @@ class ApplyPatchChange {
     MarkupModelEx markupModel = patchEditor.getMarkupModel();
     TextRange textRange = DiffUtil.getLinesRange(document, line1, line2);
 
-    RangeHighlighter highlighter = markupModel.addRangeHighlighter(textRange.getStartOffset(), textRange.getEndOffset(),
-                                                                   HighlighterLayer.LAST, null, HighlighterTargetArea.LINES_IN_RANGE);
+    RangeHighlighter highlighter = markupModel
+      .addRangeHighlighter(null, textRange.getStartOffset(), textRange.getEndOffset(), HighlighterLayer.LAST,
+                           HighlighterTargetArea.LINES_IN_RANGE);
 
     highlighter.setLineMarkerRenderer(new MyGutterRenderer(line1, line2, color, tooltip));
 
@@ -133,7 +135,7 @@ class ApplyPatchChange {
     }
     myHighlighters.clear();
 
-    for (MyGutterOperation operation : myOperations) {
+    for (DiffGutterOperation operation : myOperations) {
       operation.dispose();
     }
     myOperations.clear();
@@ -203,11 +205,11 @@ class ApplyPatchChange {
   private String getStatusText() {
     switch (myStatus) {
       case ALREADY_APPLIED:
-        return "Already applied";
+        return VcsBundle.message("patch.apply.already.applied.status");
       case EXACTLY_APPLIED:
-        return "Automatically applied";
+        return VcsBundle.message("patch.apply.automatically.applied.status");
       case NOT_APPLIED:
-        return "Not applied";
+        return VcsBundle.message("patch.apply.not.applied.status");
       default:
         throw new IllegalStateException();
     }
@@ -242,58 +244,32 @@ class ApplyPatchChange {
   }
 
   @Nullable
-  private MyGutterOperation createOperation(@NotNull OperationType type) {
+  private DiffGutterOperation createOperation(@NotNull OperationType type) {
     if (isResolved()) return null;
 
     EditorEx editor = myViewer.getPatchEditor();
-    Document document = editor.getDocument();
+    int offset = DiffGutterOperation.lineToOffset(editor, getPatchRange().start);
 
-    int line = getPatchRange().start;
-    int offset = line == DiffUtil.getLineCount(document) ? document.getTextLength() : document.getLineStartOffset(line);
-
-    RangeHighlighter highlighter = editor.getMarkupModel().addRangeHighlighter(offset, offset,
-                                                                               HighlighterLayer.ADDITIONAL_SYNTAX,
-                                                                               null,
-                                                                               HighlighterTargetArea.LINES_IN_RANGE);
-    return new MyGutterOperation(highlighter, type);
-  }
-
-  private class MyGutterOperation {
-    @NotNull private final RangeHighlighter myHighlighter;
-    @NotNull private final OperationType myType;
-
-    private MyGutterOperation(@NotNull RangeHighlighter highlighter, @NotNull OperationType type) {
-      myHighlighter = highlighter;
-      myType = type;
-
-      myHighlighter.setGutterIconRenderer(createRenderer());
-    }
-
-    public void dispose() {
-      myHighlighter.dispose();
-    }
-
-    @Nullable
-    public GutterIconRenderer createRenderer() {
-      switch (myType) {
-        case APPLY:
-          return createApplyRenderer();
-        case IGNORE:
-          return createIgnoreRenderer();
-        default:
-          throw new IllegalArgumentException(myType.name());
+    return new DiffGutterOperation.Simple(editor, offset, () -> {
+      if (type == OperationType.APPLY) {
+        return createApplyRenderer();
       }
-    }
+      else {
+        return createIgnoreRenderer();
+      }
+    });
   }
 
   @Nullable
   private GutterIconRenderer createApplyRenderer() {
-    return createIconRenderer(DiffBundle.message("merge.dialog.apply.change.action.name"), DiffUtil.getArrowIcon(Side.RIGHT), () -> myViewer.executeCommand("Accept change", () -> myViewer.replaceChange(this)));
+    return createIconRenderer(DiffBundle.message("action.presentation.diff.accept.text"), DiffUtil.getArrowIcon(Side.RIGHT), () -> myViewer.executeCommand(
+      DiffBundle.message("merge.dialog.accept.change.command"), () -> myViewer.replaceChange(this)));
   }
 
   @Nullable
   private GutterIconRenderer createIgnoreRenderer() {
-    return createIconRenderer(DiffBundle.message("merge.dialog.ignore.change.action.name"), AllIcons.Diff.Remove, () -> myViewer.executeCommand("Ignore change", () -> myViewer.markChangeResolved(this)));
+    return createIconRenderer(DiffBundle.message("action.presentation.merge.ignore.text"), AllIcons.Diff.Remove, () -> myViewer.executeCommand(
+      DiffBundle.message("merge.dialog.ignore.change.command"), () -> myViewer.markChangeResolved(this)));
   }
 
   @Nullable
@@ -357,7 +333,7 @@ class ApplyPatchChange {
     }
 
     @Override
-    public void paint(Editor editor, Graphics g, Rectangle r) {
+    public void paint(@NotNull Editor editor, @NotNull Graphics g, @NotNull Rectangle r) {
       LineStatusMarkerRenderer.paintSimpleRange(g, editor, myLine1, myLine2, myColor);
     }
 
@@ -379,7 +355,7 @@ class ApplyPatchChange {
     @NotNull
     @Override
     public String getAccessibleName() {
-      return "marker: " + getTooltipText();
+      return VcsBundle.message("patch.apply.marker.renderer", getTooltipText());
     }
   }
 }

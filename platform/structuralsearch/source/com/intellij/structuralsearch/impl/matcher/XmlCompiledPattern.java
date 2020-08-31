@@ -1,7 +1,6 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.impl.matcher;
 
-import com.intellij.structuralsearch.impl.matcher.strategies.XmlMatchingStrategy;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -10,13 +9,10 @@ import org.jetbrains.annotations.NotNull;
 public class XmlCompiledPattern extends CompiledPattern {
   private static final String XML_TYPED_VAR_PREFIX = "__";
 
-  public XmlCompiledPattern() {
-    setStrategy(XmlMatchingStrategy.getInstance());
-  }
+  public XmlCompiledPattern() {}
 
-  @NotNull
   @Override
-  public String[] getTypedVarPrefixes() {
+  public String @NotNull [] getTypedVarPrefixes() {
     return new String[] {XML_TYPED_VAR_PREFIX};
   }
 

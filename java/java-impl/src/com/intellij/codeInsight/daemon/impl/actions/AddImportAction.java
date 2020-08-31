@@ -1,5 +1,4 @@
-
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl.actions;
 
 import com.intellij.application.options.editor.AutoImportOptionsConfigurable;
@@ -20,6 +19,7 @@ import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.psi.PsiClass;
@@ -31,7 +31,6 @@ import com.intellij.psi.statistics.StatisticsManager;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.ui.popup.list.PopupListElementRenderer;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -40,9 +39,10 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class AddImportAction implements QuestionAction {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.actions.AddImportAction");
+  private static final Logger LOG = Logger.getInstance(AddImportAction.class);
 
   private final Project myProject;
   private final PsiReference myReference;
@@ -52,7 +52,7 @@ public class AddImportAction implements QuestionAction {
   public AddImportAction(@NotNull Project project,
                          @NotNull PsiReference ref,
                          @NotNull Editor editor,
-                         @NotNull PsiClass... targetClasses) {
+                         PsiClass @NotNull ... targetClasses) {
     myProject = project;
     myReference = ref;
     myTargetClasses = targetClasses;
@@ -121,7 +121,7 @@ public class AddImportAction implements QuestionAction {
         @NotNull
         @Override
         public String getTextFor(PsiClass value) {
-          return ObjectUtils.assertNotNull(value.getQualifiedName());
+          return Objects.requireNonNull(value.getQualifiedName());
         }
 
         @Override
@@ -129,11 +129,11 @@ public class AddImportAction implements QuestionAction {
           return aValue.getIcon(0);
         }
       };
-    ListPopupImpl popup = new ListPopupImpl(myProject, step) {
+    JBPopup popup = new ListPopupImpl(myProject, step) {
       @Override
       protected ListCellRenderer getListElementRenderer() {
-        final PopupListElementRenderer baseRenderer = (PopupListElementRenderer)super.getListElementRenderer();
-        final DefaultPsiElementCellRenderer psiRenderer = new DefaultPsiElementCellRenderer();
+        PopupListElementRenderer baseRenderer = (PopupListElementRenderer)super.getListElementRenderer();
+        ListCellRenderer<Object> psiRenderer = new DefaultPsiElementCellRenderer();
         return (list, value, index, isSelected, cellHasFocus) -> {
           JPanel panel = new JPanel(new BorderLayout());
           baseRenderer.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
@@ -170,7 +170,7 @@ public class AddImportAction implements QuestionAction {
       }
     };
   }
-  
+
   public static void excludeFromImport(@NotNull Project project, @NotNull String prefix) {
     ApplicationManager.getApplication().invokeLater(() -> {
       if (project.isDisposed()) return;
@@ -211,7 +211,7 @@ public class AddImportAction implements QuestionAction {
   private void doAddImport(@NotNull PsiReference ref, @NotNull PsiClass targetClass) {
     try{
       bindReference(ref, targetClass);
-      if (CodeInsightWorkspaceSettings.getInstance(myProject).optimizeImportsOnTheFly) {
+      if (CodeInsightWorkspaceSettings.getInstance(myProject).isOptimizeImportsOnTheFly()) {
         Document document = myEditor.getDocument();
         PsiFile psiFile = PsiDocumentManager.getInstance(myProject).getPsiFile(document);
         new OptimizeImportsProcessor(myProject, psiFile).runWithoutProgress();

@@ -116,7 +116,7 @@ args = dict(
         '_pydevd_frame_eval',
         'pydev_ipython',
         # 'pydev_sitecustomize', -- Not actually a package (not added)
-        # 'pydevd_attach_to_process', -- Not actually a package (included in MANIFEST.in)
+        'pydevd_attach_to_process',
         'pydevd_concurrency_analyser',
         'pydevd_plugins',
         'pydevd_plugins.extensions',
@@ -154,10 +154,12 @@ args = dict(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Topic :: Software Development :: Debuggers',
     ],
     entry_points={
-        'console_scripts':[
+        'console_scripts': [
             'pydevd = pydevd:main',
         ],
     },

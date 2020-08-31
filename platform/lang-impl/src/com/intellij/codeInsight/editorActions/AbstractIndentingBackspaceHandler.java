@@ -22,6 +22,8 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 
+import static com.intellij.codeInsight.editorActions.BackspaceHandler.getLanguageAtCursorPosition;
+
 abstract class AbstractIndentingBackspaceHandler extends BackspaceHandlerDelegate {
   private final SmartBackspaceMode myMode;
   private boolean myEnabled;
@@ -31,12 +33,13 @@ abstract class AbstractIndentingBackspaceHandler extends BackspaceHandlerDelegat
   }
 
   @Override
-  public void beforeCharDeleted(char c, PsiFile file, Editor editor) {
+  public void beforeCharDeleted(char c, @NotNull PsiFile file, Editor editor) {
     myEnabled = false;
     if (editor.isColumnMode() || !StringUtil.isWhiteSpace(c)) {
       return;
     }
-    SmartBackspaceMode mode = getBackspaceMode(file.getLanguage());
+    Language language = getLanguageAtCursorPosition(file, editor);
+    SmartBackspaceMode mode = getBackspaceMode(language);
     if (mode != myMode) {
       return;
     }
@@ -45,7 +48,7 @@ abstract class AbstractIndentingBackspaceHandler extends BackspaceHandlerDelegat
   }
 
   @Override
-  public boolean charDeleted(char c, PsiFile file, Editor editor) {
+  public boolean charDeleted(char c, @NotNull PsiFile file, @NotNull Editor editor) {
     if (!myEnabled) {
       return false;
     }

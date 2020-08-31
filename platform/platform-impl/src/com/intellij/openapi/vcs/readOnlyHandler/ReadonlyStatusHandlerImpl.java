@@ -12,34 +12,47 @@ import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.MultiValuesMap;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.vfs.ReadonlyStatusHandler;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.WritingAccessProvider;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashSet;
+import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-
-import static com.intellij.openapi.util.text.StringUtil.isEmpty;
+import java.util.*;
 
 @State(name = "ReadonlyStatusHandler", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
-public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements PersistentStateComponent<ReadonlyStatusHandlerImpl.State> {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vcs.readOnlyHandler.ReadonlyStatusHandlerImpl");
-  private final Project myProject;
-  protected boolean myClearReadOnlyInTests;
+public final class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements PersistentStateComponent<ReadonlyStatusHandlerImpl.State> {
+  private static final Logger LOG = Logger.getInstance(ReadonlyStatusHandlerImpl.class);
 
-  public static class State {
+  private final Project myProject;
+  private boolean myClearReadOnlyInTests;
+
+  public static final class State {
     public boolean SHOW_DIALOG = true;
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      State state = (State)o;
+
+      if (SHOW_DIALOG != state.SHOW_DIALOG) return false;
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return (SHOW_DIALOG ? 1 : 0);
+    }
   }
 
   private State myState = new State();
@@ -61,52 +74,58 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
 
   @NotNull
   @Override
-  public OperationStatus ensureFilesWritable(@NotNull Collection<? extends VirtualFile> files) {
-    if (files.isEmpty()) {
+  public OperationStatus ensureFilesWritable(@NotNull Collection<? extends VirtualFile> originalFiles) {
+    if (originalFiles.isEmpty()) {
       return new OperationStatusImpl(VirtualFile.EMPTY_ARRAY);
     }
 
     checkThreading();
 
-    Set<VirtualFile> realFiles = new THashSet<>(files.size());
-    for (VirtualFile file : files) {
+    Set<VirtualFile> realFiles = new HashSet<>(originalFiles.size());
+    for (VirtualFile file : originalFiles) {
       if (file instanceof LightVirtualFile) {
         VirtualFile originalFile = ((LightVirtualFile)file).getOriginalFile();
         if (originalFile != null) {
           file = originalFile;
         }
       }
-      if (file instanceof VirtualFileWindow) file = ((VirtualFileWindow)file).getDelegate();
+      if (file instanceof VirtualFileWindow) {
+        file = ((VirtualFileWindow)file).getDelegate();
+      }
       if (file != null) {
         realFiles.add(file);
       }
     }
-    files = new ArrayList<>(realFiles);
+    Collection<? extends VirtualFile> files = new ArrayList<>(realFiles);
 
     if (!myProject.isDefault()) {
-      for (final WritingAccessProvider accessProvider : WritingAccessProvider.EP_NAME.getIterable(myProject)) {
-        Collection<VirtualFile> denied = ContainerUtil.filter(files, virtualFile -> !accessProvider.isPotentiallyWritable(virtualFile));
+      OperationStatusImpl status = WritingAccessProvider.EP.computeSafeIfAny(myProject, provider -> {
+        Collection<VirtualFile> denied = ContainerUtil.filter(files, virtualFile -> !provider.isPotentiallyWritable(virtualFile));
 
         if (denied.isEmpty()) {
-          denied = accessProvider.requestWriting(files);
+          denied = provider.requestWriting(files);
         }
         if (!denied.isEmpty()) {
-          return new OperationStatusImpl(VfsUtilCore.toVirtualFileArray(denied), accessProvider.getReadOnlyMessage());
+          return new OperationStatusImpl(VfsUtilCore.toVirtualFileArray(denied), provider.getReadOnlyMessage());
         }
+        return null;
+      });
+      if (status != null) {
+        return status;
       }
     }
 
     final List<FileInfo> fileInfos = createFileInfos(files);
     // if all files are already writable
     if (fileInfos.isEmpty()) {
-      return createResultStatus(files);
+      return createResultStatus(originalFiles, files);
     }
 
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       if (myClearReadOnlyInTests) {
         processFiles(new ArrayList<>(fileInfos), null);
       }
-      return createResultStatus(files);
+      return createResultStatus(originalFiles, files);
     }
 
     // This event count hack is necessary to allow actions that called this stuff could still get data from their data contexts.
@@ -120,12 +139,12 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
       processFiles(new ArrayList<>(fileInfos), null); // the collection passed is modified
     }
     IdeEventQueue.getInstance().setEventCount(savedEventCount);
-    return createResultStatus(files);
+    return createResultStatus(originalFiles, files);
   }
 
   private static void checkThreading() {
     Application app = ApplicationManager.getApplication();
-    app.assertIsDispatchThread();
+    app.assertIsWriteThread();
     if (!app.isWriteAccessAllowed()) return;
 
     if (app.isUnitTestMode() && Registry.is("tests.assert.clear.read.only.status.outside.write.action")) {
@@ -133,7 +152,8 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
     }
   }
 
-  private static OperationStatus createResultStatus(@NotNull Collection<? extends VirtualFile> files) {
+  private static OperationStatus createResultStatus(@NotNull Collection<? extends VirtualFile> originalFiles,
+                                                    @NotNull Collection<? extends VirtualFile> files) {
     List<VirtualFile> readOnlyFiles = new ArrayList<>();
     for (VirtualFile file : files) {
       if (file.exists()) {
@@ -142,6 +162,10 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
         }
       }
     }
+
+    // we shouldn't report success if files for which write operation is requested are still non-writable
+    assert !readOnlyFiles.isEmpty() || originalFiles.stream().allMatch(file -> file == null || file.isWritable())
+      : "Original files: " + originalFiles + ", files: " + files;
 
     return new OperationStatusImpl(VfsUtilCore.toVirtualFileArray(readOnlyFiles));
   }
@@ -157,11 +181,11 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
     return fileInfos;
   }
 
-  public static void processFiles(final List<FileInfo> fileInfos, @Nullable String changelist) {
+  public static void processFiles(@NotNull List<FileInfo> fileInfos, @Nullable String changelist) {
     FileInfo[] copy = fileInfos.toArray(new FileInfo[0]);
-    MultiValuesMap<HandleType, VirtualFile> handleTypeToFile = new MultiValuesMap<>();
+    MultiMap<HandleType, VirtualFile> handleTypeToFile = new MultiMap<>();
     for (FileInfo fileInfo : copy) {
-      handleTypeToFile.put(fileInfo.getSelectedHandleType(), fileInfo.getFile());
+      handleTypeToFile.putValue(fileInfo.getSelectedHandleType(), fileInfo.getFile());
     }
 
     for (HandleType handleType : handleTypeToFile.keySet()) {
@@ -188,12 +212,11 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
     myClearReadOnlyInTests = clearReadOnlyInTests;
   }
 
-  private static class OperationStatusImpl extends OperationStatus {
-
+  private static final class OperationStatusImpl extends OperationStatus {
     private final VirtualFile[] myReadonlyFiles;
     @NotNull private final String myReadOnlyReason;
 
-    OperationStatusImpl(@NotNull VirtualFile[] readonlyFiles) {
+    OperationStatusImpl(VirtualFile @NotNull [] readonlyFiles) {
       this(readonlyFiles,"");
     }
 
@@ -203,8 +226,7 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
     }
 
     @Override
-    @NotNull
-    public VirtualFile[] getReadonlyFiles() {
+    public VirtualFile @NotNull [] getReadonlyFiles() {
       return myReadonlyFiles;
     }
 
@@ -217,7 +239,9 @@ public class ReadonlyStatusHandlerImpl extends ReadonlyStatusHandler implements 
     @NotNull
     public String getReadonlyFilesMessage() {
       if (hasReadonlyFiles()) {
-        if (!isEmpty(myReadOnlyReason)) return myReadOnlyReason;
+        if (!Strings.isEmpty(myReadOnlyReason)) {
+          return myReadOnlyReason;
+        }
         if (myReadonlyFiles.length > 1) {
           StringBuilder buf = new StringBuilder();
           for (VirtualFile file : myReadonlyFiles) {

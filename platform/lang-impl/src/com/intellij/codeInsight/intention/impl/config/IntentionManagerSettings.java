@@ -1,11 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.intention.impl.config;
 
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.IntentionActionBean;
-import com.intellij.codeInsight.intention.IntentionManager;
-import com.intellij.ide.ui.search.SearchableOptionsRegistrar;
-import com.intellij.openapi.application.Application;
+import com.intellij.ide.ui.TopHitCache;
+import com.intellij.ide.ui.search.SearchableOptionContributor;
+import com.intellij.ide.ui.search.SearchableOptionProcessor;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.ServiceManager;
@@ -13,18 +13,18 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionNotApplicableException;
+import com.intellij.openapi.extensions.ExtensionPointListener;
+import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.concurrency.SequentialTaskExecutor;
 import com.intellij.util.containers.Interner;
-import com.intellij.util.containers.WeakStringInterner;
+import com.intellij.util.containers.WeakInterner;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
 import java.util.regex.Pattern;
 
 @State(name = "IntentionManagerSettings", storages = @Storage("intentionSettings.xml"))
@@ -32,36 +32,74 @@ public final class IntentionManagerSettings implements PersistentStateComponent<
   private static final Logger LOG = Logger.getInstance(IntentionManagerSettings.class);
 
   private static final class MetaDataKey extends Pair<String, String> {
-    private static final Interner<String> ourInterner = new WeakStringInterner();
-    private MetaDataKey(@NotNull String[] categoryNames, @NotNull final String familyName) {
+    private static final Interner<String> ourInterner = WeakInterner.createWeakInterner();
+    private MetaDataKey(String @NotNull [] categoryNames, @NotNull final String familyName) {
       super(StringUtil.join(categoryNames, ":"), ourInterner.intern(familyName));
     }
   }
 
   private final Set<String> myIgnoredActions = Collections.synchronizedSet(new LinkedHashSet<>());
 
-  private final Map<MetaDataKey, IntentionActionMetaData> myMetaData = new LinkedHashMap<>(); // guarded by this
+  private final Map<MetaDataKey, IntentionActionMetaData> myMetaData; // guarded by this
+  private final Map<IntentionActionBean, MetaDataKey> myExtensionMapping; // guarded by this
+
   @NonNls private static final String IGNORE_ACTION_TAG = "ignoreAction";
   @NonNls private static final String NAME_ATT = "name";
   private static final Pattern HTML_PATTERN = Pattern.compile("<[^<>]*>");
 
   public IntentionManagerSettings() {
-    for (IntentionActionBean extension : IntentionManager.EP_INTENTION_ACTIONS.getExtensionList()) {
-      String[] categories = extension.getCategories();
-      if (categories == null) {
-        continue;
+    int size = IntentionManagerImpl.EP_INTENTION_ACTIONS.getPoint().size();
+    myMetaData = new LinkedHashMap<>(size);
+    myExtensionMapping = new HashMap<>(size);
+
+    IntentionManagerImpl.EP_INTENTION_ACTIONS.forEachExtensionSafe(extension -> registerMetaDataForEp(extension));
+
+    IntentionManagerImpl.EP_INTENTION_ACTIONS.getPoint().addExtensionPointListener(new ExtensionPointListener<IntentionActionBean>() {
+      @Override
+      public void extensionAdded(@NotNull IntentionActionBean extension, @NotNull PluginDescriptor pluginDescriptor) {
+        // on each plugin load/unload SearchableOptionsRegistrarImpl drops the cache, so, it will be recomputed later on demand
+        registerMetaDataForEp(extension);
+        TopHitCache topHitCache = ApplicationManager.getApplication().getServiceIfCreated(TopHitCache.class);
+        if (topHitCache != null) {
+          topHitCache.invalidateCachedOptions(IntentionsOptionsTopHitProvider.class);
+        }
       }
 
-      IntentionActionWrapper instance = new IntentionActionWrapper(extension, categories);
-      String descriptionDirectoryName = extension.getDescriptionDirectoryName();
-      if (descriptionDirectoryName == null) {
-        descriptionDirectoryName = instance.getDescriptionDirectoryName();
+      @Override
+      public void extensionRemoved(@NotNull IntentionActionBean extension, @NotNull PluginDescriptor pluginDescriptor) {
+        String[] categories = extension.getCategories();
+        if (categories == null) return;
+        unregisterMetaDataForEP(extension);
+        TopHitCache topHitCache = ApplicationManager.getApplication().getServiceIfCreated(TopHitCache.class);
+        if (topHitCache != null) {
+          topHitCache.invalidateCachedOptions(IntentionsOptionsTopHitProvider.class);
+        }
       }
-      try {
-        registerMetaData(new IntentionActionMetaData(instance, extension.getLoaderForClass(), categories, descriptionDirectoryName));
+    }, false, ApplicationManager.getApplication());
+  }
+
+  private void registerMetaDataForEp(@NotNull IntentionActionBean extension) {
+    String[] categories = extension.getCategories();
+    if (categories == null) {
+      return;
+    }
+
+    IntentionActionWrapper instance = new IntentionActionWrapper(extension);
+    String descriptionDirectoryName = extension.getDescriptionDirectoryName();
+    if (descriptionDirectoryName == null) {
+      descriptionDirectoryName = instance.getDescriptionDirectoryName();
+    }
+
+    try {
+      IntentionActionMetaData metaData = new IntentionActionMetaData(instance, extension.getLoaderForClass(), categories, descriptionDirectoryName);
+      MetaDataKey key = new MetaDataKey(metaData.myCategory, metaData.getFamily());
+      //noinspection SynchronizeOnThis
+      synchronized (this) {
+        myMetaData.put(key, metaData);
+        myExtensionMapping.put(extension, key);
       }
-      catch (ExtensionNotApplicableException ignore) {
-      }
+    }
+    catch (ExtensionNotApplicableException ignore) {
     }
   }
 
@@ -71,9 +109,14 @@ public final class IntentionManagerSettings implements PersistentStateComponent<
   }
 
   void registerIntentionMetaData(@NotNull IntentionAction intentionAction,
-                                 @NotNull String[] category,
+                                 String @NotNull [] category,
                                  @NotNull String descriptionDirectoryName) {
-    registerMetaData(new IntentionActionMetaData(intentionAction, getClassLoader(intentionAction), category, descriptionDirectoryName));
+    IntentionActionMetaData metaData = new IntentionActionMetaData(intentionAction, getClassLoader(intentionAction), category, descriptionDirectoryName);
+    MetaDataKey key = new MetaDataKey(metaData.myCategory, metaData.getFamily());
+    synchronized (this) {
+      // not added as searchable option - this method is deprecated and intentionAction extension point must be used instead
+      myMetaData.put(key, metaData);
+    }
   }
 
   private static ClassLoader getClassLoader(@NotNull IntentionAction intentionAction) {
@@ -113,7 +156,7 @@ public final class IntentionManagerSettings implements PersistentStateComponent<
   }
 
   private static String getFamilyName(@NotNull IntentionActionMetaData metaData) {
-    return StringUtil.join(metaData.myCategory, "/") + "/" + metaData.getFamily();
+    return StringUtil.join(metaData.myCategory, "/") + "/" + metaData.getAction().getFamilyName();
   }
 
   private static String getFamilyName(@NotNull IntentionAction action) {
@@ -142,35 +185,19 @@ public final class IntentionManagerSettings implements PersistentStateComponent<
     }
   }
 
-  private synchronized void registerMetaData(@NotNull IntentionActionMetaData metaData) {
-    MetaDataKey key = new MetaDataKey(metaData.myCategory, metaData.getFamily());
-    if (!myMetaData.containsKey(key)){
-      processMetaData(metaData);
+  private static void processMetaData(@NotNull IntentionActionMetaData metaData, @NotNull SearchableOptionProcessor processor) {
+    try {
+      String descriptionText = StringUtil.toLowerCase(metaData.getDescription().getText());
+      descriptionText = HTML_PATTERN.matcher(descriptionText).replaceAll(" ");
+      String displayName = IntentionSettingsConfigurable.getDisplayNameText();
+      String configurableId = IntentionSettingsConfigurable.HELP_ID;
+      String family = metaData.getFamily();
+      processor.addOptions(descriptionText, family, family, configurableId, displayName, false);
+      processor.addOptions(family, family, family, configurableId, displayName, true);
     }
-    myMetaData.put(key, metaData);
-  }
-
-  private static final ExecutorService ourExecutor = SequentialTaskExecutor.createSequentialApplicationPoolExecutor("Intentions Loader");
-
-  private static void processMetaData(@NotNull IntentionActionMetaData metaData) {
-    final Application app = ApplicationManager.getApplication();
-    if (app.isUnitTestMode() || app.isHeadlessEnvironment()) return;
-
-    final TextDescriptor description = metaData.getDescription();
-    ourExecutor.execute(() -> {
-      try {
-        SearchableOptionsRegistrar registrar = SearchableOptionsRegistrar.getInstance();
-        if (registrar == null) return;
-        @NonNls String descriptionText = StringUtil.toLowerCase(description.getText());
-        descriptionText = HTML_PATTERN.matcher(descriptionText).replaceAll(" ");
-        Set<String> words = registrar.getProcessedWordsWithoutStemming(descriptionText);
-        words.addAll(registrar.getProcessedWords(metaData.getFamily()));
-        registrar.addOptions(words, metaData.getFamily(), metaData.getFamily(), IntentionSettingsConfigurable.HELP_ID, IntentionSettingsConfigurable.DISPLAY_NAME);
-      }
-      catch (IOException e) {
-        LOG.error(e);
-      }
-    });
+    catch (IOException e) {
+      LOG.error(e);
+    }
   }
 
   synchronized void unregisterMetaData(@NotNull IntentionAction intentionAction) {
@@ -178,6 +205,22 @@ public final class IntentionManagerSettings implements PersistentStateComponent<
       if (entry.getValue().getAction() == intentionAction) {
         myMetaData.remove(entry.getKey());
         break;
+      }
+    }
+  }
+
+  private synchronized void unregisterMetaDataForEP(IntentionActionBean extension) {
+    MetaDataKey key = myExtensionMapping.remove(extension);
+    if (key != null) {
+      myMetaData.remove(key);
+    }
+  }
+
+  private static final class IntentionSearchableOptionContributor extends SearchableOptionContributor {
+    @Override
+    public void processOptions(@NotNull SearchableOptionProcessor processor) {
+      for (IntentionActionMetaData metaData : getInstance().getMetaData()) {
+        processMetaData(metaData, processor);
       }
     }
   }

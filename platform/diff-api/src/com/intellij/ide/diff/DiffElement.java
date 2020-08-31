@@ -40,7 +40,7 @@ import java.util.concurrent.Callable;
  * @author Konstantin Bulenkov
  */
 public abstract class DiffElement<T> {
-  public static final DiffElement[] EMPTY_ARRAY = new DiffElement[0];
+  public static final DiffElement<?>[] EMPTY_ARRAY = new DiffElement[0];
 
   public abstract String getPath();
 
@@ -75,10 +75,9 @@ public abstract class DiffElement<T> {
   /**
    * Returns content data as byte array. Can be null, if element for example is a container
    * @return content byte array
-   * @throws java.io.IOException when reading
+   * @throws IOException when reading
    */
-  @Nullable
-  public abstract byte[] getContent() throws IOException;
+  public abstract byte @Nullable [] getContent() throws IOException;
 
   @Nullable
   public InputStream getContentStream() throws IOException {

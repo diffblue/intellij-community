@@ -3,6 +3,7 @@ package com.intellij.diff.tools.util;
 
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ui.*;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -19,9 +20,10 @@ public class StatusPanel extends JPanel {
     myBusySpinner = new AsyncProcessIcon("StatusPanelSpinner");
     myBusySpinner.setVisible(false);
 
-    GridBag bag = new GridBag().setDefaultInsets(JBInsets.create(0, 2)).setDefaultFill(GridBagConstraints.BOTH);
+    GridBag bag = new GridBag().setDefaultInsets(JBInsets.create(0, 2)).setDefaultFill(GridBagConstraints.BOTH)
+      .setDefaultWeightY(1.0);
     add(myBusySpinner, bag.next());
-    add(myTextLabel, bag.next());
+    add(myTextLabel, bag.next().weightx(1.0));
     setBorder(JBUI.Borders.empty(0, 2));
   }
 
@@ -42,6 +44,7 @@ public class StatusPanel extends JPanel {
     }
   }
 
+  @Nls
   @Nullable
   protected String getMessage() {
     return null;

@@ -1,6 +1,9 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.customFrameDecorations.header.titleLabel
 
+import com.intellij.ide.RecentProjectsManager
+import com.intellij.ide.RecentProjectsManagerBase
+import com.intellij.ide.lightEdit.LightEdit
 import com.intellij.ide.ui.UISettings
 import com.intellij.ide.ui.UISettingsListener
 import com.intellij.openapi.Disposable
@@ -29,14 +32,30 @@ class CustomDecorationPath(val frame: JFrame, onBoundsChanged: () -> Unit) : Sel
   }
 
   private fun checkOpenedProjects() {
-    val instance = ProjectManager.getInstance()
-    project?.let { pr ->
-      multipleSameNamed = instance.openProjects.any { it != pr && it.name == pr.name }
+    val currentProject = project ?: return
+    val manager = RecentProjectsManager.getInstance() as RecentProjectsManagerBase
+    val currentPath = manager.getProjectPath(currentProject) ?: return
+    val currentName = manager.getProjectName(currentPath)
+    val sameNameInRecent = manager.getRecentPaths().any {
+      currentPath != it && currentName == manager.getProjectName(it)
     }
+    val sameNameInOpen = ProjectManager.getInstance().openProjects.any {
+      val path = manager.getProjectPath(it) ?: return@any false
+      val name = manager.getProjectName(path)
+      currentPath != path && currentName == name
+    }
+    multipleSameNamed = sameNameInRecent || sameNameInOpen
   }
 
   private val titleChangeListener = PropertyChangeListener{
-    updateProjectName()
+    updateProject()
+  }
+
+  override fun getCustomTitle(): String? {
+    if (LightEdit.owns(project)) {
+      return frame.title
+    }
+    return null
   }
 
   fun setActive(value: Boolean) {
@@ -46,7 +65,7 @@ class CustomDecorationPath(val frame: JFrame, onBoundsChanged: () -> Unit) : Sel
   }
 
   fun getListenerBounds(): List<RelativeRectangle> {
-    return if (!isClipped) {
+    return if (!toolTipNeeded) {
       emptyList()
     }
     else {
@@ -70,12 +89,13 @@ class CustomDecorationPath(val frame: JFrame, onBoundsChanged: () -> Unit) : Sel
       val ds = Disposer.newDisposable()
       Disposer.register(it, ds)
 
-      ApplicationManager.getApplication().messageBus.connect(ds).subscribe(ProjectManager.TOPIC, projectManagerListener)
-      ApplicationManager.getApplication().messageBus.connect(ds).subscribe(UISettingsListener.TOPIC,
-                                                                           UISettingsListener { checkTabPlacement() })
+      val busConnection = ApplicationManager.getApplication().messageBus.connect(ds)
+      busConnection.subscribe(ProjectManager.TOPIC, projectManagerListener)
+      busConnection.subscribe(UISettingsListener.TOPIC, UISettingsListener { checkTabPlacement() })
 
       disposable = ds
       checkTabPlacement()
+      checkOpenedProjects()
     }
   }
 

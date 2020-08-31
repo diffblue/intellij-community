@@ -1,10 +1,9 @@
-/*
- * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.siyeh.ipp.concatenation;
 
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.ig.PsiReplacementUtil;
 import com.siyeh.ig.psiutils.*;
 import com.siyeh.ipp.base.Intention;
@@ -37,7 +36,7 @@ public class ReplaceFormatStringWithConcatenationIntention extends Intention {
   }
 
   static int getPercentSCount(PsiExpression expression) {
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     if (!(expression instanceof PsiLiteralExpression || expression instanceof PsiPolyadicExpression)
           || !ExpressionUtils.hasStringType(expression)) {
       return -1;
@@ -107,7 +106,7 @@ public class ReplaceFormatStringWithConcatenationIntention extends Intention {
         builder.append("String.valueOf(").append(commentTracker.text(argument)).append(')');
       }
       else {
-        builder.append(commentTracker.text(argument));
+        builder.append(commentTracker.text(argument, ParenthesesUtils.ADDITIVE_PRECEDENCE));
       }
       start = end + 2;
       end = value.indexOf("%s", start);

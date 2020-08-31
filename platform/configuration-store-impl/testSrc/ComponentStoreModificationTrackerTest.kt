@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.configurationStore.schemeManager.ROOT_CONFIG
@@ -61,7 +61,7 @@ internal class ComponentStoreModificationTrackerTest {
     }
 
     val component = A()
-    componentStore.initComponent(component, null)
+    componentStore.initComponent(component, null, null)
 
     assertThat(component.modificationCount).isEqualTo(0)
     assertThat(component.stateCalledCount.get()).isEqualTo(0)
@@ -128,7 +128,7 @@ internal class ComponentStoreModificationTrackerTest {
     }
 
     val component = A()
-    componentStore.initComponent(component, null)
+    componentStore.initComponent(component, null, null)
 
     assertThat(component.modificationCount.get()).isEqualTo(0)
     assertThat(component.stateCalledCount.get()).isEqualTo(0)
@@ -183,12 +183,13 @@ private class MyComponentStore(testAppConfigPath: Path) : ChildlessComponentStor
   override val storageManager = MyStorageManager(testAppConfigPath)
 
   init {
-    setPath(testAppConfigPath.systemIndependentPath)
+    setPath(testAppConfigPath)
   }
 
-  override fun setPath(path: String) {
-    storageManager.addMacro(APP_CONFIG, path)
+  override fun setPath(path: Path) {
+    val systemIndependentPath = path.systemIndependentPath
+    storageManager.addMacro(APP_CONFIG, systemIndependentPath)
     // yes, in tests APP_CONFIG equals to ROOT_CONFIG (as ICS does)
-    storageManager.addMacro(ROOT_CONFIG, path)
+    storageManager.addMacro(ROOT_CONFIG, systemIndependentPath)
   }
 }

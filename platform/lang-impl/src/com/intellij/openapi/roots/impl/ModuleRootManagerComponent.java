@@ -9,7 +9,6 @@ import com.intellij.openapi.roots.impl.storage.ClassPathStorageUtil;
 import com.intellij.openapi.roots.impl.storage.ClasspathStorage;
 import com.intellij.openapi.roots.libraries.LibraryTable;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager;
 import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
@@ -17,8 +16,10 @@ import org.jetbrains.annotations.TestOnly;
 import java.util.List;
 
 /**
- * @author yole
+ * This class isn't used in the new implementation of project model, which is based on {@link com.intellij.workspaceModel.ide Workspace Model}.
+ * It shouldn't be used directly, its base class {@link com.intellij.openapi.roots.ModuleRootManagerEx} should be used instead.
  */
+
 @State(
   name = "NewModuleRootManager",
   storages = {
@@ -28,13 +29,11 @@ import java.util.List;
   // will be changed only on actual user change, so, to speed up module loading, disable
   useLoadedStateAsExisting = false
 )
-public class ModuleRootManagerComponent extends ModuleRootManagerImpl implements
+class ModuleRootManagerComponent extends ModuleRootManagerImpl implements
                                                                       PersistentStateComponentWithModificationTracker<ModuleRootManagerImpl.ModuleRootManagerState>,
                                                                       StateStorageChooserEx {
-  public ModuleRootManagerComponent(Module module,
-                                    ProjectRootManagerImpl projectRootManager,
-                                    VirtualFilePointerManager filePointerManager) {
-    super(module, projectRootManager, filePointerManager);
+  ModuleRootManagerComponent(Module module) {
+    super(module);
   }
 
   @NotNull

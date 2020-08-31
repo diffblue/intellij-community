@@ -27,7 +27,6 @@ import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.psiutils.CloneUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.TypeUtils;
 import org.intellij.lang.annotations.Pattern;
 import org.jetbrains.annotations.NonNls;
@@ -40,13 +39,6 @@ public class MismatchedArrayReadWriteInspection extends BaseInspection {
   @NotNull
   public String getID() {
     return "MismatchedReadAndWriteOfArray";
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "mismatched.read.write.array.display.name");
   }
 
   @Override
@@ -123,7 +115,7 @@ public class MismatchedArrayReadWriteInspection extends BaseInspection {
     }
 
     static boolean mayBeAccessedElsewhere(PsiExpression expression) {
-      expression = ParenthesesUtils.stripParentheses(expression);
+      expression = PsiUtil.skipParenthesizedExprDown(expression);
       if (expression == null) {
         return false;
       }

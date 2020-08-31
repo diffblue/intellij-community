@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.ui.tree.render;
 
 import com.intellij.debugger.engine.JavaValue;
@@ -30,9 +30,6 @@ import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.List;
 
-/**
- * @author egor
- */
 public class CustomFieldInplaceEditor extends XDebuggerTreeInplaceEditor {
   private final UserExpressionDescriptorImpl myDescriptor;
   protected final EnumerationChildrenRenderer myRenderer;
@@ -73,14 +70,14 @@ public class CustomFieldInplaceEditor extends XDebuggerTreeInplaceEditor {
         enumerationChildrenRenderer.setAppendDefaultChildren(true);
 
         Renderer lastRenderer = descriptor.getLastRenderer();
-        if (lastRenderer instanceof CompoundNodeRenderer &&
+        if (lastRenderer instanceof CompoundReferenceRenderer &&
             NodeRendererSettings.getInstance().getCustomRenderers().contains((NodeRenderer)lastRenderer) &&
-            !(((CompoundNodeRenderer)lastRenderer).getChildrenRenderer() instanceof ExpressionChildrenRenderer)) {
-            ((CompoundNodeRenderer)lastRenderer).setChildrenRenderer(enumerationChildrenRenderer);
+            !(((CompoundReferenceRenderer)lastRenderer).getChildrenRenderer() instanceof ExpressionChildrenRenderer)) {
+            ((CompoundReferenceRenderer)lastRenderer).setChildrenRenderer(enumerationChildrenRenderer);
         }
         else {
           NodeRenderer renderer =
-            NodeRendererSettings.getInstance().createCompoundTypeRenderer(name, name, null, enumerationChildrenRenderer);
+            NodeRendererSettings.getInstance().createCompoundReferenceRenderer(name, name, null, enumerationChildrenRenderer);
           renderer.setEnabled(true);
           NodeRendererSettings.getInstance().getCustomRenderers().addRenderer(renderer);
           NodeRendererSettings.getInstance().fireRenderersChanged();

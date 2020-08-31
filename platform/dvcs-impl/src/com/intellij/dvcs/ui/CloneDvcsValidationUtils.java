@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.dvcs.ui;
 
 import com.intellij.openapi.ui.ValidationInfo;
@@ -13,7 +13,9 @@ import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.util.regex.Pattern;
 
-public class CloneDvcsValidationUtils {
+import static kotlin.text.StringsKt.removePrefix;
+
+public final class CloneDvcsValidationUtils {
   /**
    * The pattern for SSH URL-s in form [user@]host:path
    */
@@ -36,7 +38,7 @@ public class CloneDvcsValidationUtils {
       if (!directoryPath.toFile().exists()) {
         Files.createDirectories(directoryPath);
       }
-      else if (!directoryPath.toFile().isDirectory() || !Files.isWritable(directoryPath)) {
+      else if (!directoryPath.toFile().isDirectory()) {
         return new ValidationInfo(DvcsBundle.getString("clone.destination.directory.error.access")).withOKEnabled();
       }
       return null;
@@ -94,6 +96,8 @@ public class CloneDvcsValidationUtils {
       return new ValidationInfo(DvcsBundle.getString("clone.repository.url.error.empty"), component);
     }
 
+    repository = sanitizeCloneUrl(repository);
+
     // Is it a proper URL?
     try {
       if (new URI(repository).isAbsolute()) {
@@ -125,5 +129,10 @@ public class CloneDvcsValidationUtils {
     }
 
     return new ValidationInfo(DvcsBundle.getString("clone.repository.url.error.invalid"), component);
+  }
+
+  @NotNull
+  static String sanitizeCloneUrl(@NotNull String urlText) {
+    return removePrefix(removePrefix(urlText.trim(), "git clone"), "hg clone").trim(); //NON-NLS
   }
 }

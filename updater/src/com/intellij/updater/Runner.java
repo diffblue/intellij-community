@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import org.apache.log4j.FileAppender;
@@ -12,7 +12,7 @@ import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.Files;
+import java.nio.file.*;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -35,6 +35,42 @@ public class Runner {
   }
 
   public static void main(String[] args) {
+    initLogger();
+    try {
+      _main(args);
+    }
+    catch (Throwable t) {
+      logger().error("internal error", t);
+      System.exit(2);
+    }
+  }
+
+  private static void initLogger() {
+    String logDirectory = Utils.findDirectory(1_000_000L);
+    logPath = new File(logDirectory, "idea_updater.log").getAbsolutePath();
+
+    FileAppender update = new FileAppender();
+    update.setFile(logPath);
+    update.setLayout(new PatternLayout("%d{dd/MM HH:mm:ss} %-5p %C{1}.%M - %m%n"));
+    update.setThreshold(Level.ALL);
+    update.setAppend(true);
+    update.activateOptions();
+
+    FileAppender updateError = new FileAppender();
+    updateError.setFile(new File(logDirectory, ERROR_LOG_FILE_NAME).getAbsolutePath());
+    updateError.setLayout(new PatternLayout("%d{dd/MM HH:mm:ss} %-5p %C{1}.%M - %m%n"));
+    updateError.setThreshold(Level.ERROR);
+    updateError.setAppend(false);
+    updateError.activateOptions();
+
+    logger = Logger.getLogger("com.intellij.updater");
+    logger.addAppender(updateError);
+    logger.addAppender(update);
+    logger.setLevel(Level.ALL);
+    logger.info("--- Updater started ---");
+  }
+
+  private static void _main(String[] args) {
     String jarFile = getArgument(args, "jar");
     if (jarFile == null) {
       jarFile = resolveJarFile();
@@ -48,7 +84,6 @@ public class Runner {
       String patchFile = args[5];
 
       checkCaseSensitivity(newFolder);
-      initLogger();
 
       boolean binary = hasArgument(args, "zip_as_binary");
       boolean strict = hasArgument(args, "strict");
@@ -90,12 +125,20 @@ public class Runner {
     }
     else if (args.length >= 2 && ("install".equals(args[0]) || "apply".equals(args[0])) ||
              args.length >= 3 && ("batch-install".equals(args[0]))) {
-      String destFolder = args[1];
-      checkCaseSensitivity(destFolder);
+      String destPath = args[1];
 
-      initLogger();
+      Path destDirectory = Paths.get(destPath);
+      try {
+        destDirectory = destDirectory.toRealPath();
+      }
+      catch (InvalidPathException | IOException e) {
+        logger().error(e);
+      }
+
+      checkCaseSensitivity(destDirectory.toString());
+
       logger().info("args: " + Arrays.toString(args));
-      logger().info("destFolder: " + destFolder + ", case-sensitive: " + ourCaseSensitiveFs);
+      logger().info("destination: " + destPath + " (" + destDirectory + "), case-sensitive: " + ourCaseSensitiveFs);
 
       UpdaterUI ui;
       if ("install".equals(args[0]) || "batch-install".equals(args[0])) {
@@ -110,16 +153,16 @@ public class Runner {
 
       boolean backup = !hasArgument(args, "no-backup");
       boolean success;
-      if (!new File(destFolder).isDirectory()) {
-        ui.showError("Invalid target directory: " + destFolder);
+      if (!Files.isDirectory(destDirectory, LinkOption.NOFOLLOW_LINKS)) {
+        ui.showError("Invalid target directory: " + destPath);
         success = false;
       }
       else if (!"batch-install".equals(args[0])) {
-        success = install(jarFile, destFolder, ui, backup);
+        success = install(jarFile, destDirectory, ui, backup);
       }
       else {
         String[] patches = args[2].split(File.pathSeparator);
-        success = install(patches, destFolder, ui, backup);
+        success = install(patches, destDirectory, ui, backup);
       }
       System.exit(success ? 0 : 1);
     }
@@ -159,33 +202,6 @@ public class Runner {
       }
     }
     return map;
-  }
-
-  private static void initLogger() {
-    if (logger == null) {
-      String logDirectory = Utils.findDirectory(1_000_000L);
-      logPath = new File(logDirectory, "idea_updater.log").getAbsolutePath();
-
-      FileAppender update = new FileAppender();
-      update.setFile(logPath);
-      update.setLayout(new PatternLayout("%d{dd/MM HH:mm:ss} %-5p %C{1}.%M - %m%n"));
-      update.setThreshold(Level.ALL);
-      update.setAppend(true);
-      update.activateOptions();
-
-      FileAppender updateError = new FileAppender();
-      updateError.setFile(new File(logDirectory, ERROR_LOG_FILE_NAME).getAbsolutePath());
-      updateError.setLayout(new PatternLayout("%d{dd/MM HH:mm:ss} %-5p %C{1}.%M - %m%n"));
-      updateError.setThreshold(Level.ERROR);
-      updateError.setAppend(false);
-      updateError.activateOptions();
-
-      logger = Logger.getLogger("com.intellij.updater");
-      logger.addAppender(updateError);
-      logger.addAppender(update);
-      logger.setLevel(Level.ALL);
-      logger.info("--- Updater started ---");
-    }
   }
 
   public static List<String> extractArguments(String[] args, String paramName) {
@@ -292,7 +308,7 @@ public class Runner {
     Utils.cleanup();
   }
 
-  private static boolean install(String patch, String destPath, UpdaterUI ui, boolean doBackup) {
+  private static boolean install(String patch, Path dest, UpdaterUI ui, boolean doBackup) {
     try {
       PatchFileCreator.PreparationResult preparationResult;
       File backupDir = null;
@@ -312,11 +328,10 @@ public class Runner {
 
         ui.checkCancelled();
 
-        File destDir = new File(destPath);
+        File destDir = dest.toFile();
         preparationResult = PatchFileCreator.prepareAndValidate(patchFile, destDir, ui);
 
-        List<ValidationResult> problems = preparationResult.validationResults;
-        Map<String, ValidationResult.Option> resolutions = problems.isEmpty() ? Collections.emptyMap() : ui.askUser(problems);
+        Map<String, ValidationResult.Option> resolutions = askForResolutions(preparationResult.validationResults, ui);
 
         if (doBackup) {
           backupDir = Utils.getTempFile("backup");
@@ -379,7 +394,7 @@ public class Runner {
     finally {
       try {
         cleanup(ui);
-        refreshApplicationIcon(destPath);
+        refreshApplicationIcon(dest.toString());
       }
       catch (Throwable t) {
         logger().warn("cleanup failed", t);
@@ -387,10 +402,10 @@ public class Runner {
     }
   }
 
-  private static boolean install(String[] patches, String dest, UpdaterUI ui, boolean backup) {
+  private static boolean install(String[] patches, Path dest, UpdaterUI ui, boolean backup) {
     try {
       List<File> patchFiles = new ArrayList<>(patches.length);
-      File destDir = new File(dest);
+      File destDir = dest.toFile();
       File backupDir = null;
 
       String jarName = null;
@@ -442,8 +457,7 @@ public class Runner {
         for (File patchFile : patchFiles) {
           PatchFileCreator.PreparationResult preparationResult = PatchFileCreator.prepareAndValidate(patchFile, destDir, ui);
 
-          List<ValidationResult> problems = preparationResult.validationResults;
-          Map<String, ValidationResult.Option> resolutions = problems.isEmpty() ? Collections.emptyMap() : ui.askUser(problems);
+          Map<String, ValidationResult.Option> resolutions = askForResolutions(preparationResult.validationResults, ui);
 
           PatchFileCreator.ApplicationResult applicationResult = PatchFileCreator.apply(preparationResult, resolutions, null, ui);
           needRestore |= !applicationResult.appliedActions.isEmpty();
@@ -512,12 +526,28 @@ public class Runner {
     finally {
       try {
         cleanup(ui);
-        refreshApplicationIcon(dest);
+        refreshApplicationIcon(dest.toString());
       }
       catch (Throwable t) {
         logger().warn("cleanup failed", t);
       }
     }
+  }
+
+  private static Map<String, ValidationResult.Option> askForResolutions(
+    List<ValidationResult> problems, UpdaterUI ui
+  ) throws OperationCancelledException {
+    if (problems.isEmpty()) return Collections.emptyMap();
+    logger().warn("conflicts:");
+    for (ValidationResult problem : problems) {
+      logger().warn("  " + problem.action.name() + " @ " + problem.path + ": " + problem.message);
+    }
+    Map<String, ValidationResult.Option> resolutions = ui.askUser(problems);
+    logger().warn("resolutions:");
+    for (Map.Entry<String, ValidationResult.Option> entry : resolutions.entrySet()) {
+      logger().warn("  " + entry.getKey() + ": " + entry.getValue());
+    }
+    return resolutions;
   }
 
   private static void refreshApplicationIcon(String destPath) {

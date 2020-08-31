@@ -1,12 +1,9 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.uast.test.java
 
-import com.intellij.testFramework.LightProjectDescriptor
 import org.junit.Test
 
 class SimpleJavaRenderLogTest : AbstractJavaRenderLogTest() {
-  override fun getProjectDescriptor(): LightProjectDescriptor = JAVA_13
-
   @Test
   fun testDataClass() = doTest("DataClass/DataClass.java")
 
@@ -63,4 +60,7 @@ class SimpleJavaRenderLogTest : AbstractJavaRenderLogTest() {
 
   @Test
   fun testBlock() = doTest("Simple/Block.java")
+
+  @Test
+  fun testTryCatch() = doTest("Simple/TryCatch.java")
 }

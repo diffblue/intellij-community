@@ -1,10 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.debugger.pydev;
 
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.intellij.execution.ExecutionException;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,21 +22,18 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
 
-/**
- * @author traff
- */
 public class MultiProcessDebugger implements ProcessDebugger {
-  private static final Logger LOG = Logger.getInstance("#com.jetbrains.python.pydev.remote.MultiProcessDebugger");
+  private static final Logger LOG = Logger.getInstance(MultiProcessDebugger.class);
 
   private final IPyDebugProcess myDebugProcess;
   private final ServerSocket myServerSocket;
   private final int myTimeoutInMillis;
 
   private final RemoteDebugger myMainDebugger;
-  private final List<RemoteDebugger> myOtherDebuggers = Lists.newArrayList();
+  private final List<RemoteDebugger> myOtherDebuggers = new ArrayList<>();
   private ServerSocket myDebugServerSocket;
   private DebuggerProcessAcceptor myDebugProcessAcceptor;
-  private final List<DebuggerProcessListener> myOtherDebuggerCloseListener = Lists.newArrayList();
+  private final List<DebuggerProcessListener> myOtherDebuggerCloseListener = new ArrayList<>();
 
   private final ThreadRegistry myThreadRegistry = new ThreadRegistry();
 
@@ -53,6 +49,7 @@ public class MultiProcessDebugger implements ProcessDebugger {
       myDebugServerSocket = createServerSocket();
     }
     catch (ExecutionException e) {
+      LOG.error("Failed to start debugger:", e);
     }
     myMainDebugger = new RemoteDebugger(myDebugProcess, myDebugServerSocket, myTimeoutInMillis);
   }
@@ -85,18 +82,25 @@ public class MultiProcessDebugger implements ProcessDebugger {
     ApplicationManager.getApplication().executeOnPooledThread(myDebugProcessAcceptor);
   }
 
-  private static void sendDebuggerPort(Socket socket, ServerSocket serverSocket, IPyDebugProcess processHandler) throws IOException {
+  private static void sendDebuggerPort(@NotNull Socket socket, @NotNull ServerSocket serverSocket, @NotNull IPyDebugProcess processHandler)
+    throws IOException {
     int port = processHandler.handleDebugPort(serverSocket.getLocalPort());
     PrintWriter writer = new PrintWriter(socket.getOutputStream());
-    writer.println(99 + "\t" + -1 + "\t" + port);
-    writer.flush();
-    socket.close();
+    try {
+      writer.println(99 + "\t" + -1 + "\t" + port);
+      writer.flush();
+    }
+    finally {
+      socket.close();
+      writer.close();
+    }
   }
 
+  @NotNull
   private static ServerSocket createServerSocket() throws ExecutionException {
     final ServerSocket serverSocket;
     try {
-      //noinspection SocketOpenedButNotSafelyClosed
+      //noinspection IOResourceOpenedButNotSafelyClosed,SocketOpenedButNotSafelyClosed
       serverSocket = new ServerSocket(0);
     }
     catch (IOException e) {
@@ -169,6 +173,12 @@ public class MultiProcessDebugger implements ProcessDebugger {
   @Override
   public XValueChildrenList loadFrame(String threadId, String frameId) throws PyDebuggerException {
     return debugger(threadId).loadFrame(threadId, frameId);
+  }
+
+  @Override
+  public  List<Pair<String, Boolean>> getSmartStepIntoVariants(String threadId, String frameId, int startContextLine, int endContextLine)
+    throws PyDebuggerException {
+    return debugger(threadId).getSmartStepIntoVariants(threadId, frameId, startContextLine, endContextLine);
   }
 
   @Override
@@ -263,6 +273,7 @@ public class MultiProcessDebugger implements ProcessDebugger {
     if (myOtherDebuggers.size() > 0) {
       //here we add process id to thread name in case there are more then one process
       return Collections.unmodifiableCollection(Collections2.transform(threads, t -> {
+        if (t == null) return null;
         String threadName = ThreadRegistry.threadName(t.getName(), t.getId());
         PyThreadInfo newThread =
           new PyThreadInfo(t.getId(), threadName, t.getFrames(),
@@ -278,7 +289,7 @@ public class MultiProcessDebugger implements ProcessDebugger {
   }
 
   private List<PyThreadInfo> collectAllThreads() {
-    List<PyThreadInfo> result = Lists.newArrayList();
+    List<PyThreadInfo> result = new ArrayList<>();
 
     result.addAll(myMainDebugger.getThreads());
 
@@ -309,7 +320,7 @@ public class MultiProcessDebugger implements ProcessDebugger {
       }
     }
     if (!allConnected) {
-      List<RemoteDebugger> newList = Lists.newArrayList();
+      List<RemoteDebugger> newList = new ArrayList<>();
       for (RemoteDebugger d : debuggers) {
         if (d.isConnected()) {
           newList.add(d);
@@ -355,8 +366,8 @@ public class MultiProcessDebugger implements ProcessDebugger {
   }
 
   @Override
-  public void smartStepInto(String threadId, String functionName) {
-    debugger(threadId).smartStepInto(threadId, functionName);
+  public void smartStepInto(String threadId, String frameId, String functionName, int callOrder, int contextStartLine, int contextEndLine) {
+    debugger(threadId).smartStepInto(threadId, frameId, functionName, callOrder, contextStartLine, contextEndLine);
   }
 
   @Override
@@ -401,16 +412,17 @@ public class MultiProcessDebugger implements ProcessDebugger {
 
   @Override
   public void removeBreakpoint(@NotNull String typeId, @NotNull String file, int line) {
-    for (ProcessDebugger d : allDebuggers()) {
-      d.removeBreakpoint(typeId, file, line);
-    }
+    allDebuggers().forEach(d -> d.removeBreakpoint(typeId, file, line));
   }
 
   @Override
   public void setShowReturnValues(boolean isShowReturnValues) {
-    for (ProcessDebugger d : allDebuggers()) {
-      d.setShowReturnValues(isShowReturnValues);
-    }
+    allDebuggers().forEach(d -> d.setShowReturnValues(isShowReturnValues));
+  }
+
+  @Override
+  public void setUnitTestDebuggingMode() {
+    allDebuggers().forEach(d -> d.setUnitTestDebuggingMode());
   }
 
   private static class DebuggerProcessAcceptor implements Runnable {
@@ -490,7 +502,7 @@ public class MultiProcessDebugger implements ProcessDebugger {
     }
 
     private Set<String> collectThreads(RemoteDebugger debugger) {
-      Set<String> result = Sets.newHashSet();
+      Set<String> result = new HashSet<String>();
       for (Map.Entry<String, RemoteDebugger> entry : myMultiProcessDebugger.myThreadRegistry.myThreadIdToDebugger.entrySet()) {
         if (entry.getValue() == debugger) {
           result.add(entry.getKey());

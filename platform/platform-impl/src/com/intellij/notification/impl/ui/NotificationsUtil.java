@@ -1,24 +1,11 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.notification.impl.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationListener;
+import com.intellij.notification.impl.NotificationCollector;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.util.text.StringUtil;
@@ -36,8 +23,8 @@ import java.awt.*;
 /**
  * @author spleaner
  */
-public class NotificationsUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.notification.impl.ui.NotificationsUtil");
+public final class NotificationsUtil {
+  private static final Logger LOG = Logger.getInstance(NotificationsUtil.class);
   private static final int TITLE_LIMIT = 1000;
   private static final int CONTENT_LIMIT = 10000;
 
@@ -156,6 +143,7 @@ public class NotificationsUtil {
         if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED) {
           final NotificationListener listener1 = notification.getListener();
           if (listener1 != null) {
+            NotificationCollector.getInstance().logHyperlinkClicked(notification);
             listener1.hyperlinkUpdate(notification, e);
           }
         }

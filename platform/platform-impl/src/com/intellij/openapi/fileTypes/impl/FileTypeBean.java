@@ -1,21 +1,28 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileTypes.impl;
 
-import com.intellij.openapi.extensions.AbstractExtensionPointBean;
+import com.intellij.openapi.extensions.PluginAware;
+import com.intellij.openapi.extensions.PluginDescriptor;
+import com.intellij.openapi.extensions.PluginId;
+import com.intellij.openapi.extensions.RequiredElement;
 import com.intellij.openapi.fileTypes.FileNameMatcher;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.util.SmartList;
 import com.intellij.util.xmlb.annotations.Attribute;
-import com.intellij.openapi.extensions.RequiredElement;
+import com.intellij.util.xmlb.annotations.Transient;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class FileTypeBean extends AbstractExtensionPointBean {
+public final class FileTypeBean implements PluginAware {
   private final List<FileNameMatcher> myMatchers = new SmartList<>();
+
+  private PluginDescriptor myPluginDescriptor;
 
   /**
    * Name of the class implementing the file type (must be a subclass of {@link FileType}). This can be omitted
@@ -75,13 +82,36 @@ public class FileTypeBean extends AbstractExtensionPointBean {
   @Attribute("language")
   public String language;
 
+  /**
+   * Semicolon-separated list of hash bang patterns to be associated with the file type
+   */
+  @Attribute("hashBangs")
+  @NonNls
+  public String hashBangs;
+
   @ApiStatus.Internal
-  public void addMatchers(List<? extends FileNameMatcher> matchers) {
+  public void addMatchers(@NotNull List<? extends FileNameMatcher> matchers) {
     myMatchers.addAll(matchers);
   }
 
   @ApiStatus.Internal
-  public List<FileNameMatcher> getMatchers() {
+  public @NotNull List<FileNameMatcher> getMatchers() {
     return new ArrayList<>(myMatchers);
+  }
+
+  @Transient
+  @NotNull
+  public PluginDescriptor getPluginDescriptor() {
+    return myPluginDescriptor;
+  }
+
+  @Override
+  public void setPluginDescriptor(@NotNull PluginDescriptor pluginDescriptor) {
+    myPluginDescriptor = pluginDescriptor;
+  }
+
+  @Nullable
+  public PluginId getPluginId() {
+    return myPluginDescriptor.getPluginId();
   }
 }

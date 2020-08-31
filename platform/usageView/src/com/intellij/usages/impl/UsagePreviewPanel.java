@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.usages.impl;
 
@@ -26,7 +12,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.event.VisibleAreaEvent;
 import com.intellij.openapi.editor.event.VisibleAreaListener;
 import com.intellij.openapi.editor.ex.EditorEx;
@@ -63,13 +48,11 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
-/**
- * @author cdr
- */
 public class UsagePreviewPanel extends UsageContextPanelBase implements DataProvider {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.usages.impl.UsagePreviewPanel");
+  private static final Logger LOG = Logger.getInstance(UsagePreviewPanel.class);
   private Editor myEditor;
   private final boolean myIsEditor;
   private int myLineHeight;
@@ -118,7 +101,7 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
     @NotNull
     @Override
     public String getTabTitle() {
-      return "Preview";
+      return UsageViewBundle.message("tab.title.preview");
     }
   }
 
@@ -173,7 +156,7 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
                                @NotNull final Project project,
                                boolean highlightOnlyNameElements,
                                int highlightLayer) {
-    LOG.assertTrue(!PsiDocumentManager.getInstance(project).hasUncommitedDocuments());
+    LOG.assertTrue(PsiDocumentManager.getInstance(project).isCommitted(editor.getDocument()));
 
     MarkupModel markupModel = editor.getMarkupModel();
     for (RangeHighlighter highlighter : markupModel.getAllHighlighters()) {
@@ -193,14 +176,11 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
       if (psiElement == null || !psiElement.isValid()) continue;
       int offsetInFile = psiElement.getTextOffset();
 
-      EditorColorsManager colorManager = EditorColorsManager.getInstance();
-      TextAttributes attributes = colorManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-
       TextRange elementRange = psiElement.getTextRange();
       TextRange infoRange = info.getRangeInElement();
-      TextRange textRange = infoRange == null 
-                            || infoRange.getStartOffset() > elementRange.getLength() 
-                            || infoRange.getEndOffset() > elementRange.getLength() ? null 
+      TextRange textRange = infoRange == null
+                            || infoRange.getStartOffset() > elementRange.getLength()
+                            || infoRange.getEndOffset() > elementRange.getLength() ? null
                                                                                    : elementRange.cutOut(infoRange);
       if (textRange == null) textRange = elementRange;
       // hack to determine element range to highlight
@@ -214,9 +194,11 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
       // highlight injected element in host document textrange
       textRange = InjectedLanguageManager.getInstance(project).injectedToHost(psiElement, textRange);
 
-      RangeHighlighter highlighter = markupModel.addRangeHighlighter(textRange.getStartOffset(), textRange.getEndOffset(),
-                                                                                   highlightLayer, attributes,
-                                                                                   HighlighterTargetArea.EXACT_RANGE);
+      RangeHighlighter highlighter = markupModel.addRangeHighlighter(EditorColors.SEARCH_RESULT_ATTRIBUTES,
+                                                                     textRange.getStartOffset(),
+                                                                     textRange.getEndOffset(),
+                                                                     highlightLayer,
+                                                                     HighlighterTargetArea.EXACT_RANGE);
       highlighter.putUserData(IN_PREVIEW_USAGE_FLAG, Boolean.TRUE);
       if (infoRange != null && findModel != null && findModel.isReplaceState()) {
         RangeHighlighter boxHighlighter
@@ -245,8 +227,8 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
       String replacementPreviewText = FindManager.getInstance(project)
                                                  .getStringToReplace(editor.getDocument().getText(range), findModel, range.getStartOffset(),
                                                                      editor.getDocument().getText());
-    if (!Registry.is("ide.find.show.replacement.hint.for.simple.regexp")
-        && (Comparing.equal(replacementPreviewText, findModel.getStringToReplace()))) {
+      if (!Registry.is("ide.find.show.replacement.hint.for.simple.regexp")
+        && (Objects.equals(replacementPreviewText, findModel.getStringToReplace()))) {
       return;
     }
     ReplacementView replacementView = new ReplacementView(replacementPreviewText);
@@ -352,9 +334,7 @@ public class UsagePreviewPanel extends UsageContextPanelBase implements DataProv
     }
     PsiFile psiFile = null;
     for (UsageInfo info : infos) {
-      PsiElement element = info.getElement();
-      if (element == null) continue;
-      PsiFile file = element.getContainingFile();
+      PsiFile file = info.getFile();
       if (psiFile == null) {
         psiFile = file;
       } else {

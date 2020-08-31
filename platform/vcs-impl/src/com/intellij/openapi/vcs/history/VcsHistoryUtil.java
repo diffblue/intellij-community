@@ -1,27 +1,13 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.history;
 
 import com.intellij.diff.DiffContentFactoryEx;
 import com.intellij.diff.DiffManager;
 import com.intellij.diff.DiffRequestFactoryImpl;
+import com.intellij.diff.DiffVcsDataKeys;
 import com.intellij.diff.contents.DiffContent;
 import com.intellij.diff.requests.DiffRequest;
 import com.intellij.diff.requests.SimpleDiffRequest;
-import com.intellij.diff.util.DiffUserDataKeysEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
@@ -44,9 +30,9 @@ import java.io.IOException;
 
 import static com.intellij.diff.DiffRequestFactoryImpl.DIFF_TITLE_RENAME_SEPARATOR;
 
-public class VcsHistoryUtil {
+public final class VcsHistoryUtil {
   @Deprecated
-  public static final Key<Pair<FilePath, VcsRevisionNumber>> REVISION_INFO_KEY = DiffUserDataKeysEx.REVISION_INFO;
+  public static final Key<Pair<FilePath, VcsRevisionNumber>> REVISION_INFO_KEY = DiffVcsDataKeys.REVISION_INFO;
 
   private static final Logger LOG = Logger.getInstance(VcsHistoryUtil.class);
 
@@ -105,8 +91,8 @@ public class VcsHistoryUtil {
 
     final DiffRequest request = new SimpleDiffRequest(title, diffContent1, diffContent2, title1, title2);
 
-    diffContent1.putUserData(DiffUserDataKeysEx.REVISION_INFO, getRevisionInfo(revision1));
-    diffContent2.putUserData(DiffUserDataKeysEx.REVISION_INFO, getRevisionInfo(revision2));
+    diffContent1.putUserData(DiffVcsDataKeys.REVISION_INFO, getRevisionInfo(revision1));
+    diffContent2.putUserData(DiffVcsDataKeys.REVISION_INFO, getRevisionInfo(revision2));
 
     WaitForProgressToShow.runOrInvokeLaterAboveProgress(() -> DiffManager.getInstance().showDiff(project, request), null, project);
   }
@@ -132,8 +118,7 @@ public class VcsHistoryUtil {
     return null;
   }
 
-  @NotNull
-  public static byte[] loadRevisionContent(@NotNull VcsFileRevision revision) throws VcsException, IOException {
+  public static byte @NotNull [] loadRevisionContent(@NotNull VcsFileRevision revision) throws VcsException, IOException {
     byte[] content = revision.loadContent();
     if (content == null) throw new VcsException("Failed to load content for revision " + revision.getRevisionNumber().asString());
     return content;
@@ -154,7 +139,7 @@ public class VcsHistoryUtil {
   }
 
   @NotNull
-  private static DiffContent createContent(@NotNull Project project, @NotNull byte[] content, @NotNull VcsFileRevision revision,
+  private static DiffContent createContent(@NotNull Project project, byte @NotNull [] content, @NotNull VcsFileRevision revision,
                                            @NotNull FilePath filePath) throws IOException {
     DiffContentFactoryEx contentFactory = DiffContentFactoryEx.getInstanceEx();
     if (isCurrent(revision)) {
@@ -185,7 +170,7 @@ public class VcsHistoryUtil {
                                                  @NotNull final FilePath filePath,
                                                  @NotNull final VcsFileRevision older,
                                                  @NotNull final VcsFileRevision newer) {
-    new Task.Backgroundable(project, "Comparing Revisions...") {
+    new Task.Backgroundable(project, VcsBundle.message("file.history.diff.revisions.process")) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
         try {

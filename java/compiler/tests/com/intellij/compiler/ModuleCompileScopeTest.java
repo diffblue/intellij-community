@@ -1,3 +1,4 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.compiler;
 
 import com.intellij.openapi.module.Module;
@@ -11,11 +12,7 @@ import java.io.File;
 
 import static com.intellij.util.io.TestFileSystemBuilder.fs;
 
-/**
- * @author nik
- */
 public class ModuleCompileScopeTest extends BaseCompilerTestCase {
-
   public void testCompileFile() {
     VirtualFile a = createFile("src/A.java", "class A{}");
     createFile("src/B.java", "class B{}");
@@ -70,7 +67,8 @@ public class ModuleCompileScopeTest extends BaseCompilerTestCase {
 
   public void testForceCompileUpToDateFileAndDoNotCompileDependentTestClass() {
     VirtualFile a = createFile("src/A.java", "class A{ public static void foo(int param) {} }");
-    VirtualFile b = createFile("testSrc/B.java", "class B { void bar() {A.foo(10);}}");
+    final String bText = "class B { void bar() {A.foo(10);}}";
+    VirtualFile b = createFile("testSrc/B.java", bText);
     Module module = addModule("a", a.getParent(), b.getParent());
     make(module);
     assertOutput(module, fs().file("A.class"), false);
@@ -87,10 +85,11 @@ public class ModuleCompileScopeTest extends BaseCompilerTestCase {
     deleteFile(testClassFile);
     make(module);
     assertOutput(module, fs());
+    changeFile(b, bText + "  "); // touch b
+
     compile(true, a);
     assertOutput(module, fs().file("A.class"), false);
-    assertOutput(module, fs(), true);
-    assertModulesUpToDate();
+    assertOutput(module, fs(), true);  // make sure B is not compiled, even if it is modified
   }
 
   public void testMakeTwoModules() {

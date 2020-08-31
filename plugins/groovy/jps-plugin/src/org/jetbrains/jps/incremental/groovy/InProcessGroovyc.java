@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.incremental.groovy;
 
 import com.intellij.execution.process.ProcessOutputTypes;
@@ -6,7 +6,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.ClassLoaderUtil;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.reference.SoftReference;
@@ -20,30 +19,26 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.groovy.compiler.rt.ClassDependencyLoader;
 import org.jetbrains.groovy.compiler.rt.GroovyRtConstants;
 import org.jetbrains.jps.incremental.CompileContext;
+import org.jetbrains.jps.service.SharedThreadPool;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * @author peter
  */
-class InProcessGroovyc implements GroovycFlavor {
-  private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.incremental.groovy.InProcessGroovyc");
+final class InProcessGroovyc implements GroovycFlavor {
+  private static final Logger LOG = Logger.getInstance(InProcessGroovyc.class);
   private static final Pattern GROOVY_ALL_JAR_PATTERN = Pattern.compile("groovy-all(-(.*))?\\.jar");
-  private static final Pattern GROOVY_JAR_PATTERN = Pattern.compile("groovy(-(.*))?\\.jar");
+  private static final Pattern GROOVY_JAR_PATTERN = Pattern.compile("groovy(-(\\d.*))?\\.jar");
   private static final Pattern GROOVY_ECLIPSE_BATCH_PATTERN = Pattern.compile("groovy-eclipse-batch-(.*)\\.jar");
   private static final Pattern GROOVY_JPS_PLUGIN_JARS_PATTERN = Pattern.compile("groovy-((jps-)|(rt-)|(constants-rt-)).*\\.jar");
   private static final ThreadPoolExecutor ourExecutor = ConcurrencyUtil.newSingleThreadExecutor("Groovyc");
@@ -52,10 +47,12 @@ class InProcessGroovyc implements GroovycFlavor {
   private static final UrlClassLoader.CachePool ourLoaderCachePool = UrlClassLoader.createCachePool();
   private final Collection<String> myOutputs;
   private final boolean myHasStubExcludes;
+  private final boolean mySharedPool;
 
   InProcessGroovyc(Collection<String> outputs, boolean hasStubExcludes) {
     myOutputs = outputs;
     myHasStubExcludes = hasStubExcludes;
+    mySharedPool = SystemProperties.getBooleanProperty("groovyc.in.process.shared.pool", true);
   }
 
   @Override
@@ -74,9 +71,10 @@ class InProcessGroovyc implements GroovycFlavor {
       return null;
     }
 
-    final Future<Void> future = ourExecutor.submit(() -> {
+    final ExecutorService executorService = mySharedPool ? SharedThreadPool.getInstance() : ourExecutor;
+    final Future<Void> future = executorService.submit(() -> {
       try {
-        runGroovycInThisProcess(loader, forStubs, context, tempFile, parser, byteCodeTargetLevel, mailbox);
+        runGroovycInThisProcess(loader, forStubs, context, tempFile, parser, byteCodeTargetLevel, mailbox, mySharedPool);
       }
       finally {
         if (mailbox != null) {
@@ -95,7 +93,7 @@ class InProcessGroovyc implements GroovycFlavor {
 
   @Nullable
   private static GroovycContinuation waitForStubGeneration(Future<Void> future,
-                                                           LinkedBlockingQueue<Object> mailbox,
+                                                           LinkedBlockingQueue<?> mailbox,
                                                            GroovycOutputParser parser,
                                                            JointCompilationClassLoader loader) throws InterruptedException {
     while (true) {
@@ -145,31 +143,44 @@ class InProcessGroovyc implements GroovycFlavor {
                                               CompileContext context,
                                               File tempFile,
                                               final GroovycOutputParser parser,
-                                              @Nullable String byteCodeTargetLevel, @Nullable Queue mailbox) {
-    PrintStream oldOut = System.out;
-    PrintStream oldErr = System.err;
+                                              @Nullable String byteCodeTargetLevel,
+                                              @Nullable Queue<? super Object> mailbox,
+                                              boolean sharedPool) throws IOException {
+    PrintStream oldOut = sharedPool ? null : System.out;
+    PrintStream oldErr = sharedPool? null : System.err;
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
 
-    System.setOut(createStream(parser, ProcessOutputTypes.STDOUT, oldOut));
-    System.setErr(createStream(parser, ProcessOutputTypes.STDERR, oldErr));
+    PrintStream out = createStream(parser, ProcessOutputTypes.STDOUT, oldOut);
+    PrintStream err = createStream(parser, ProcessOutputTypes.STDERR, oldErr);
+    if (!sharedPool) {
+      System.setOut(out);
+      System.setErr(err);
+    }
     Thread.currentThread().setContextClassLoader(loader);
     try {
       Class<?> runnerClass = loader.loadClass("org.jetbrains.groovy.compiler.rt.GroovycRunner");
-      Method intMain = runnerClass.getDeclaredMethod("intMain2", boolean.class, boolean.class, boolean.class, String.class, String.class, String.class, Queue.class);
+      Method intMain = runnerClass.getDeclaredMethod("intMain2",
+                                                     boolean.class, boolean.class, boolean.class,
+                                                     String.class, String.class, String.class,
+                                                     Queue.class, PrintStream.class, PrintStream.class);
       JpsGroovySettings groovySettings = JpsGroovycRunner.getGroovyCompilerSettings(context);
-      Integer exitCode = (Integer)intMain.invoke(null, groovySettings.invokeDynamic, false, forStubs, tempFile.getPath(), groovySettings.configScript,
-                                                 byteCodeTargetLevel, mailbox);
+      Integer exitCode = (Integer)intMain.invoke(null,
+                                                 groovySettings.invokeDynamic, false, forStubs,
+                                                 tempFile.getPath(), groovySettings.configScript, byteCodeTargetLevel,
+                                                 mailbox, out, err);
       parser.notifyFinished(exitCode);
     }
     catch (Exception e) {
       throw new RuntimeException(e);
     }
     finally {
-      System.out.flush();
-      System.err.flush();
+      out.flush();
+      err.flush();
 
-      System.setOut(oldOut);
-      System.setErr(oldErr);
+      if (!sharedPool) {
+        System.setOut(oldOut);
+        System.setErr(oldErr);
+      }
       Thread.currentThread().setContextClassLoader(oldLoader);
     }
   }
@@ -182,7 +193,8 @@ class InProcessGroovyc implements GroovycFlavor {
     try {
       ClassLoader auxiliary = parent != null ? parent : buildCompilationClassLoader(compilationClassPath, null).get();
       Class<?> gcl = auxiliary.loadClass("groovy.lang.GroovyClassLoader");
-      groovyClassLoader = (ClassLoader)gcl.getConstructor(ClassLoader.class).newInstance(parent != null ? parent : ClassLoaderUtil.getPlatformLoaderParentIfOnJdk9());
+      groovyClassLoader = (ClassLoader)gcl.getConstructor(ClassLoader.class)
+        .newInstance(parent != null ? parent : ClassLoaderUtil.getPlatformLoaderParentIfOnJdk9());
     }
     catch (ClassNotFoundException e) {
       return null;
@@ -215,8 +227,9 @@ class InProcessGroovyc implements GroovycFlavor {
       });
   }
 
-  static String evaluatePathToGroovyAllForParentClassloader(Collection<String> compilationClassPath) {
-    if (!SystemInfo.IS_AT_LEAST_JAVA9 && !"true".equals(System.getProperty("groovyc.reuse.compiler.classes", "true"))) {
+  @Nullable
+  static String evaluatePathToGroovyJarForParentClassloader(Collection<String> compilationClassPath) {
+    if (!"true".equals(System.getProperty("groovyc.reuse.compiler.classes", "true"))) {
       return null;
     }
 
@@ -231,21 +244,34 @@ class InProcessGroovyc implements GroovycFlavor {
 
     LOG.debug("Groovy jars: " + groovyJars);
 
-    if (groovyJars.size() != 1 || !GROOVY_ALL_JAR_PATTERN.matcher(PathUtilRt.getFileName(groovyJars.get(0))).matches()) {
+    String singleJar = ContainerUtil.getOnlyItem(groovyJars);
+    if (singleJar == null) {
       // avoid complications caused by caching classes from several groovy versions in classpath
       return null;
     }
 
-    return groovyJars.get(0);
+    String fileName = PathUtilRt.getFileName(singleJar);
+    if (GROOVY_ALL_JAR_PATTERN.matcher(fileName).matches()) {
+      return singleJar;
+    }
+
+    Matcher matcher = GROOVY_JAR_PATTERN.matcher(fileName);
+    if (matcher.matches()) {
+      String version = matcher.group(2);
+      if (version != null && version.startsWith("2.5")) {
+        return singleJar;
+      }
+    }
+    return null;
   }
 
   @Nullable
   private static ClassLoader obtainParentLoader(Collection<String> compilationClassPath) throws MalformedURLException {
-    String groovyAll = evaluatePathToGroovyAllForParentClassloader(compilationClassPath);
-    if (groovyAll == null) return null;
+    String groovyJar = evaluatePathToGroovyJarForParentClassloader(compilationClassPath);
+    if (groovyJar == null) return null;
 
     Pair<String, ClassLoader> pair = SoftReference.dereference(ourParentLoaderCache);
-    if (pair != null && pair.first.equals(groovyAll)) {
+    if (pair != null && pair.first.equals(groovyJar)) {
       return pair.second;
     }
 
@@ -280,15 +306,15 @@ class InProcessGroovyc implements GroovycFlavor {
       }
     };
     UrlClassLoader.Builder builder = UrlClassLoader.build();
-    builder.urls(toUrls(ContainerUtil.concat(GroovyBuilder.getGroovyRtRoots(), Collections.singletonList(groovyAll))));
+    builder.urls(toUrls(ContainerUtil.concat(GroovyBuilder.getGroovyRtRoots(), Collections.singletonList(groovyJar))));
     builder.allowLock();
     builder.useCache(ourLoaderCachePool, new UrlClassLoader.CachingCondition() {
-              @Override
-              public boolean shouldCacheData(
-                @NotNull URL url) {
-                return true;
-              }
-            });
+      @Override
+      public boolean shouldCacheData(
+        @NotNull URL url) {
+        return true;
+      }
+    });
     ClassLoaderUtil.addPlatformLoaderParentIfOnJdk9(builder);
     UrlClassLoader groovyAllLoader = builder.get();
 
@@ -313,7 +339,7 @@ class InProcessGroovyc implements GroovycFlavor {
       }
     };
 
-    ourParentLoaderCache = new SoftReference<>(Pair.create(groovyAll, wrapper));
+    ourParentLoaderCache = new SoftReference<>(Pair.create(groovyJar, wrapper));
     return wrapper;
   }
 
@@ -328,15 +354,17 @@ class InProcessGroovyc implements GroovycFlavor {
   }
 
   @NotNull
-  private static PrintStream createStream(final GroovycOutputParser parser, final Key type, final PrintStream overridden) {
+  private static PrintStream createStream(@NotNull GroovycOutputParser parser,
+                                          @NotNull Key<?> type,
+                                          @Nullable("null means not overridden") PrintStream overridden) throws IOException {
     final Thread thread = Thread.currentThread();
-    return new PrintStream(new OutputStream() {
+    OutputStream out = new OutputStream() {
       ByteArrayOutputStream line = new ByteArrayOutputStream();
       boolean hasLineSeparator = false;
 
       @Override
-      public void write(int b) {
-        if (Thread.currentThread() != thread) {
+      public void write(int b) throws IOException {
+        if (overridden != null && Thread.currentThread() != thread) {
           overridden.write(b);
           return;
         }
@@ -355,19 +383,19 @@ class InProcessGroovyc implements GroovycFlavor {
       }
 
       @Override
-      public void flush() {
-        if (Thread.currentThread() != thread) {
+      public void flush() throws IOException {
+        if (overridden != null && Thread.currentThread() != thread) {
           overridden.flush();
           return;
         }
 
         if (line.size() > 0) {
-          parser.notifyTextAvailable(StringUtil.convertLineSeparators(line.toString()), type);
+          parser.notifyTextAvailable(StringUtil.convertLineSeparators(line.toString("UTF-8")), type);
           line = new ByteArrayOutputStream();
           hasLineSeparator = false;
         }
       }
-
-    });
+    };
+    return new PrintStream(out, false, "UTF-8");
   }
 }

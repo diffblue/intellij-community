@@ -13,12 +13,9 @@ are important to the project's success.
 3. [Prepare your changes](#preparing-changes):
     * Small fixes and additions can be submitted directly as pull requests,
       but [contact us](#discussion) before starting significant work.
-    * IMPORTANT: For new libraries, [get permission from the library owner first](#adding-a-new-library).
     * Create your stubs [conforming to the coding style](#stub-file-coding-style).
     * Make sure your tests pass cleanly on `mypy`, `pytype`, and `flake8`.
-4. [Submit your changes](#submitting-changes):
-    * Open a pull request
-    * For new libraries, [include a reference to where you got permission](#adding-a-new-library)
+4. [Submit your changes](#submitting-changes) by opening a pull request.
 5. You can expect a reply within a few days:
     * Diffs are merged when considered ready by the core team.
     * Feel free to ping the core team if your pull request goes without
@@ -88,6 +85,8 @@ At present the core developers are (alphabetically):
 * Greg Price (@gnprice)
 * Sebastian Rittau (@srittau)
 * Guido van Rossum (@gvanrossum)
+* Shantanu (@hauntsaninja)
+* Rune Tynan (@CraftSpider)
 * Jelle Zijlstra (@JelleZijlstra)
 
 NOTE: the process for preparing and submitting changes also applies to
@@ -103,21 +102,6 @@ If your change will be a significant amount of work to write, we highly
 recommend starting by opening an issue laying out what you want to do.
 That lets a conversation happen early in case other contributors disagree
 with what you'd like to do or have ideas that will help you do it.
-
-### Adding a new library
-
-If you want to submit type stubs for a new library, you need to
-**contact the maintainers of the original library** first to let them
-know and **get their permission**.  Do it by opening an issue on their
-project's bug tracker.  This gives them the opportunity to
-consider adopting type hints directly in their codebase (which you
-should prefer to external type stubs).  When the project owners agree
-for you to submit stubs here or you do not receive a reply within
-one month, open a pull request **referencing the
-issue where you asked for permission**.
-
-Make sure your changes pass the tests (the [README](README.md#running-the-tests)
-has more information).
 
 ### What to include
 
@@ -174,7 +158,7 @@ annotated function `bar()`:
 def __getattr__(name: str) -> Any: ...  # incomplete
 
 class Foo:
-    def __getattr__(self, name: str) -> Any:  # incomplete
+    def __getattr__(self, name: str) -> Any: ...  # incomplete
     x: int
     y: str
 
@@ -238,7 +222,7 @@ rule is that they should be as concise as possible.  Specifically:
 * use variable annotations instead of type comments, even for stubs
   that target older versions of Python;
 * for arguments with a type and a default, use spaces around the `=`.
-The code formatter [black](https://github.com/python/black) will format
+The code formatter [black](https://github.com/psf/black) will format
 stubs according to this standard.
 
 Stub files should only contain information necessary for the type
@@ -292,6 +276,25 @@ Type variables and aliases you introduce purely for legibility reasons
 should be prefixed with an underscore to make it obvious to the reader
 they are not part of the stubbed API.
 
+When adding type annotations for context manager classes, annotate
+the return type of `__exit__` as bool only if the context manager
+sometimes suppresses exceptions -- if it sometimes returns `True`
+at runtime. If the context manager never suppresses exceptions,
+have the return type be either `None` or `Optional[bool]`. If you
+are not sure whether exceptions are suppressed or not or if the
+context manager is meant to be subclassed, pick `Optional[bool]`.
+See https://github.com/python/mypy/issues/7214 for more details.
+
+A few guidelines for protocol names below. In cases that don't fall
+into any of those categories, use your best judgement.
+
+* Use plain names for protocols that represent a clear concept
+  (e.g. `Iterator`, `Container`).
+* Use `SupportsX` for protocols that provide callable methods (e.g.
+  `SupportsInt`, `SupportsRead`, `SupportsReadSeek`).
+* Use `HasX` for protocols that have readable and/or writable attributes
+  or getter/setter methods (e.g. `HasItems`, `HasFileno`).
+
 NOTE: there are stubs in this repository that don't conform to the
 style described above.  Fixing them is a great starting point for new
 contributors.
@@ -307,8 +310,8 @@ and optionally the lowest minor version, with the exception of the `2and3`
 directory which applies to both Python 2 and 3.
 
 For example, stubs in the `3` directory will be applied to all versions of
-Python 3, though stubs in the `3.6` directory will only be applied to versions
-3.6 and above. However, stubs in the `2` directory will not be applied to
+Python 3, though stubs in the `3.7` directory will only be applied to versions
+3.7 and above. However, stubs in the `2` directory will not be applied to
 Python 3.
 
 It is preferred to use a single stub in the more generic directory that
@@ -318,7 +321,7 @@ if the given library works on both Python 2 and Python 3, prefer to put your
 stubs in the `2and3` directory, unless the types are so different that the stubs
 become unreadable that way.
 
-You can use checks like `if sys.version_info >= (3, 4):` to denote new
+You can use checks like `if sys.version_info >= (3, 8):` to denote new
 functionality introduced in a given Python version or solve type
 differences.  When doing so, only use one-tuples or two-tuples.  This is
 because:
@@ -331,17 +334,17 @@ because:
   regardless of the micro version used.
 
 Because of this, if a given functionality was introduced in, say, Python
-3.4.4, your check:
+3.7.4, your check:
 
-* should be expressed as `if sys.version_info >= (3, 4):`
-* should NOT be expressed as `if sys.version_info >= (3, 4, 4):`
-* should NOT be expressed as `if sys.version_info >= (3, 5):`
+* should be expressed as `if sys.version_info >= (3, 7):`
+* should NOT be expressed as `if sys.version_info >= (3, 7, 4):`
+* should NOT be expressed as `if sys.version_info >= (3, 8):`
 
 This makes the type checker assume the functionality was also available
-in 3.4.0 - 3.4.3, which while *technically* incorrect is relatively
+in 3.7.0 - 3.7.3, which while *technically* incorrect is relatively
 harmless.  This is a strictly better compromise than using the latter
 two forms, which would generate false positive errors for correct use
-under Python 3.4.4.
+under Python 3.7.4.
 
 Note: in its current implementation, typeshed cannot contain stubs for
 multiple versions of the same third-party library.  Prefer to generate
@@ -381,3 +384,14 @@ Core developers should follow these rules when processing pull requests:
 * Delete branches for merged PRs (by core devs pushing to the main repo).
 * Make sure commit messages to master are meaningful. For example, remove irrelevant
   intermediate commit messages.
+* If stubs for a new library are submitted, notify the library's maintainers.
+
+When reviewing PRs, follow these guidelines:
+
+* Typing is hard. Try to be helpful and explain issues with the PR,
+  especially to new contributors.
+* When reviewing auto-generated stubs, just scan for red flags and obvious
+  errors. Leave possible manual improvements for separate PRs.
+* When reviewing large, hand-crafted PRs, you only need to look for red flags
+  and general issues, and do a few spot checks.
+* Review smaller, hand-crafted PRs thoroughly.

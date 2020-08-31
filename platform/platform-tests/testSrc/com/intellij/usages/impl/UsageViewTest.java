@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.usages.impl;
 
 import com.intellij.find.FindManager;
@@ -19,10 +19,12 @@ import com.intellij.openapi.extensions.impl.ExtensionsAreaImpl;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.BinaryFileDecompiler;
 import com.intellij.openapi.fileTypes.BinaryFileTypeDecompilers;
+import com.intellij.openapi.fileTypes.FileTypeExtensionPoint;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.text.StringUtil;
@@ -32,7 +34,6 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiNamedElement;
 import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.testFramework.ExtensionTestUtil;
-import com.intellij.testFramework.HeavyPlatformTestCase;
 import com.intellij.testFramework.LeakHunter;
 import com.intellij.testFramework.LightPlatformTestCase;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
@@ -40,8 +41,7 @@ import com.intellij.usageView.UsageInfo;
 import com.intellij.usages.*;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
-import gnu.trove.THashSet;
-import gnu.trove.TObjectHashingStrategy;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 
@@ -55,14 +55,16 @@ public class UsageViewTest extends BasePlatformTestCase {
     // sick and tired of hunting tests leaking documents
     ((UndoManagerImpl)UndoManager.getInstance(getProject())).flushCurrentCommandMerger();
 
-    Set<Object> alreadyLeaking = new THashSet<>(TObjectHashingStrategy.IDENTITY);
+    Set<Object> alreadyLeaking = new ReferenceOpenHashSet<>();
     Condition<Object> isReallyLeak = file -> {
       if (file instanceof PsiFile) {
         if (!((PsiFile)file).isPhysical()) {
           return false;
         }
         Project project = ((PsiFile)file).getProject();
-        System.err.println(project + " already leaking; its creation trace: " + HeavyPlatformTestCase.getCreationPlace(project));
+        if (alreadyLeaking.add(project)) {
+          System.err.println(project + " already leaking; its creation trace: " + ((ProjectEx)project).getCreationTrace());
+        }
       }
       alreadyLeaking.add(file);
       return false;
@@ -237,7 +239,7 @@ public class UsageViewTest extends BasePlatformTestCase {
   }
 
   @NotNull
-  private UsageViewImpl createUsageView(@NotNull Usage... usages) {
+  private UsageViewImpl createUsageView(Usage @NotNull ... usages) {
     UsageViewImpl usageView =
       (UsageViewImpl)UsageViewManager.getInstance(getProject())
         .createUsageView(UsageTarget.EMPTY_ARRAY, usages, new UsageViewPresentation(), null);
@@ -307,7 +309,8 @@ public class UsageViewTest extends BasePlatformTestCase {
     };
 
     ExtensionTestUtil.addExtension((ExtensionsAreaImpl)ApplicationManager.getApplication().getExtensionArea(),
-                                   BinaryFileTypeDecompilers.getInstance(), ArchiveFileType.INSTANCE.getName(), decompiler);
+                                   BinaryFileTypeDecompilers.getInstance(),
+                                   new FileTypeExtensionPoint<>(ArchiveFileType.INSTANCE.getName(), decompiler));
 
     PsiFile psiFile = myFixture.addFileToProject("X.jar", "xxx");
     assertEquals(ArchiveFileType.INSTANCE, psiFile.getFileType());

@@ -1,13 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.ide.highlighter.ProjectFileType
-import com.intellij.openapi.application.runInEdt
+import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.components.*
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ex.ProjectEx
 import com.intellij.openapi.project.ex.ProjectManagerEx
-import com.intellij.openapi.project.impl.ProjectImpl
 import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.vcs.readOnlyHandler.ReadonlyStatusHandlerImpl
 import com.intellij.openapi.vfs.ReadonlyStatusHandler
@@ -17,7 +16,6 @@ import com.intellij.testFramework.assertions.Assertions.assertThat
 import com.intellij.util.PathUtil
 import com.intellij.util.io.readChars
 import com.intellij.util.io.readText
-import com.intellij.util.io.systemIndependentPath
 import com.intellij.util.io.write
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -31,6 +29,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Paths
 import java.util.concurrent.TimeUnit
+import kotlin.properties.Delegates
 
 internal class ProjectStoreTest {
   companion object {
@@ -120,7 +119,7 @@ internal class ProjectStoreTest {
       assertThat(store.nameFile).doesNotExist()
       val newName = "Foo"
       val oldName = project.name
-      (project as ProjectImpl).setProjectName(newName)
+      (project as ProjectEx).setProjectName(newName)
       project.stateStore.save()
       assertThat(store.nameFile).hasContent(newName)
 
@@ -145,11 +144,12 @@ internal class ProjectStoreTest {
 
   @Test
   fun `saved project name must be not removed just on open`() = runBlocking {
-    val name = "saved project name must be not removed just on open"
+    var name: String by Delegates.notNull()
     loadAndUseProjectInLoadComponentStateMode(tempDirManager, {
       it.writeChild("${Project.DIRECTORY_STORE_FOLDER}/misc.xml", iprFileContent)
+      name = it.name
       it.writeChild("${Project.DIRECTORY_STORE_FOLDER}/.name", name)
-      Paths.get(it.path)
+      it.toNioPath()
     }) { project ->
       val store = project.stateStore
       assertThat(store.nameFile).hasContent(name)
@@ -157,7 +157,7 @@ internal class ProjectStoreTest {
       project.stateStore.save()
       assertThat(store.nameFile).hasContent(name)
 
-      (project as ProjectImpl).setProjectName(name)
+      (project as ProjectEx).setProjectName(name)
       project.stateStore.save()
       assertThat(store.nameFile).hasContent(name)
 
@@ -202,7 +202,7 @@ internal class ProjectStoreTest {
       class AOther : A()
 
       val component = AOther()
-      componentStore.initComponent(component, null)
+      componentStore.initComponent(component, null, null)
       assertThat(component.options.foo).isEqualTo("some data")
 
       componentStore.save()
@@ -243,25 +243,23 @@ internal class ProjectStoreTest {
 
     val testComponent = TestComponent()
     testComponent.loadState(TestState(AAvalue = "foo"))
-    (projectManager.defaultProject as ComponentManager).stateStore.initComponent(testComponent, null)
+    (projectManager.defaultProject as ComponentManager).stateStore.initComponent(testComponent, null, null)
 
     val newProjectPath = tempDirManager.newPath()
-    val newProject = projectManager.newProject("foo", newProjectPath.systemIndependentPath, true, false)!!
+    val newProject = projectManager.openProject(newProjectPath, OpenProjectTask(isNewProject = true, isRefreshVfsNeeded = false))!!
     try {
       val miscXml = newProjectPath.resolve(".idea/misc.xml").readChars()
       assertThat(miscXml).contains("AATestComponent")
       assertThat(miscXml).contains("""<option name="AAvalue" value="foo" />""")
     }
     finally {
-      runInEdt {
-        PlatformTestUtil.forceCloseProjectWithoutSaving(newProject)
-      }
+      PlatformTestUtil.forceCloseProjectWithoutSaving(newProject)
     }
   }
 
   private suspend fun test(project: Project): TestComponent {
     val testComponent = TestComponent()
-    project.stateStore.initComponent(testComponent, null)
+    project.stateStore.initComponent(testComponent, null, null)
     assertThat(testComponent.state).isEqualTo(TestState("customValue"))
 
     testComponent.state!!.AAvalue = "foo"

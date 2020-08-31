@@ -11,7 +11,7 @@ import static com.intellij.vcs.log.VcsLogFilterCollection.BRANCH_FILTER;
 /**
  * Tells to filter by branches with given names.
  */
-public interface VcsLogBranchFilter extends VcsLogFilter {
+public interface VcsLogBranchFilter extends VcsLogBranchLikeFilter {
   /**
    * Tells if a branch matches the filter.
    *
@@ -28,6 +28,11 @@ public interface VcsLogBranchFilter extends VcsLogFilter {
   @NotNull
   Collection<String> getTextPresentation();
 
+  /**
+   * @return true if filter has no patterns
+   */
+  boolean isEmpty();
+
   @NotNull
   @Override
   default VcsLogFilterCollection.FilterKey<VcsLogBranchFilter> getKey() {
@@ -36,7 +41,7 @@ public interface VcsLogBranchFilter extends VcsLogFilter {
 
   @NotNull
   @Override
-  default String getPresentation() {
+  default String getDisplayText() {
     return StringUtil.join(getTextPresentation(), ", ");
   }
 }

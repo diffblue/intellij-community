@@ -96,9 +96,8 @@ public class JavaLangClassMemberReference extends PsiReferenceBase<PsiLiteralExp
     return getReflectiveClass(myContext);
   }
 
-  @NotNull
   @Override
-  public Object[] getVariants() {
+  public Object @NotNull [] getVariants() {
     final String type = getMemberType(myElement);
     if (type != null) {
       final ReflectiveClass ownerClass = getOwnerClass();
@@ -107,7 +106,6 @@ public class JavaLangClassMemberReference extends PsiReferenceBase<PsiLiteralExp
 
           case GET_DECLARED_FIELD:
             return Arrays.stream(ownerClass.getPsiClass().getFields())
-              .filter(field -> field.getName() != null)
               .sorted(Comparator.comparing(PsiField::getName))
               .map(field -> JavaLookupElementBuilder.forField(field))
               .toArray();
@@ -115,7 +113,7 @@ public class JavaLangClassMemberReference extends PsiReferenceBase<PsiLiteralExp
           case GET_FIELD: {
             final Set<String> uniqueNames = new THashSet<>();
             return Arrays.stream(ownerClass.getPsiClass().getAllFields())
-              .filter(field -> isPotentiallyAccessible(field, ownerClass) && field.getName() != null && uniqueNames.add(field.getName()))
+              .filter(field -> isPotentiallyAccessible(field, ownerClass) && uniqueNames.add(field.getName()))
               .sorted(Comparator.comparingInt((PsiField field) -> isPublic(field) ? 0 : 1).thenComparing(PsiField::getName))
               .map(field -> withPriority(JavaLookupElementBuilder.forField(field), isPublic(field)))
               .toArray();
@@ -142,7 +140,6 @@ public class JavaLangClassMemberReference extends PsiReferenceBase<PsiLiteralExp
 
           case NEW_UPDATER: {
             return Arrays.stream(ownerClass.getPsiClass().getFields())
-              .filter(field -> field.getName() != null)
               .sorted(Comparator.comparingInt((PsiField field) -> isAtomicallyUpdateable(field) ? 0 : 1).thenComparing(PsiField::getName))
               .map(field -> withPriority(JavaLookupElementBuilder.forField(field), isAtomicallyUpdateable(field)))
               .toArray();
@@ -187,7 +184,7 @@ public class JavaLangClassMemberReference extends PsiReferenceBase<PsiLiteralExp
 
 
   @Nullable
-  public static PsiMethod matchMethod(@NotNull PsiMethod[] methods, @NotNull List<? extends ReflectiveType> argumentTypes) {
+  public static PsiMethod matchMethod(PsiMethod @NotNull [] methods, @NotNull List<? extends ReflectiveType> argumentTypes) {
     int mismatchCount = Integer.MAX_VALUE;
     PsiMethod bestGuess = null;
     for (PsiMethod method : methods) {

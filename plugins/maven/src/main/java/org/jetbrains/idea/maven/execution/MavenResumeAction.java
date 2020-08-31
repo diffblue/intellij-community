@@ -42,7 +42,9 @@ import org.jetbrains.idea.maven.externalSystemIntegration.output.MavenParsingCon
 import org.jetbrains.idea.maven.project.MavenGeneralSettings;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.jetbrains.idea.maven.project.MavenProjectsManager;
+import org.jetbrains.idea.maven.server.MavenDistribution;
 import org.jetbrains.idea.maven.server.MavenServerManager;
+import org.jetbrains.idea.maven.utils.MavenLog;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 
 import java.util.ArrayList;
@@ -86,7 +88,7 @@ public class MavenResumeAction extends AnAction {
                            ProgramRunner runner,
                            ExecutionEnvironment environment,
                            MavenParsingContext context) {
-    super("Resume Build From Specified Module", null, AllIcons.RunConfigurations.RerunFailedTests);
+    super(RunnerBundle.message("maven.resume.from.title"), null, AllIcons.RunConfigurations.RerunFailedTests);
     myRunner = runner;
     myEnvironment = environment;
     myContext = context;
@@ -108,7 +110,14 @@ public class MavenResumeAction extends AnAction {
   private static String getMavenVersion(MavenRunConfiguration runConfiguration) {
     MavenGeneralSettings generalSettings = runConfiguration.getGeneralSettings();
     if (generalSettings == null) {
-      return MavenServerManager.getInstance().getCurrentMavenVersion();
+      MavenDistribution maven = MavenDistribution.fromSettings(runConfiguration.getProject());
+      if (maven == null) {
+        String version = MavenServerManager.resolveEmbeddedMavenHome().getVersion();
+        MavenLog.LOG
+          .warn("Cannot determine maven version from run configuration and project settings, use embedded as version: " + version);
+        return version;
+      }
+      return maven.getVersion();
     }
     else {
       return MavenUtil.getMavenVersion(generalSettings.getEffectiveMavenHome());
@@ -208,7 +217,10 @@ public class MavenResumeAction extends AnAction {
   public void update(@NotNull AnActionEvent e) {
     if (myResumeFromModuleName != null && myResumeModuleId != null) {
       e.getPresentation().setEnabled(true);
-      e.getPresentation().setText("Resume build from \"" + myResumeFromModuleName + "\"");
+      e.getPresentation().setText(RunnerBundle.message("maven.resume.from.template",  myResumeFromModuleName));
+    }
+    else {
+      e.getPresentation().setEnabled(false);
     }
   }
 
@@ -355,7 +367,10 @@ public class MavenResumeAction extends AnAction {
     @Override
     public void processTerminated(@NotNull ProcessEvent event) {
       myContext.getStartedProjects();
-      if (event.getExitCode() == 0 && myContext.getProjectsInReactor().size() != myContext.getStartedProjects().size()) {
+
+      if (event.getExitCode() == 0 &&
+          myContext.getStartedProjects().size() != 0 &&
+          myContext.getProjectsInReactor().size() != myContext.getStartedProjects().size()) {
         log(String.format("Build was success, but not all project was build. Project build order: %s, built projects: %s",
                           myContext.getProjectsInReactor(),
                           myContext.getStartedProjects()));

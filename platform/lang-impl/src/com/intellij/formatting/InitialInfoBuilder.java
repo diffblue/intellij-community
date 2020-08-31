@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.formatting;
 
@@ -6,9 +6,7 @@ import com.intellij.formatting.engine.ExpandableIndent;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
-import com.intellij.util.containers.LinkedMultiMap;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.containers.Stack;
 import gnu.trove.THashMap;
@@ -25,12 +23,14 @@ import java.util.Set;
  * The main idea of block wrapping is to associate information about {@link WhiteSpace white space before block} with the block itself.
  */
 public class InitialInfoBuilder {
-  private static final Logger LOG = Logger.getInstance(InitialInfoBuilder.class);
+
+  @SuppressWarnings("unused") private static final Logger LOG = Logger.getInstance(InitialInfoBuilder.class);
+
   private static final RangesAssert ASSERT = new RangesAssert();
   private static final boolean INLINE_TABS_ENABLED = "true".equalsIgnoreCase(System.getProperty("inline.tabs.enabled"));
 
   private final Map<AbstractBlockWrapper, Block> myResult = new THashMap<>();
-  private final MultiMap<ExpandableIndent, AbstractBlockWrapper> myBlocksToForceChildrenIndent = new LinkedMultiMap<>();
+  private final MultiMap<ExpandableIndent, AbstractBlockWrapper> myBlocksToForceChildrenIndent = MultiMap.createLinked();
   private final MultiMap<Alignment, Block> myBlocksToAlign = new MultiMap<>();
   private final Set<Alignment> myAlignmentsInsideRangeToModify = new HashSet<>();
 
@@ -43,8 +43,6 @@ public class InitialInfoBuilder {
 
   private final FormattingProgressCallback myProgressCallback;
 
-  private final FormatterTagHandler myFormatterTagHandler;
-
   private final CommonCodeStyleSettings.IndentOptions myOptions;
 
   private final Stack<InitialInfoBuilderState> myStates = new Stack<>();
@@ -55,25 +53,21 @@ public class InitialInfoBuilder {
   private LeafBlockWrapper                 myFirstTokenBlock;
   private LeafBlockWrapper                 myLastTokenBlock;
   private SpacingImpl                      myCurrentSpaceProperty;
-  private boolean                          myInsideFormatRestrictingTag;
 
   private InitialInfoBuilder(final Block rootBlock,
                              final FormattingDocumentModel model,
                              @Nullable final FormatTextRanges affectedRanges,
-                             @NotNull CodeStyleSettings settings,
                              final CommonCodeStyleSettings.IndentOptions options,
                              final int positionOfInterest,
                              @NotNull FormattingProgressCallback progressCallback)
   {
     myModel = model;
     myAffectedRanges = affectedRanges;
-    myExtendedAffectedRanges = affectedRanges != null ? affectedRanges.getExtendedFormattingRanges() : null;
+    myExtendedAffectedRanges = affectedRanges != null ? affectedRanges.getExtendedRanges() : null;
     myProgressCallback = progressCallback;
     myCurrentWhiteSpace = new WhiteSpace(getStartOffset(rootBlock), true);
     myOptions = options;
     myPositionOfInterest = positionOfInterest;
-    myInsideFormatRestrictingTag = false;
-    myFormatterTagHandler = new FormatterTagHandler(settings);
   }
 
   @NotNull
@@ -81,11 +75,10 @@ public class InitialInfoBuilder {
     Block root,
     FormattingDocumentModel model,
     FormatProcessor.FormatOptions formatOptions,
-    CodeStyleSettings settings,
     CommonCodeStyleSettings.IndentOptions options,
     @NotNull FormattingProgressCallback progressCallback) {
-    InitialInfoBuilder builder = new InitialInfoBuilder(root, model, formatOptions.myAffectedRanges, settings, options, formatOptions.myInterestingOffset, progressCallback);
-    builder.setCollectAlignmentsInsideFormattingRange(formatOptions.myReformatContext);
+    InitialInfoBuilder builder = new InitialInfoBuilder(root, model, formatOptions.myAffectedRanges, options, formatOptions.myInterestingOffset, progressCallback);
+    builder.setCollectAlignmentsInsideFormattingRange(formatOptions.isReformatWithContext());
     builder.buildFrom(root, 0, null, null, null);
     return builder;
   }
@@ -112,7 +105,7 @@ public class InitialInfoBuilder {
         if (range.getTextRange().getEndOffset() > maxOffset) maxOffset = range.getTextRange().getEndOffset();
       }
     }
-    return   maxOffset < maxDocOffset ? maxOffset : maxDocOffset;
+    return Math.min(maxOffset, maxDocOffset);
   }
 
   public boolean iteration() {
@@ -170,7 +163,7 @@ public class InitialInfoBuilder {
 
   private void collectAlignments(Block rootBlock) {
     if (myCollectAlignmentsInsideFormattingRange && rootBlock.getAlignment() != null
-        && isAffectedByFormatting(rootBlock) && !myInsideFormatRestrictingTag)
+        && isAffectedByFormatting(rootBlock) && !isDisabled(rootBlock.getTextRange()))
     {
       myAlignmentsInsideRangeToModify.add(rootBlock.getAlignment());
     }
@@ -280,8 +273,6 @@ public class InitialInfoBuilder {
       info.arrangeParentTextRange();
     }
 
-    checkInsideFormatterOffTag(rootBlock);
-
     if (myPreviousBlock != null) {
       myPreviousBlock.setNextBlock(info);
     }
@@ -303,7 +294,8 @@ public class InitialInfoBuilder {
 
     info.setSpaceProperty(myCurrentSpaceProperty);
     myCurrentWhiteSpace = new WhiteSpace(textRange.getEndOffset(), false);
-    if (myInsideFormatRestrictingTag) myCurrentWhiteSpace.setReadOnly(true);
+    if (isDisabled(myCurrentWhiteSpace.getTextRange()))
+      myCurrentWhiteSpace.setReadOnly(true);
     myPreviousBlock = info;
 
     if (myPositionOfInterest != -1 && (textRange.contains(myPositionOfInterest) || textRange.getEndOffset() == myPositionOfInterest)) {
@@ -311,19 +303,6 @@ public class InitialInfoBuilder {
       if (parent != null) myResult.put(parent, parentBlock);
     }
     return info;
-  }
-
-  private void checkInsideFormatterOffTag(Block rootBlock) {
-    switch (myFormatterTagHandler.getFormatterTag(rootBlock)) {
-      case ON:
-        myInsideFormatRestrictingTag = false;
-        break;
-      case OFF:
-        myInsideFormatRestrictingTag = true;
-        break;
-      case NONE:
-        break;
-    }
   }
 
   private boolean currentWhiteSpaceIsReadOnly() {
@@ -357,6 +336,10 @@ public class InitialInfoBuilder {
     }
 
     return false;
+  }
+
+  private boolean isDisabled(@NotNull TextRange range) {
+    return myAffectedRanges != null && myAffectedRanges.isInDisabledRange(range);
   }
 
   private boolean isInsideFormattingRanges(TextRange range) {

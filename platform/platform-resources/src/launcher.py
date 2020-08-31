@@ -1,12 +1,13 @@
 #!/usr/bin/env $PYTHON$
-# -*- coding: utf-8 -*-
+#  Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 import os
 import socket
 import struct
 import sys
+import traceback
 
-# see com.intellij.idea.SocketLock for the server side of this interface
+# See com.intellij.idea.SocketLock for the server side of this interface.
 
 RUN_PATH = u'$RUN_PATH$'
 CONFIG_PATH = u'$CONFIG_PATH$'
@@ -22,29 +23,29 @@ def print_usage(cmd):
            '  {0} merge <local> <remote> [base] <merged>').format(cmd))
 
 
-def write_to_sock(sock, str):
-    if sys.version_info[0] >= 3: str = str.encode('utf-8')
-    sock.send(struct.pack('>h', len(str)) + str)
+def write_to_sock(sock, data):
+    if sys.version_info[0] >= 3:
+        data = data.encode('utf-8')
+    sock.send(struct.pack('>h', len(data)) + data)
 
 
 def read_from_sock(sock):
-    len = struct.unpack('>h', sock.recv(2))[0]
-    return sock.recv(len).decode('utf-8')
+    length = struct.unpack('>h', sock.recv(2))[0]
+    return sock.recv(length).decode('utf-8')
 
 
 def read_sequence_from_sock(sock):
     result = []
     while True:
         try:
-            str = read_from_sock(sock)
-            if str == '---':
+            data = read_from_sock(sock)
+            if data == '---':
                 break
-            result.append(str)
-
+            result.append(data)
         except (socket.error, IOError) as e:
             print("I/O error({0}): {1} ({2})".format(e.errno, e.strerror, e))
             traceback.print_exception(*sys.exc_info())
-            return result
+            break
     return result
 
 
@@ -63,6 +64,8 @@ def process_args(argv):
             skip_next = True
         elif arg == '-w' or arg == '--wait':
             args.append('--wait')
+        elif arg == '-p' or arg == '--project':
+            args.append(arg)
         elif skip_next:
             args.append(arg)
             skip_next = False
@@ -90,7 +93,7 @@ def try_activate_instance(args):
             port = int(pf.read())
         with open(token_path) as tf:
             token = tf.read()
-    except (ValueError):
+    except ValueError:
         return False
 
     s = socket.socket()
@@ -101,15 +104,15 @@ def try_activate_instance(args):
         return False
 
     paths = read_sequence_from_sock(s)
-    found = CONFIG_PATH in paths
+    found = CONFIG_PATH in paths or os.path.realpath(CONFIG_PATH) in paths
 
     if found:
         write_to_sock(s, 'activate ' + token + '\0' + os.getcwd() + '\0' + '\0'.join(args))
 
         s.settimeout(None)
         response = read_sequence_from_sock(s)
-        if response[0] != 'ok':
-            print('bad response: ' + response)
+        if len(response) < 2 or response[0] != 'ok':
+            print('bad response: ' + str(response))
             exit(1)
 
         if len(response) > 2:
@@ -124,7 +127,7 @@ def start_new_instance(args):
     if sys.platform == 'darwin':
         if len(args) > 0:
             args.insert(0, '--args')
-        os.execvp('/usr/bin/open', ['-a', RUN_PATH] + args)
+        os.execv('/usr/bin/open', ['open', '-na', RUN_PATH] + args)
     else:
         bin_file = os.path.split(RUN_PATH)[1]
         os.execv(RUN_PATH, [bin_file] + args)

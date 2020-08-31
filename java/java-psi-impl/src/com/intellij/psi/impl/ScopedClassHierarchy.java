@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.openapi.util.RecursionGuard;
@@ -18,8 +18,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-
-import static com.intellij.util.ObjectUtils.assertNotNull;
 
 /**
  * @author peter
@@ -83,7 +81,7 @@ class ScopedClassHierarchy {
   static ScopedClassHierarchy getHierarchy(@NotNull final PsiClass psiClass, @NotNull final GlobalSearchScope resolveScope) {
     return CachedValuesManager.getCachedValue(psiClass, () -> {
       Map<GlobalSearchScope, ScopedClassHierarchy> result = ConcurrentFactoryMap.createMap(resolveScope1 -> new ScopedClassHierarchy(psiClass, resolveScope1));
-      return CachedValueProvider.Result.create(result, PsiModificationTracker.JAVA_STRUCTURE_MODIFICATION_COUNT);
+      return CachedValueProvider.Result.create(result, PsiModificationTracker.MODIFICATION_COUNT);
     }).get(resolveScope);
   }
 
@@ -92,7 +90,7 @@ class ScopedClassHierarchy {
     ScopedClassHierarchy hierarchy = getHierarchy(derivedClass, scope);
     Map<PsiClass, PsiClassType.ClassResolveResult> map = hierarchy.mySupersWithSubstitutors;
     if (map == null) {
-      map = ContainerUtil.newTroveMap(CLASS_HASHING_STRATEGY);
+      map = new THashMap<>(CLASS_HASHING_STRATEGY);
       RecursionGuard.StackStamp stamp = RecursionManager.markStack();
       hierarchy.visitType(JavaPsiFacade.getElementFactory(derivedClass.getProject()).createType(derivedClass, PsiSubstitutor.EMPTY), map);
       if (stamp.mayCacheNow()) {
@@ -102,7 +100,7 @@ class ScopedClassHierarchy {
     PsiClassType.ClassResolveResult resolveResult = map.get(superClass);
     if (resolveResult == null) return null;
 
-    PsiClass cachedClass = assertNotNull(resolveResult.getElement());
+    PsiClass cachedClass = Objects.requireNonNull(resolveResult.getElement());
     PsiSubstitutor cachedSubstitutor = resolveResult.getSubstitutor();
     return cachedClass == superClass ? cachedSubstitutor : mirrorSubstitutor(superClass, cachedClass, cachedSubstitutor);
   }
@@ -143,7 +141,7 @@ class ScopedClassHierarchy {
     PsiUtilCore.ensureValid(myPlaceClass);
     List<PsiClassType.ClassResolveResult> list = new ArrayList<>();
     for (PsiClassType type : myPlaceClass.getSuperTypes()) {
-      PsiUtil.ensureValidType(type);
+      PsiUtil.ensureValidType(type, myPlaceClass);
       PsiClassType corrected = PsiClassImplUtil.correctType(type, myResolveScope);
       if (corrected == null) continue;
 
@@ -152,6 +150,12 @@ class ScopedClassHierarchy {
       if (superClass == null || !PsiSearchScopeUtil.isInScope(myResolveScope, superClass)) continue;
 
       list.add(result);
+    }
+    if (list.isEmpty() && myPlaceClass.getExtendsListTypes().length > 0) {
+      PsiClassType.ClassResolveResult objectResult = PsiType.getJavaLangObject(myPlaceClass.getManager(), myResolveScope).resolveGenerics();
+      if (objectResult.getElement() != null) {
+        list.add(objectResult);
+      }
     }
     return list;
   }

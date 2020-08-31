@@ -29,7 +29,6 @@ import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.ControlFlowUtils;
 import com.siyeh.ig.psiutils.MethodUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -38,12 +37,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public class TailRecursionInspection extends BaseInspection {
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("tail.recursion.display.name");
-  }
 
   @Override
   @NotNull
@@ -238,7 +231,7 @@ public class TailRecursionInspection extends BaseInspection {
       }
       else if (isTailCallReturn(element, method)) {
         final PsiReturnStatement returnStatement = (PsiReturnStatement)element;
-        final PsiMethodCallExpression call = (PsiMethodCallExpression)ParenthesesUtils.stripParentheses(returnStatement.getReturnValue());
+        final PsiMethodCallExpression call = (PsiMethodCallExpression)PsiUtil.skipParenthesizedExprDown(returnStatement.getReturnValue());
         assert call != null;
         final PsiExpression[] arguments = call.getArgumentList().getExpressions();
         final PsiParameter[] parameters = method.getParameterList().getParameters();
@@ -273,8 +266,7 @@ public class TailRecursionInspection extends BaseInspection {
         for (Integer index : sortedNodes) {
           final PsiParameter parameter = parameters[index];
           final String parameterName = parameter.getName();
-          assert parameterName != null;
-          final PsiExpression argument = ParenthesesUtils.stripParentheses(arguments[index]);
+          final PsiExpression argument = PsiUtil.skipParenthesizedExprDown(arguments[index]);
           assert argument != null;
           if (argument instanceof PsiReferenceExpression) {
             final PsiReferenceExpression referenceExpression = (PsiReferenceExpression)argument;
@@ -423,7 +415,7 @@ public class TailRecursionInspection extends BaseInspection {
         return false;
       }
       final PsiReturnStatement returnStatement = (PsiReturnStatement)element;
-      final PsiExpression returnValue = ParenthesesUtils.stripParentheses(returnStatement.getReturnValue());
+      final PsiExpression returnValue = PsiUtil.skipParenthesizedExprDown(returnStatement.getReturnValue());
       if (!(returnValue instanceof PsiMethodCallExpression)) {
         return false;
       }
@@ -443,7 +435,7 @@ public class TailRecursionInspection extends BaseInspection {
     @Override
     public void visitReturnStatement(@NotNull PsiReturnStatement statement) {
       super.visitReturnStatement(statement);
-      final PsiExpression returnValue = ParenthesesUtils.stripParentheses(statement.getReturnValue());
+      final PsiExpression returnValue = PsiUtil.skipParenthesizedExprDown(statement.getReturnValue());
       if (!(returnValue instanceof PsiMethodCallExpression)) {
         return;
       }
@@ -458,7 +450,7 @@ public class TailRecursionInspection extends BaseInspection {
       if (!resolveResult.isValidResult() || !containingMethod.equals(resolveResult.getElement())) {
         return;
       }
-      final PsiExpression qualifier = ParenthesesUtils.stripParentheses(methodExpression.getQualifierExpression());
+      final PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(methodExpression.getQualifierExpression());
       if (qualifier != null && !(qualifier instanceof PsiThisExpression) && MethodUtils.isOverridden(containingMethod)) {
         return;
       }

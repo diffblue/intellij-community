@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.plugin.ui;
 
 import com.intellij.codeInsight.hint.TooltipController;
@@ -56,9 +56,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
 
   @Override
   public void mouseMoved(@NotNull EditorMouseEvent e) {
-    final LogicalPosition position  = editor.xyToLogicalPosition(e.getMouseEvent().getPoint());
-
-    handleInputFocusMovement(position, false);
+    handleInputFocusMovement(e.getLogicalPosition(), false);
   }
 
   private void handleInputFocusMovement(LogicalPosition position, boolean caret) {
@@ -87,9 +85,8 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
     }
     final String variableName = variableRange.subSequence(patternText).toString();
     final NamedScriptableDefinition variable = configuration.findVariable(variableName);
-    final boolean newDialog = Registry.is("ssr.use.new.search.dialog");
-    String filterText = StringUtil.escapeXmlEntities(getShortParamString(variable, !newDialog));
-    if (!editor.isViewer() && !variableName.equals(configuration.getCurrentVariableName()) && newDialog) {
+    String filterText = StringUtil.escapeXmlEntities(getShortParamString(variable, false));
+    if (!editor.isViewer() && !variableName.equals(configuration.getCurrentVariableName())) {
       filterText =  appendLinkText(filterText, variableName);
     }
     final boolean replacementVariable =
@@ -135,7 +132,6 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
 
   @Override
   public void documentChanged(@NotNull DocumentEvent event) {
-    if (event.getOldLength() == event.getNewLength()) return;
     // to handle backspace & delete (backspace strangely is not reported to the caret listener)
     handleInputFocusMovement(editor.getCaretModel().getLogicalPosition(), true);
     updateEditorInlays();
@@ -184,15 +180,14 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
       if (!constraint.getNameOfExprType().isEmpty()) {
         append(buf, SSRBundle.message("exprtype.tooltip.message",
                                       constraint.isInvertExprType() ? 1 : 0,
-                                      constraint.getNameOfExprType(),
+                                      constraint.isRegexExprType() ? constraint.getNameOfExprType() : constraint.getExpressionTypes(),
                                       constraint.isExprTypeWithinHierarchy() ? 1 : 0));
       }
 
-      constraint.getNameOfFormalArgType();
       if (!constraint.getNameOfFormalArgType().isEmpty()) {
         append(buf, SSRBundle.message("expected.type.tooltip.message",
                                       constraint.isInvertFormalType() ? 1 : 0,
-                                      constraint.getNameOfFormalArgType(),
+                                      constraint.isRegexFormalType() ? constraint.getNameOfFormalArgType() : constraint.getExpectedTypes(),
                                       constraint.isFormalArgTypeWithinHierarchy() ? 1 : 0));
       }
 
@@ -203,7 +198,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
     }
 
     final String script = namedScriptableDefinition.getScriptCodeConstraint();
-    if (script != null && script.length() > 2) {
+    if (script.length() > 2) {
       append(buf, SSRBundle.message("script.tooltip.message"));
     }
 
@@ -219,7 +214,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
   }
 
   private static void showTooltip(@NotNull Editor editor, LogicalPosition position, @NotNull String text) {
-    if (Registry.is("ssr.use.editor.inlays.instead.of.tool.tips") && Registry.is("ssr.use.new.search.dialog")) {
+    if (Registry.is("ssr.use.editor.inlays.instead.of.tool.tips")) {
       return;
     }
     final Rectangle visibleArea = editor.getScrollingModel().getVisibleArea();
@@ -258,7 +253,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
   }
 
   void updateEditorInlays() {
-    if (!Registry.is("ssr.use.editor.inlays.instead.of.tool.tips") || !Registry.is("ssr.use.new.search.dialog")) {
+    if (!Registry.is("ssr.use.editor.inlays.instead.of.tool.tips")) {
       return;
     }
     final String text = editor.getDocument().getText();
@@ -286,7 +281,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
       else {
         final FilterRenderer renderer = inlay.getRenderer();
         renderer.setText(labelText);
-        inlay.updateSize();
+        inlay.update();
       }
     }
     final NamedScriptableDefinition contextVariable = configuration.findVariable(Configuration.CONTEXT_VAR_NAME);
@@ -302,7 +297,7 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
       else {
         final FilterRenderer renderer = inlay.getRenderer();
         renderer.setText("whole template: " + labelText);
-        inlay.updateSize();
+        inlay.update();
       }
     }
     for (String variable : variables) {
@@ -323,8 +318,8 @@ public class SubstitutionShortInfoHandler implements DocumentListener, EditorMou
     }
 
     @Override
-    public int calcWidthInPixels(@NotNull Editor editor) {
-      return getFontMetrics(editor).stringWidth(myText) + 12;
+    public int calcWidthInPixels(@NotNull Inlay inlay) {
+      return getFontMetrics(inlay.getEditor()).stringWidth(myText) + 12;
     }
 
     private static Font getFont() {

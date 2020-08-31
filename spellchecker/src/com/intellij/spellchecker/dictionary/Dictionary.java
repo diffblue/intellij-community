@@ -22,8 +22,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Set;
 
 public interface Dictionary {
-
-  default void getSuggestions(@NotNull String word, @NotNull Consumer<String> consumer) {}
+  default void consumeSuggestions(@NotNull String word, @NotNull Consumer<String> consumer) {}
 
   @NotNull
   String getName();
@@ -31,12 +30,6 @@ public interface Dictionary {
   @Nullable
   Boolean contains(@NotNull String word);
 
-  boolean isEmpty();
-
-  void traverse(@NotNull Consumer<String> action);
-
   @NotNull
   Set<String> getWords();
-
-  int size();
 }

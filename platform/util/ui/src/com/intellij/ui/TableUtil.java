@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
 import com.intellij.util.SmartList;
@@ -16,7 +16,7 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TableUtil {
+public final class TableUtil {
   private TableUtil() {
   }
 
@@ -29,7 +29,7 @@ public class TableUtil {
     return removeSelectedItems(table, null);
   }
 
-  public static void selectRows(@NotNull JTable table, @NotNull int[] viewRows) {
+  public static void selectRows(@NotNull JTable table, int @NotNull [] viewRows) {
     ListSelectionModel selectionModel = table.getSelectionModel();
     selectionModel.clearSelection();
     int count = table.getRowCount();

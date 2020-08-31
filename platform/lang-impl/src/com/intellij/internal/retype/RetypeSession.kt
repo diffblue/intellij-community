@@ -1,10 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.internal.retype
 
 import com.intellij.codeInsight.CodeInsightSettings
 import com.intellij.codeInsight.CodeInsightWorkspaceSettings
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementPresentation
+import com.intellij.codeInsight.lookup.LookupFocusDegree
 import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.codeInsight.lookup.impl.LookupImpl
 import com.intellij.codeInsight.template.TemplateManager
@@ -137,7 +138,7 @@ class RetypeSession(
 
   private val oldSelectAutopopup = CodeInsightSettings.getInstance().SELECT_AUTOPOPUP_SUGGESTIONS_BY_CHARS
   private val oldAddUnambiguous = CodeInsightSettings.getInstance().ADD_UNAMBIGIOUS_IMPORTS_ON_THE_FLY
-  private val oldOptimize = CodeInsightWorkspaceSettings.getInstance(project).optimizeImportsOnTheFly
+  private val oldOptimize = CodeInsightWorkspaceSettings.getInstance(project).isOptimizeImportsOnTheFly
   var startNextCallback: (() -> Unit)? = null
   private val disposeLock = Any()
   private var typedRightBefore = false
@@ -197,7 +198,7 @@ class RetypeSession(
       SELECT_AUTOPOPUP_SUGGESTIONS_BY_CHARS = false
       ADD_UNAMBIGIOUS_IMPORTS_ON_THE_FLY = false
     }
-    CodeInsightWorkspaceSettings.getInstance(project).optimizeImportsOnTheFly = false
+    CodeInsightWorkspaceSettings.getInstance(project).isOptimizeImportsOnTheFly = false
     EditorNotifications.getInstance(project).updateNotifications(editor.virtualFile)
     retypePaused = false
     startLargeIndexing()
@@ -225,7 +226,7 @@ class RetypeSession(
       SELECT_AUTOPOPUP_SUGGESTIONS_BY_CHARS = oldSelectAutopopup
       ADD_UNAMBIGIOUS_IMPORTS_ON_THE_FLY = oldAddUnambiguous
     }
-    CodeInsightWorkspaceSettings.getInstance(project).optimizeImportsOnTheFly = oldOptimize
+    CodeInsightWorkspaceSettings.getInstance(project).isOptimizeImportsOnTheFly = oldOptimize
 
     currentLatencyRecordKey?.details = "typed ${log.typedChars} chars, completed ${log.completedChars} chars"
     log.flush()
@@ -303,7 +304,7 @@ class RetypeSession(
     if (lookup != null && !skipLookupSuggestion) {
       val currentLookupElement = lookup.currentItem
       if (currentLookupElement?.shouldAccept(lookup.lookupStart) == true) {
-        lookup.focusDegree = LookupImpl.FocusDegree.FOCUSED
+        lookup.lookupFocusDegree = LookupFocusDegree.FOCUSED
         scriptBuilder?.append("${ActionCommand.PREFIX} ${IdeActions.ACTION_CHOOSE_LOOKUP_ITEM}\n")
         typedRightBefore = false
         textBeforeLookupSelection = document.text
@@ -578,7 +579,7 @@ class RetypeSession(
 
   @Language("JAVA")
   val code = """
-    class MyClass {
+    final class MyClass {
         public static void main1(String[] args) {
           int x = 5;
         }

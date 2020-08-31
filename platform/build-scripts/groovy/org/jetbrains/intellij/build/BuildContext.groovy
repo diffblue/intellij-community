@@ -18,14 +18,9 @@ package org.jetbrains.intellij.build
 import groovy.transform.CompileStatic
 import org.jetbrains.intellij.build.impl.BuildContextImpl
 import org.jetbrains.intellij.build.impl.BundledJreManager
-import org.jetbrains.jps.gant.JpsGantProjectBuilder
-import org.jetbrains.jps.model.JpsGlobal
-import org.jetbrains.jps.model.JpsProject
+import org.jetbrains.intellij.build.impl.DependenciesProperties
 import org.jetbrains.jps.model.module.JpsModule
 
-/**
- * @author nik
- */
 @CompileStatic
 abstract class BuildContext implements CompilationContext {
   ApplicationInfoProperties applicationInfo
@@ -35,6 +30,7 @@ abstract class BuildContext implements CompilationContext {
   MacDistributionCustomizer macDistributionCustomizer
   ProprietaryBuildTools proprietaryBuildTools
   BundledJreManager bundledJreManager
+  DependenciesProperties dependenciesProperties = new DependenciesProperties(this)
 
   /**
    * Build number without product code (e.g. '162.500.10')
@@ -88,16 +84,6 @@ abstract class BuildContext implements CompilationContext {
   abstract boolean shouldBuildDistributionForOS(String os)
 
   static BuildContext createContext(String communityHome, String projectHome, ProductProperties productProperties,
-                                    ProprietaryBuildTools proprietaryBuildTools = ProprietaryBuildTools.DUMMY,
-                                    BuildOptions options = new BuildOptions()) {
-    return BuildContextImpl.create(communityHome, projectHome, productProperties, proprietaryBuildTools, options)
-  }
-
-  /**
-   * @deprecated use {@link #createContext(String, String, ProductProperties, ProprietaryBuildTools, BuildOptions)} instead
-   */
-  static BuildContext createContext(AntBuilder ant, JpsGantProjectBuilder projectBuilder, JpsProject project, JpsGlobal global,
-                                    String communityHome, String projectHome, ProductProperties productProperties,
                                     ProprietaryBuildTools proprietaryBuildTools = ProprietaryBuildTools.DUMMY,
                                     BuildOptions options = new BuildOptions()) {
     return BuildContextImpl.create(communityHome, projectHome, productProperties, proprietaryBuildTools, options)

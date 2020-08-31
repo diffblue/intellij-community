@@ -1,15 +1,18 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.editor.impl;
 
-import com.intellij.openapi.editor.*;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.editor.FoldRegion;
+import com.intellij.openapi.editor.FoldingGroup;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.util.Key;
 import com.intellij.util.DocumentUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class FoldRegionImpl extends RangeMarkerWithGetterImpl implements FoldRegion {
+public class FoldRegionImpl extends RangeMarkerImpl implements FoldRegion {
   private static final Key<Boolean> MUTE_INNER_HIGHLIGHTERS = Key.create("mute.inner.highlighters");
   private static final Key<Boolean> SHOW_GUTTER_MARK_FOR_SINGLE_LINE = Key.create("show.gutter.mark.for.single.line");
 
@@ -27,7 +30,7 @@ public class FoldRegionImpl extends RangeMarkerWithGetterImpl implements FoldReg
                  @NotNull String placeholder,
                  @Nullable FoldingGroup group,
                  boolean shouldNeverExpand) {
-    super(editor.getDocument(), startOffset, endOffset,false);
+    super(editor.getDocument(), startOffset, endOffset,false, true);
     myGroup = group;
     myShouldNeverExpand = shouldNeverExpand;
     myIsExpanded = true;
@@ -126,23 +129,23 @@ public class FoldRegionImpl extends RangeMarkerWithGetterImpl implements FoldReg
     }
     super.changedUpdateImpl(e);
     if (isValid()) {
-      alignToSurrogateBoundaries();
+      alignToValidBoundaries();
     }
   }
 
   @Override
-  protected void onReTarget(int startOffset, int endOffset, int destOffset) {
-    alignToSurrogateBoundaries();
+  protected void onReTarget(@NotNull DocumentEvent e) {
+    alignToValidBoundaries();
   }
 
-  private void alignToSurrogateBoundaries() {
+  private void alignToValidBoundaries() {
     Document document = getDocument();
     int start = intervalStart();
     int end = intervalEnd();
-    if (DocumentUtil.isInsideSurrogatePair(document, start)) {
+    if (DocumentUtil.isInsideCharacterPair(document, start)) {
       setIntervalStart(start - 1);
     }
-    if (DocumentUtil.isInsideSurrogatePair(document, end)) {
+    if (DocumentUtil.isInsideCharacterPair(document, end)) {
       setIntervalEnd(end - 1);
     }
   }

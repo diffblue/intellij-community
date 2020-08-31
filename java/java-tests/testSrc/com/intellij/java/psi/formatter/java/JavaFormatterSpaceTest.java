@@ -769,4 +769,62 @@ public class JavaFormatterSpaceTest extends AbstractJavaFormatterTest {
                  "    case 4: yield ;\n" +
                  "}");
   }
+
+  public void testSpaceAfterCommaInRecordHeader() {
+    getSettings().SPACE_AFTER_COMMA = true;
+    doMethodTest("record R(String s,int i){}",
+                 "record R(String s, int i) {\n" +
+                 "}");
+  }
+
+  public void testSpaceBeforeCommaInRecordHeader() {
+    getSettings().SPACE_AFTER_COMMA = false;
+    getSettings().SPACE_BEFORE_COMMA = true;
+    doMethodTest("record R(String s,int i){}",
+                 "record R(String s ,int i) {\n" +
+                 "}");
+  }
+
+  public void testSpaceBetweenGenericsAndName() {
+    doTextTest("record A(List<String> string){}",
+                 "record A(List<String> string) {\n" +
+                 "}");
+  }
+
+  public void testSpaceBetweenAnnotationAndType() {
+    doTextTest("record A(@Foo()String string) {}",
+               "record A(@Foo() String string) {\n" +
+               "}");
+  }
+
+  public void testSpacesAroundRelationalOperators() {
+    getSettings().SPACE_AROUND_RELATIONAL_OPERATORS = true;
+    doMethodTest(
+      "if (x >= 1 && y < 100) {\n" +
+      "         if (x<=5 && y>50) {\n" +
+      "            System.out.println(\"1..5\");\n" +
+      "         }\n" +
+      "      }",
+
+      "if (x >= 1 && y < 100) {\n" +
+      "    if (x <= 5 && y > 50) {\n" +
+      "        System.out.println(\"1..5\");\n" +
+      "    }\n" +
+      "}"
+    );
+    getSettings().SPACE_AROUND_RELATIONAL_OPERATORS = false;
+    doMethodTest(
+      "if (x   >=   1 && y    <  100) {\n" +
+      "         if (x  <=  5 && y   >   50) {\n" +
+      "            System.out.println(\"1..5\");\n" +
+      "         }\n" +
+      "      }",
+
+      "if (x>=1 && y<100) {\n" +
+      "    if (x<=5 && y>50) {\n" +
+      "        System.out.println(\"1..5\");\n" +
+      "    }\n" +
+      "}"
+    );
+  }
 }

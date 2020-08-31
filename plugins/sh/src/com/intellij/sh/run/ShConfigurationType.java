@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.sh.run;
 
+import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.execution.configurations.RunConfiguration;
 import com.intellij.execution.configurations.SimpleConfigurationType;
 import com.intellij.openapi.project.Project;
@@ -9,6 +10,7 @@ import com.intellij.sh.ShLanguage;
 import com.intellij.util.EnvironmentUtil;
 import icons.SHIcons;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public class ShConfigurationType extends SimpleConfigurationType {
   public ShConfigurationType() {
@@ -20,7 +22,7 @@ public class ShConfigurationType extends SimpleConfigurationType {
   @Override
   public RunConfiguration createTemplateConfiguration(@NotNull Project project) {
     ShRunConfiguration configuration = new ShRunConfiguration(project, this, ShLanguage.INSTANCE.getID());
-    String defaultShell = EnvironmentUtil.getValue("SHELL");
+    String defaultShell = getDefaultShell();
     if (defaultShell != null) {
       configuration.setInterpreterPath(defaultShell);
     }
@@ -29,5 +31,14 @@ public class ShConfigurationType extends SimpleConfigurationType {
       configuration.setScriptWorkingDirectory(projectPath);
     }
     return configuration;
+  }
+
+  public static ShConfigurationType getInstance() {
+    return ConfigurationTypeUtil.findConfigurationType(ShConfigurationType.class);
+  }
+
+  @Nullable
+  public static String getDefaultShell() {
+    return EnvironmentUtil.getValue("SHELL");
   }
 }

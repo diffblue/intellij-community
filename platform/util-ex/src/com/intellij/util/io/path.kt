@@ -1,7 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.io
 
-import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.io.FileUtilRt
 import com.intellij.openapi.vfs.CharsetToolkit
 import com.intellij.util.containers.ContainerUtil
 import java.io.File
@@ -15,6 +15,10 @@ import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import kotlin.math.min
+
+operator fun Path.div(x: String): Path = resolve(x)
+
+operator fun File.div(x: String): File = File(this, x)
 
 fun Path.exists(): Boolean = Files.exists(this)
 
@@ -80,10 +84,60 @@ fun Path.createSymbolicLink(target: Path): Path {
 @JvmOverloads
 fun Path.delete(recursively: Boolean = true) {
   if (recursively) {
-    FileUtil.delete(this)
+    doDelete(this)
   }
   else {
     Files.delete(this)
+  }
+}
+
+private fun doDelete(file: Path) {
+  val attributes = try {
+    Files.readAttributes(file, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+  }
+  catch (e: NoSuchFileException) {
+    return
+  }
+
+  if (!attributes.isDirectory) {
+    deleteFile(file)
+    return
+  }
+
+  Files.walkFileTree(file, object : SimpleFileVisitor<Path>() {
+    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+      deleteFile(file)
+      return FileVisitResult.CONTINUE
+    }
+
+    override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+      Files.deleteIfExists(dir)
+      return FileVisitResult.CONTINUE
+    }
+  })
+}
+
+private fun deleteFile(file: Path) {
+  try {
+    Files.deleteIfExists(file)
+  }
+  catch (e: IOException) {
+    // repeated delete is required for bad OS like Windows
+    FileUtilRt.doIOOperation(FileUtilRt.RepeatableIOOperation<Boolean, IOException> { lastAttempt ->
+      try {
+        Files.deleteIfExists(file)
+      }
+      catch (e: IOException) {
+        return@RepeatableIOOperation if (lastAttempt) {
+          false
+        }
+        else {
+          throw e
+        }
+      }
+
+      true
+    })
   }
 }
 

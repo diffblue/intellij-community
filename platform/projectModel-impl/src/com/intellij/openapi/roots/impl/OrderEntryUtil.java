@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.impl;
 
 import com.intellij.openapi.module.Module;
@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class OrderEntryUtil {
+public final class OrderEntryUtil {
   private OrderEntryUtil() { }
 
   @Nullable
@@ -153,7 +153,7 @@ public class OrderEntryUtil {
     rootModel.commit();
   }
 
-  private static int findLibraryOrderEntry(@NotNull OrderEntry[] entries, @NotNull Library library) {
+  private static int findLibraryOrderEntry(OrderEntry @NotNull [] entries, @NotNull Library library) {
     for (int i = 0; i < entries.length; i++) {
       OrderEntry entry = entries[i];
       if (entry instanceof LibraryOrderEntry && library.equals(((LibraryOrderEntry)entry).getLibrary())) {
@@ -232,6 +232,6 @@ public class OrderEntryUtil {
   }
 
   public static boolean isModuleLibraryOrderEntry(@Nullable OrderEntry orderEntry) {
-    return orderEntry instanceof ModuleLibraryOrderEntryImpl;
+    return orderEntry instanceof LibraryOrderEntry && ((LibraryOrderEntry)orderEntry).isModuleLevel();
   }
 }

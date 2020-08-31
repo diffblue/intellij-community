@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.openapi.extensions.ExtensionPointName;
@@ -10,12 +10,13 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Objects;
 
 /**
  * @author Philipp Smorygo
  */
 public interface SearchEverywhereClassifier {
-  class EP_Manager {
+  final class EP_Manager {
     private EP_Manager() {}
 
     public static boolean isClass(@Nullable Object o) {
@@ -34,29 +35,23 @@ public interface SearchEverywhereClassifier {
 
     @Nullable
     public static VirtualFile getVirtualFile(@NotNull Object o) {
-      for (SearchEverywhereClassifier classifier : SearchEverywhereClassifier.EP_NAME.getExtensionList()) {
-        VirtualFile virtualFile = classifier.getVirtualFile(o);
-        if (virtualFile != null) return virtualFile;
-      }
-      return null;
+      return SearchEverywhereClassifier.EP_NAME.getExtensionList().stream()
+        .map(classifier -> classifier.getVirtualFile(o))
+        .filter(Objects::nonNull).findFirst().orElse(null);
     }
 
     @Nullable
     public static Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-      for (SearchEverywhereClassifier classifier : SearchEverywhereClassifier.EP_NAME.getExtensionList()) {
-        Component component = classifier.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-        if (component != null) return component;
-      }
-      return null;
+      return SearchEverywhereClassifier.EP_NAME.getExtensionList().stream()
+        .map(classifier -> classifier.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)).filter(Objects::nonNull)
+        .findFirst().orElse(null);
     }
 
     @Nullable
     public static GlobalSearchScope getProjectScope(@NotNull Project project) {
-      for (SearchEverywhereClassifier classifier : SearchEverywhereClassifier.EP_NAME.getExtensionList()) {
-        GlobalSearchScope scope = classifier.getProjectScope(project);
-        if (scope != null) return scope;
-      }
-      return null;
+      return SearchEverywhereClassifier.EP_NAME.getExtensionList().stream()
+        .map(classifier -> classifier.getProjectScope(project))
+        .filter(Objects::nonNull).findFirst().orElse(null);
     }
   }
 

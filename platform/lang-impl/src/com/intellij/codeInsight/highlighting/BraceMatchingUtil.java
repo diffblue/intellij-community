@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.highlighting;
 
@@ -12,7 +12,6 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.FileTypeExtension;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.fileTypes.impl.AbstractFileType;
 import com.intellij.openapi.util.Comparing;
@@ -24,7 +23,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-public class BraceMatchingUtil {
+public final class BraceMatchingUtil {
   public static final int UNDEFINED_TOKEN_GROUP = -1;
 
   private BraceMatchingUtil() {
@@ -79,30 +78,49 @@ public class BraceMatchingUtil {
 
     final HighlighterIterator iterator = highlighter.createIterator(offset);
     final FileType fileType = iterator.atEnd() ? null : getFileType(file, iterator.getStart());
-    final HighlighterIterator preOffsetIterator = offset > 0 ? highlighter.createIterator(offset - 1) : null;
+
+    boolean isBeforeOrInsideLeftBrace = fileType != null && isLBraceToken(iterator, text, fileType);
+    boolean isBeforeOrInsideRightBrace = !isBeforeOrInsideLeftBrace && fileType != null && isRBraceToken(iterator, text, fileType);
+    boolean isInsideBrace = (isBeforeOrInsideLeftBrace || isBeforeOrInsideRightBrace) && iterator.getStart() < offset;
+
+    final HighlighterIterator preOffsetIterator = offset > 0 && !isInsideBrace ? highlighter.createIterator(offset - 1) : null;
     final FileType preOffsetFileType = preOffsetIterator != null ? getFileType(file, preOffsetIterator.getStart()) : null;
 
     boolean isAfterLeftBrace = preOffsetIterator != null &&
                                isLBraceToken(preOffsetIterator, text, preOffsetFileType);
     boolean isAfterRightBrace = !isAfterLeftBrace && preOffsetIterator != null &&
                                 isRBraceToken(preOffsetIterator, text, preOffsetFileType);
-    boolean isBeforeLeftBrace = fileType != null && isLBraceToken(iterator, text, fileType);
-    boolean isBeforeRightBrace = !isBeforeLeftBrace && fileType != null && isRBraceToken(iterator, text, fileType);
 
     int offsetTokenStart = iterator.atEnd() ? -1 : iterator.getStart();
     int preOffsetTokenStart = preOffsetIterator == null || preOffsetIterator.atEnd() ? -1 : preOffsetIterator.getStart();
 
-    if (isAfterRightBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, false)) {
-      return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getStart());
+    if (editor.getSettings().isBlockCursor()) {
+      if (isBeforeOrInsideLeftBrace && matchBrace(text, fileType, iterator, true)) {
+        return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getStart(), isInsideBrace);
+      }
+      else if (isBeforeOrInsideRightBrace && matchBrace(text, fileType, iterator, false)) {
+        return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getStart(), isInsideBrace);
+      }
+      else if (isAfterRightBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, false)) {
+        return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getStart(), true);
+      }
+      else if (isAfterLeftBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, true)) {
+        return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getStart(), true);
+      }
     }
-    else if (isBeforeLeftBrace && matchBrace(text, fileType, iterator, true)) {
-      return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getEnd());
-    }
-    else if (isAfterLeftBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, true)) {
-      return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getEnd());
-    }
-    else if (isBeforeRightBrace && matchBrace(text, fileType, iterator, false)) {
-      return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getStart());
+    else {
+      if (isAfterRightBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, false)) {
+        return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getStart(), true);
+      }
+      else if (isBeforeOrInsideLeftBrace && matchBrace(text, fileType, iterator, true)) {
+        return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getEnd(), isInsideBrace);
+      }
+      else if (isAfterLeftBrace && matchBrace(text, preOffsetFileType, preOffsetIterator, true)) {
+        return new BraceHighlightingAndNavigationContext(preOffsetTokenStart, preOffsetIterator.getEnd(), true);
+      }
+      else if (isBeforeOrInsideRightBrace && matchBrace(text, fileType, iterator, false)) {
+        return new BraceHighlightingAndNavigationContext(offsetTokenStart, iterator.getStart(), isInsideBrace);
+      }
     }
     return null;
   }
@@ -449,11 +467,9 @@ public class BraceMatchingUtil {
     return BraceMatcherHolder.ourDefaultBraceMatcher;
   }
 
-  private static final FileTypeExtension<BraceMatcher> ourMatchers = new FileTypeExtension<>(BraceMatcher.EP_NAME.getName());
-
   @Nullable
   private static BraceMatcher getBraceMatcherByFileType(@NotNull FileType fileType) {
-    BraceMatcher matcher = ourMatchers.forFileType(fileType);
+    BraceMatcher matcher = FileTypeBraceMather.getInstance().forFileType(fileType);
     if (matcher != null) return matcher;
 
     if (fileType instanceof AbstractFileType) {
@@ -528,10 +544,12 @@ public class BraceMatchingUtil {
   public static final class BraceHighlightingAndNavigationContext {
     public final int currentBraceOffset;
     public final int navigationOffset;
+    public final boolean isCaretAfterBrace;
 
-    public BraceHighlightingAndNavigationContext(int currentBraceOffset, int navigationOffset) {
+    public BraceHighlightingAndNavigationContext(int currentBraceOffset, int navigationOffset, boolean isCaretAfterBrace) {
       this.currentBraceOffset = currentBraceOffset;
       this.navigationOffset = navigationOffset;
+      this.isCaretAfterBrace = isCaretAfterBrace;
     }
   }
 }

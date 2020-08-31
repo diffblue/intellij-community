@@ -2,23 +2,21 @@
 package org.jetbrains.plugins.gradle.model;
 
 import org.gradle.internal.impldep.com.google.common.base.Objects;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.gradle.DefaultExternalDependencyId;
 import org.jetbrains.plugins.gradle.tooling.util.BooleanBiFunction;
-import org.jetbrains.plugins.gradle.tooling.util.ContainerUtil;
-import org.jetbrains.plugins.gradle.tooling.util.HashCodeAggregateFunction;
+import org.jetbrains.plugins.gradle.tooling.util.GradleContainerUtil;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 
-import static org.jetbrains.plugins.gradle.tooling.util.ContainerUtil.aggregate;
-import static org.jetbrains.plugins.gradle.tooling.util.FunctionUtils.FILE_TO_PATH;
-
 public final class DefaultFileCollectionDependency extends AbstractExternalDependency implements FileCollectionDependency {
   private static final long serialVersionUID = 1L;
 
   private final Collection<File> files;
+  private boolean excludedFromIndexing;
 
   public DefaultFileCollectionDependency() {
     this(new ArrayList<File>());
@@ -40,13 +38,23 @@ public final class DefaultFileCollectionDependency extends AbstractExternalDepen
     return files;
   }
 
+  @ApiStatus.Experimental
+  public boolean isExcludedFromIndexing() {
+    return excludedFromIndexing;
+  }
+
+  @ApiStatus.Experimental
+  public void setExcludedFromIndexing(boolean excludedFromIndexing) {
+    this.excludedFromIndexing = excludedFromIndexing;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
     if (!(o instanceof DefaultFileCollectionDependency)) return false;
     if (!super.equals(o)) return false;
     DefaultFileCollectionDependency that = (DefaultFileCollectionDependency)o;
-    return ContainerUtil.match(files.iterator(), that.files.iterator(), new BooleanBiFunction<File, File>() {
+    return GradleContainerUtil.match(files.iterator(), that.files.iterator(), new BooleanBiFunction<File, File>() {
       @Override
       public Boolean fun(File o1, File o2) {
         return Objects.equal(o1.getPath(), o2.getPath());
@@ -56,7 +64,7 @@ public final class DefaultFileCollectionDependency extends AbstractExternalDepen
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(super.hashCode(), aggregate(files, new HashCodeAggregateFunction<File>(FILE_TO_PATH)));
+    return Objects.hashCode(super.hashCode(), calcFilesPathsHashCode(files));
   }
 
   @Override

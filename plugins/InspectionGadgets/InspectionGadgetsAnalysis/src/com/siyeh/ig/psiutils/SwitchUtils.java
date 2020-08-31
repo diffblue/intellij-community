@@ -15,7 +15,7 @@
  */
 package com.siyeh.ig.psiutils;
 
-import com.intellij.codeInsight.daemon.impl.analysis.HighlightUtil;
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightingFeature;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
@@ -72,7 +72,7 @@ public class SwitchUtils {
 
   public static boolean canBeSwitchCase(PsiExpression expression, PsiExpression switchExpression, LanguageLevel languageLevel,
                                         Set<Object> existingCaseValues) {
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     if (languageLevel.isAtLeast(LanguageLevel.JDK_1_7)) {
       final PsiExpression stringSwitchExpression = determinePossibleJdk17SwitchExpression(expression, existingCaseValues);
       if (EquivalenceChecker.getCanonicalPsiEquivalence().expressionsAreEquivalent(switchExpression, stringSwitchExpression)) {
@@ -122,7 +122,7 @@ public class SwitchUtils {
    * If switch body has no labels yet and language level permits, rule-based format is assumed.
    */
   public static boolean isRuleFormatSwitch(@NotNull PsiSwitchBlock block) {
-    if (!HighlightUtil.Feature.ENHANCED_SWITCH.isAvailable(block)) {
+    if (!HighlightingFeature.ENHANCED_SWITCH.isAvailable(block)) {
       return false;
     }
     final PsiSwitchLabelStatementBase label = PsiTreeUtil.getChildOfType(block.getBody(), PsiSwitchLabelStatementBase.class);
@@ -165,7 +165,7 @@ public class SwitchUtils {
   }
 
   private static PsiExpression getPossibleSwitchSelectorExpression(PsiExpression expression, LanguageLevel languageLevel) {
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     if (expression == null) {
       return null;
     }
@@ -196,8 +196,8 @@ public class SwitchUtils {
       return getPossibleSwitchSelectorExpression(operands[0], languageLevel);
     }
     else if (operation.equals(JavaTokenType.EQEQ) && operands.length == 2) {
-      final PsiExpression lhs = ParenthesesUtils.stripParentheses(operands[0]);
-      final PsiExpression rhs = ParenthesesUtils.stripParentheses(operands[1]);
+      final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(operands[0]);
+      final PsiExpression rhs = PsiUtil.skipParenthesizedExprDown(operands[1]);
       if (canBeCaseLabel(lhs, languageLevel, null)) {
         return rhs;
       }
@@ -313,7 +313,7 @@ public class SwitchUtils {
     }
 
     @Override
-    public void visitElement(PsiElement element) {
+    public void visitElement(@NotNull PsiElement element) {
       if (m_used) {
         return;
       }

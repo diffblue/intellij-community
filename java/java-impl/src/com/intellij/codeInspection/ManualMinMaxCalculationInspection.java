@@ -2,15 +2,16 @@
 package com.intellij.codeInspection;
 
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.siyeh.ig.PsiReplacementUtil;
 import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.EquivalenceChecker;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.SideEffectChecker;
 import com.siyeh.ig.style.ConditionalModel;
 import com.siyeh.ig.style.IfConditionalModel;
@@ -32,7 +33,7 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
   @Override
   public JComponent createOptionsPanel() {
     MultipleCheckboxOptionsPanel panel = new MultipleCheckboxOptionsPanel(this);
-    panel.addCheckbox(InspectionsBundle.message("inspection.manual.min.max.calculation.disable.for.non.integral"),
+    panel.addCheckbox(JavaBundle.message("inspection.manual.min.max.calculation.disable.for.non.integral"),
                       "disableForNonIntegralTypes");
     return panel;
   }
@@ -44,7 +45,7 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
 
       @Override
       public void visitIfStatement(PsiIfStatement statement) {
-        ConditionalModel model = IfConditionalModel.from(statement);
+        ConditionalModel model = IfConditionalModel.from(statement, false);
         if (model == null) return;
         visitConditional(statement.getFirstChild(), model);
       }
@@ -75,7 +76,7 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
         IElementType tokenType = condition.getOperationTokenType();
         useMathMin ^= JavaTokenType.LT.equals(tokenType) || JavaTokenType.LE.equals(tokenType);
         holder.registerProblem(element,
-                               InspectionsBundle.message("inspection.manual.min.max.calculation.description", useMathMin ? "min" : "max"),
+                               JavaBundle.message("inspection.manual.min.max.calculation.description", useMathMin ? "min" : "max"),
                                new ReplaceWithMinMaxFix(useMathMin));
       }
 
@@ -92,7 +93,7 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
 
   @Nullable
   private static PsiBinaryExpression getCondition(@Nullable PsiExpression expression) {
-    PsiBinaryExpression condition = tryCast(ParenthesesUtils.stripParentheses(expression), PsiBinaryExpression.class);
+    PsiBinaryExpression condition = tryCast(PsiUtil.skipParenthesizedExprDown(expression), PsiBinaryExpression.class);
     if (condition == null) return null;
     IElementType tokenType = condition.getOperationTokenType();
     if (JavaTokenType.LT.equals(tokenType) || JavaTokenType.LE.equals(tokenType) ||
@@ -131,7 +132,7 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
       }
       PsiIfStatement ifStatement = PsiTreeUtil.getParentOfType(element, PsiIfStatement.class);
       if (ifStatement == null) return;
-      IfConditionalModel model = IfConditionalModel.from(ifStatement);
+      IfConditionalModel model = IfConditionalModel.from(ifStatement, false);
       if (model == null) return;
       String replacement = createReplacement(model.getCondition());
       if (replacement == null) return;
@@ -140,6 +141,10 @@ public class ManualMinMaxCalculationInspection extends AbstractBaseJavaLocalInsp
       CommentTracker tracker = new CommentTracker();
       PsiStatement thenBranch = model.getThenBranch();
       tracker.text(thenBranch);
+      PsiStatement elseBranch = model.getElseBranch();
+      if (!PsiTreeUtil.isAncestor(ifStatement, elseBranch, true)) {
+        new CommentTracker().deleteAndRestoreComments(elseBranch);
+      }
       PsiElement result = PsiReplacementUtil.replaceStatement(ifStatement, thenBranch.getText(), tracker);
       SimplifiableIfStatementInspection.tryJoinDeclaration(result);
     }

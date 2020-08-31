@@ -1,21 +1,9 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.service.impl;
 
-import com.intellij.util.containers.ContainerUtilRt;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.jps.plugin.JpsPluginManager;
 import org.jetbrains.jps.service.JpsServiceManager;
@@ -23,13 +11,12 @@ import org.jetbrains.jps.service.JpsServiceManager;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * @author nik
- */
 public class JpsServiceManagerImpl extends JpsServiceManager {
   private final ConcurrentMap<Class, Object> myServices = new ConcurrentHashMap<>(16, 0.75f, 1);
   private final ConcurrentMap<Class, List<?>> myExtensions = new ConcurrentHashMap<>(16, 0.75f, 1);
+  private final AtomicInteger myModificationStamp = new AtomicInteger(0);
   private volatile JpsPluginManager myPluginManager;
 
   @Override
@@ -64,7 +51,7 @@ public class JpsServiceManagerImpl extends JpsServiceManager {
 
   @Override
   public <T> Iterable<T> getExtensions(Class<T> extensionClass) {
-    List<?> cached = myExtensions.get(extensionClass);
+    List<?> cached = cleanupExtensionCache()? null : myExtensions.get(extensionClass);
     if (cached == null) {
       // confine costly service initialization to single thread for defined startup profile
       synchronized (myExtensions) {
@@ -82,13 +69,37 @@ public class JpsServiceManagerImpl extends JpsServiceManager {
     return (List<T>)cached;
   }
 
+  @ApiStatus.Internal
+  public boolean cleanupExtensionCache() {
+    synchronized (myExtensions) {
+      JpsPluginManager manager = myPluginManager;
+      if (manager != null) {
+        int stamp = manager.getModificationStamp();
+        if (myModificationStamp.getAndSet(stamp) != stamp) {
+          myExtensions.clear();
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
   @NotNull
   private <T> Collection<T> loadExtensions(Class<T> extensionClass) {
     JpsPluginManager pluginManager = myPluginManager;
-    if (pluginManager == null) {
+    if (pluginManager == null || !pluginManager.isFullyLoaded()) {
       Iterator<JpsPluginManager> managers = ServiceLoader.load(JpsPluginManager.class, JpsPluginManager.class.getClassLoader()).iterator();
       if (managers.hasNext()) {
-        pluginManager = managers.next();
+        try {
+          pluginManager = managers.next();
+        }
+        catch (ServiceConfigurationError e) {
+          Throwable cause = e.getCause();
+          if (cause instanceof ProcessCanceledException) {
+            throw (ProcessCanceledException)cause;
+          }
+          throw e;
+        }
         if (managers.hasNext()) {
           throw new ServiceConfigurationError("More than one implementation of " + JpsPluginManager.class + " found: " + pluginManager.getClass() + " and " + managers.next().getClass());
         }
@@ -106,7 +117,17 @@ public class JpsServiceManagerImpl extends JpsServiceManager {
     @Override
     public <T> Collection<T> loadExtensions(@NotNull Class<T> extensionClass) {
       ServiceLoader<T> loader = ServiceLoader.load(extensionClass, extensionClass.getClassLoader());
-      return ContainerUtilRt.newArrayList(loader);
+      return ContainerUtil.newArrayList(loader);
+    }
+
+    @Override
+    public boolean isFullyLoaded() {
+      return true;
+    }
+
+    @Override
+    public int getModificationStamp() {
+      return 0;
     }
   }
 }

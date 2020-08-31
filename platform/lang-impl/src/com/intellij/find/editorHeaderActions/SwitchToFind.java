@@ -2,16 +2,19 @@ package com.intellij.find.editorHeaderActions;
 
 import com.intellij.find.EditorSearchSession;
 import com.intellij.find.FindModel;
-import com.intellij.find.FindUtil;
-import com.intellij.openapi.actionSystem.*;
+import com.intellij.ide.lightEdit.LightEditCompatible;
+import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.editor.actionSystem.EditorAction;
 import com.intellij.openapi.keymap.KeymapUtil;
-import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.DumbAwareAction;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 
-public class SwitchToFind extends AnAction implements DumbAware {
+public class SwitchToFind extends DumbAwareAction implements LightEditCompatible {
   public SwitchToFind(@NotNull JComponent shortcutHolder) {
     AnAction findAction = ActionManager.getInstance().getAction(IdeActions.ACTION_FIND);
     if (findAction != null) {
@@ -46,7 +49,9 @@ public class SwitchToFind extends AnAction implements DumbAware {
     }
 
     final FindModel findModel = search.getFindModel();
-    FindUtil.configureFindModel(false, e.getData(CommonDataKeys.EDITOR), findModel, false);
+    if (findModel.isReplaceState()) {
+      findModel.setReplaceState(false);
+    }
     search.getComponent().getSearchTextComponent().selectAll();
   }
 }

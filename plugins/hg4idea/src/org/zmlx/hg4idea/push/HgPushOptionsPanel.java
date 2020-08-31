@@ -3,7 +3,9 @@ package org.zmlx.hg4idea.push;
 
 import com.intellij.dvcs.push.VcsPushOptionsPanel;
 import com.intellij.ui.components.JBCheckBox;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.zmlx.hg4idea.HgBundle;
 
 import java.awt.*;
 
@@ -13,7 +15,7 @@ public class HgPushOptionsPanel extends VcsPushOptionsPanel {
 
   public HgPushOptionsPanel() {
     setLayout(new BorderLayout());
-    myPushBookmarkCheckBox = new JBCheckBox("Export active bookmarks");
+    myPushBookmarkCheckBox = new JBCheckBox(HgBundle.message("checkbox.export.active.bookmarks"));
     add(myPushBookmarkCheckBox, BorderLayout.WEST);
   }
 
@@ -21,5 +23,11 @@ public class HgPushOptionsPanel extends VcsPushOptionsPanel {
   @Nullable
   public HgVcsPushOptionValue getValue() {
     return myPushBookmarkCheckBox.isSelected() ? HgVcsPushOptionValue.Current : null;
+  }
+
+  @NotNull
+  @Override
+  public OptionsPanelPosition getPosition() {
+    return OptionsPanelPosition.SOUTH;
   }
 }

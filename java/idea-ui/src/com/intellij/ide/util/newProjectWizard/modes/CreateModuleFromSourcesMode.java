@@ -15,6 +15,7 @@
  */
 package com.intellij.ide.util.newProjectWizard.modes;
 
+import com.intellij.ide.JavaUiBundle;
 import com.intellij.ide.util.projectWizard.ProjectBuilder;
 import com.intellij.ide.util.projectWizard.WizardContext;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
@@ -26,9 +27,6 @@ import com.intellij.util.ui.UIUtil;
 import javax.swing.*;
 import java.io.File;
 
-/**
- * @author nik
- */
 public class CreateModuleFromSourcesMode extends CreateFromSourcesMode {
   private TextFieldWithBrowseButton myPathPanel;
 
@@ -47,7 +45,7 @@ public class CreateModuleFromSourcesMode extends CreateFromSourcesMode {
   public JComponent getAdditionalSettings(WizardContext wizardContext) {
     myPathPanel = new TextFieldWithBrowseButton();
     final FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor();
-    myPathPanel.addBrowseFolderListener("Select Directory Containing Module Files", null, wizardContext.getProject(), descriptor);
+    myPathPanel.addBrowseFolderListener(JavaUiBundle.message("chooser.title.select.directory.containing.module.files"), null, wizardContext.getProject(), descriptor);
     onChosen(false);
     return myPathPanel;
   }
@@ -57,10 +55,10 @@ public class CreateModuleFromSourcesMode extends CreateFromSourcesMode {
     final String path = myPathPanel.getText().trim();
     final File file = new File(path);
     if (!file.exists()) {
-      throw new ConfigurationException("File \'" + path + "\' doesn't exist");
+      throw new ConfigurationException("File '" + path + "' doesn't exist");
     }
     if (!file.isDirectory()) {
-      throw new ConfigurationException("\'" + path + "\' is not a directory");
+      throw new ConfigurationException("'" + path + "' is not a directory");
     }
     return super.validate();
   }

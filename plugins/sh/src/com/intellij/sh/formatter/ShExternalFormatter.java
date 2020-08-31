@@ -7,10 +7,7 @@ import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.CapturingProcessAdapter;
 import com.intellij.execution.process.OSProcessHandler;
 import com.intellij.execution.process.ProcessEvent;
-import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationAction;
-import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
+import com.intellij.notification.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.command.CommandProcessor;
@@ -26,11 +23,14 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.ExternalFormatProcessor;
+import com.intellij.sh.ShBundle;
+import com.intellij.sh.ShSupport;
 import com.intellij.sh.codeStyle.ShCodeStyleSettings;
 import com.intellij.sh.parser.ShShebangParserUtil;
 import com.intellij.sh.psi.ShFile;
 import com.intellij.sh.settings.ShSettings;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.SmartList;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,19 +39,22 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.intellij.sh.ShBundle.message;
+import static com.intellij.sh.ShLanguage.NOTIFICATION_GROUP_ID;
+
 // todo: rewrite with the future API, see IDEA-203568
 public class ShExternalFormatter implements ExternalFormatProcessor {
   private static final Logger LOG = Logger.getInstance(ShExternalFormatter.class);
-  private static final List<String> KNOWN_SHELLS = Arrays.asList("bash", "posix", "mksh");
+  @NonNls private static final List<String> KNOWN_SHELLS = Arrays.asList("bash", "posix", "mksh");
 
   @Override
   public boolean activeForFile(@NotNull PsiFile file) {
-    return file instanceof ShFile;
+    return ShSupport.getInstance().isExternalFormatterEnabled() && file instanceof ShFile;
   }
 
   @Nullable
   @Override
-  public TextRange format(@NotNull PsiFile source, @NotNull TextRange range, boolean canChangeWhiteSpacesOnly) {
+  public TextRange format(@NotNull PsiFile source, @NotNull TextRange range, boolean canChangeWhiteSpacesOnly, boolean keepLineBreaks) {
     doFormat(source.getProject(), source.getVirtualFile());
     return range;
   }
@@ -76,24 +79,29 @@ public class ShExternalFormatter implements ExternalFormatProcessor {
     if (ShSettings.I_DO_MIND.equals(shFmtExecutable)) return;
 
     if (!ShShfmtFormatterUtil.isValidPath(shFmtExecutable)) {
-      Notification notification =
-        new Notification("Shell Script", "", "Would you like to install a shell script formatter?", NotificationType.INFORMATION);
+      Notification notification = new Notification(NOTIFICATION_GROUP_ID, message("sh.title.case"), message("sh.fmt.install.question"),
+                                                   NotificationType.INFORMATION);
       notification.addAction(
-        NotificationAction.createSimple("Install", () -> {
+        NotificationAction.createSimple(ShBundle.messagePointer("sh.install"), () -> {
           notification.expire();
-          ShShfmtFormatterUtil.download(project, settings, () -> Notifications.Bus
-            .notify(new Notification("Shell Script", "", "Shell script formatter was successfully installed",
-                                     NotificationType.INFORMATION)), () -> Notifications.Bus
-            .notify(new Notification("Shell Script", "", "Can't download sh shfmt formatter. Please install it manually",
-                                     NotificationType.ERROR)));
+          ShShfmtFormatterUtil.download(project,
+                                        () -> Notifications.Bus
+                                          .notify(new Notification(NOTIFICATION_GROUP_ID, message("sh.title.case"),
+                                                                   message("sh.fmt.success.install"),
+                                                                   NotificationType.INFORMATION)),
+                                        () -> Notifications.Bus
+                                          .notify(new Notification(NOTIFICATION_GROUP_ID, message("sh.title.case"),
+                                                                   message("sh.fmt.cannot.download"),
+                                                                   NotificationType.ERROR)));
         }));
-      notification.addAction(NotificationAction.createSimple("No, thanks", () -> {
+      notification.addAction(NotificationAction.createSimple(ShBundle.messagePointer("sh.no.thanks"), () -> {
         notification.expire();
         ShSettings.setShfmtPath(ShSettings.I_DO_MIND);
       }));
-      Notifications.Bus.notify(notification);
+      Notifications.Bus.notify(notification, project);
       return;
     }
+    ShShfmtFormatterUtil.checkShfmtForUpdate(project);
 
     String filePath = file.getPath();
     String realPath = FileUtil.toSystemDependentName(filePath);
@@ -106,7 +114,8 @@ public class ShExternalFormatter implements ExternalFormatProcessor {
     long before = document.getModificationStamp();
     documentManager.saveDocument(document);
 
-    List<String> params = ContainerUtil.newSmartList();
+    @NonNls
+    List<String> params = new SmartList<>();
     params.add("-ln=" + ShShebangParserUtil.getInterpreter((ShFile)psiFile, KNOWN_SHELLS, "bash"));
     if (!settings.useTabCharacter(file.getFileType())) {
       int tabSize = settings.getIndentSize(file.getFileType());
@@ -154,7 +163,7 @@ public class ShExternalFormatter implements ExternalFormatProcessor {
                   FileDocumentManager.getInstance().saveDocument(document);
                 });
                 file.putUserData(UndoConstants.FORCE_RECORD_UNDO, null);
-              }, "Reformat Code with " + getId(), null, document);
+              }, message("sh.fmt.reformat.code.with", getId()), null, document);
             });
           }
           else {

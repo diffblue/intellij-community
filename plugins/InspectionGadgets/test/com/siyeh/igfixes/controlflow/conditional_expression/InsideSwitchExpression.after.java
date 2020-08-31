@@ -6,7 +6,7 @@ class ConditionalInBinaryExpression {
     return switch (0) {
       default -> {
           if (num > 0) yield "a";
-          else yield "b"<caret>;
+          yield "b";
       }
     };
   }

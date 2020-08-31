@@ -5,6 +5,7 @@ import com.intellij.CommonBundle;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.process.CapturingProcessHandler;
 import com.intellij.execution.process.ProcessOutput;
+import com.intellij.ide.IdeBundle;
 import com.intellij.notification.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -47,7 +48,7 @@ public abstract class ExecutableValidator {
    * Configures notification and dialog by setting text messages and titles specific to the whoever uses the validator.
    * @param notificationErrorTitle       title of the notification about not valid executable.
    * @param notificationErrorDescription description of this notification with a link to fix it (link action is defined by
-   *                                     {@link #showSettingsAndExpireIfFixed(com.intellij.notification.Notification)}
+   *                                     {@link #showSettingsAndExpireIfFixed(Notification)}
    */
   public ExecutableValidator(@NotNull Project project, @NotNull String notificationErrorTitle,
                              @NotNull String notificationErrorDescription) {
@@ -205,7 +206,7 @@ public abstract class ExecutableValidator {
   }
 
   private int showMessage(@Nullable Component parentComponent) {
-    String okText = "Fix it";
+    String okText = IdeBundle.message("button.fix.it");
     String cancelText = CommonBundle.getCancelButtonText();
     Icon icon = Messages.getErrorIcon();
     String title = myNotificationErrorTitle;

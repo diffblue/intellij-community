@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application;
 
 import com.intellij.openapi.util.io.FileUtil;
@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * @author yole
  */
-public class PluginPathManager {
+public final class PluginPathManager {
   private PluginPathManager() {
   }
 
@@ -38,8 +38,7 @@ public class PluginPathManager {
       return result;
     }
 
-    @NotNull
-    private static File[] getSortedSubreposRoots(@NotNull File dir) {
+    private static File @NotNull [] getSortedSubreposRoots(@NotNull File dir) {
       File[] gitRoots = dir.listFiles(child -> child.isDirectory() && ROOT_NAMES.contains(child.getName()));
       if (gitRoots == null) {
         return new File[0];

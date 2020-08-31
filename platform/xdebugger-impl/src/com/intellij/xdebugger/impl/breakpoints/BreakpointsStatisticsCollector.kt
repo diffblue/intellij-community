@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.breakpoints
 
 import com.intellij.internal.statistic.beans.MetricEvent
@@ -7,7 +7,7 @@ import com.intellij.internal.statistic.beans.newCounterMetric
 import com.intellij.internal.statistic.eventLog.FeatureUsageData
 import com.intellij.internal.statistic.eventLog.validator.ValidationResultType
 import com.intellij.internal.statistic.eventLog.validator.rules.EventContext
-import com.intellij.internal.statistic.eventLog.validator.rules.impl.CustomWhiteListRule
+import com.intellij.internal.statistic.eventLog.validator.rules.impl.CustomValidationRule
 import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesCollector
 import com.intellij.internal.statistic.utils.getPluginInfo
 import com.intellij.openapi.progress.ProgressManager
@@ -19,10 +19,6 @@ import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.impl.XDebuggerManagerImpl
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl
 
-/**
- * @author egor
- */
-
 class BreakpointsStatisticsCollector : ProjectUsagesCollector() {
   override fun getGroupId(): String = "debugger.breakpoints"
 
@@ -33,7 +29,8 @@ class BreakpointsStatisticsCollector : ProjectUsagesCollector() {
   override fun getMetrics(project: Project): MutableSet<MetricEvent> {
     val breakpointManager = XDebuggerManagerImpl.getInstance(project).breakpointManager as XBreakpointManagerImpl
 
-    val res = XBreakpointUtil.breakpointTypes()
+    val res = XBreakpointType.EXTENSION_POINT_NAME.extensionList
+      .asSequence()
       .filter { it.isSuspendThreadSupported() }
       .filter { breakpointManager.getBreakpointDefaults(it).getSuspendPolicy() != it.getDefaultSuspendPolicy() }
       .map {
@@ -89,7 +86,7 @@ fun addType(type: XBreakpointType<*, *>, data: FeatureUsageData) {
   data.addData("type", if (info.isDevelopedByJetBrains()) type.getId() else "custom")
 }
 
-class BreakpointsUtilValidator : CustomWhiteListRule() {
+class BreakpointsUtilValidator : CustomValidationRule() {
   override fun acceptRuleId(ruleId: String?): Boolean {
     return "breakpoint" == ruleId
   }

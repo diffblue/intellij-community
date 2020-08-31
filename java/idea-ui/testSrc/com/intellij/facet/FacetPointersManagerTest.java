@@ -19,9 +19,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * @author nik
- */
 public class FacetPointersManagerTest extends FacetTestCase {
   public void testCreatePointerFromFacet()  {
     final MockFacet mockFacet = addFacet();
@@ -38,7 +35,8 @@ public class FacetPointersManagerTest extends FacetTestCase {
     assertNull(pointer.getFacet());
     assertEquals(myModule.getName(), pointer.getModuleName());
     assertEquals("myFacet", pointer.getFacetName());
-    assertSame(MockFacetType.getInstance(), pointer.getFacetType());
+    FacetType<?, ?> expected = MockFacetType.getInstance();
+    assertSame(expected, pointer.getFacetType());
 
     final MockFacet mockFacet = addFacet("myFacet");
     assertRefersTo(pointer, mockFacet);

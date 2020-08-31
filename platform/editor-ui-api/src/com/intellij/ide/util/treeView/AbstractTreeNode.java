@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.treeView;
 
 import com.intellij.ide.projectView.PresentationData;
@@ -27,7 +27,7 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
 
   private static final TextAttributesKey FILESTATUS_ERRORS = TextAttributesKey.createTextAttributesKey("FILESTATUS_ERRORS");
   private static final Logger LOG = Logger.getInstance(AbstractTreeNode.class);
-  private AbstractTreeNode myParent;
+  private AbstractTreeNode<?> myParent;
   private Object myValue;
   private boolean myNullValueSet;
   private final boolean myNodeWrapper;
@@ -39,8 +39,7 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
   }
 
   @NotNull
-  public abstract Collection<? extends AbstractTreeNode> getChildren();
-
+  public abstract Collection<? extends AbstractTreeNode<?>> getChildren();
 
   protected boolean hasProblemFileBeneath() {
     return false;
@@ -52,9 +51,9 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
 
   @Override
   public PresentableNodeDescriptor getChildToHighlightAt(int index) {
-    final Collection<? extends AbstractTreeNode> kids = getChildren();
+    final Collection<? extends AbstractTreeNode<?>> kids = getChildren();
     int i = 0;
-    for (final AbstractTreeNode kid : kids) {
+    for (final AbstractTreeNode<?> kid : kids) {
       if (i == index) return kid;
       i++;
     }
@@ -121,7 +120,7 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
     if (object == this) return true;
     if (object == null || !object.getClass().equals(getClass())) return false;
     // we should not change this behaviour if value is set to null
-    return object instanceof AbstractTreeNode && Comparing.equal(myValue, ((AbstractTreeNode)object).myValue);
+    return Comparing.equal(myValue, ((AbstractTreeNode<?>)object).myValue);
   }
 
   @Override
@@ -153,9 +152,14 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
     boolean debug = !myNodeWrapper && LOG.isDebugEnabled();
     int hash = !debug ? 0 : hashCode();
     myNullValueSet = value == null || setInternalValue(value);
+    recordValueSetTrace(myNullValueSet);
     if (debug && hash != hashCode()) {
       LOG.warn("hash code changed: " + myValue);
     }
+  }
+
+  protected void recordValueSetTrace(boolean nullValue) {
+
   }
 
   /**
@@ -245,7 +249,7 @@ public abstract class AbstractTreeNode<T> extends PresentableNodeDescriptor<Abst
 
   @Nullable
   protected final Object getParentValue() {
-    AbstractTreeNode parent = getParent();
+    AbstractTreeNode<?> parent = getParent();
     return parent == null ? null : parent.getValue();
   }
 

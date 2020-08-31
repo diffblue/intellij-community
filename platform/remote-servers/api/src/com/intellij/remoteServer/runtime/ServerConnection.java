@@ -27,9 +27,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.function.Consumer;
 
-/**
- * @author nik
- */
 public interface ServerConnection<D extends DeploymentConfiguration> {
   @NotNull
   RemoteServer<?> getServer();
@@ -50,7 +47,7 @@ public interface ServerConnection<D extends DeploymentConfiguration> {
 
   void computeDeployments(@NotNull Runnable onFinished);
 
-  void undeploy(@NotNull Deployment deployment, @NotNull DeploymentRuntime runtime);
+  void undeploy(@NotNull Deployment deployment, @Nullable DeploymentRuntime runtime);
 
   @NotNull
   Collection<Deployment> getDeployments();

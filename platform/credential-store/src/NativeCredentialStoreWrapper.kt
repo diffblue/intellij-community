@@ -10,44 +10,50 @@ import com.intellij.notification.NotificationType
 import com.intellij.notification.SingletonNotificationManager
 import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.util.Conditions
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.util.concurrency.QueueProcessor
-import com.intellij.util.containers.ContainerUtil
+import org.jetbrains.annotations.TestOnly
+import java.io.Closeable
 import java.util.concurrent.TimeUnit
+import java.util.function.BiConsumer
 
 internal val NOTIFICATION_MANAGER by lazy {
   // we use name "Password Safe" instead of "Credentials Store" because it was named so previously (and no much sense to rename it)
   SingletonNotificationManager(NotificationGroup("Password Safe", NotificationDisplayType.STICKY_BALLOON, true), NotificationType.ERROR)
 }
 
+private val REMOVED_CREDENTIALS = Credentials("REMOVED_CREDENTIALS")
+
 // used only for native keychains, not for KeePass, so, postponedCredentials and other is not overhead if KeePass is used
-private class NativeCredentialStoreWrapper(private val store: CredentialStore) : CredentialStore {
+private class NativeCredentialStoreWrapper internal constructor(
+  private val store: CredentialStore,
+  private val queueProcessor: QueueProcessor<() -> Unit>
+) : CredentialStore, Closeable {
+
+  constructor(store: CredentialStore): this(store, QueueProcessor<() -> Unit> { it() })
+
   private val fallbackStore = lazy { InMemoryCredentialStore() }
 
-  private val queueProcessor = QueueProcessor<() -> Unit> { it() }
-
   private val postponedCredentials = InMemoryCredentialStore()
-  private val postponedRemovedCredentials = ContainerUtil.newConcurrentSet<CredentialAttributes>()
 
   private val deniedItems = CacheBuilder.newBuilder().expireAfterAccess(1, TimeUnit.MINUTES).build<CredentialAttributes, Boolean>()
 
   override fun get(attributes: CredentialAttributes): Credentials? {
-    if (postponedRemovedCredentials.contains(attributes)) {
-      return null
-    }
     postponedCredentials.get(attributes)?.let {
-      return it
+      return if (it == REMOVED_CREDENTIALS) null else it
     }
 
-    if (deniedItems.getIfPresent(attributes) != null) {
+    if (attributes.cacheDeniedItems && deniedItems.getIfPresent(attributes) != null) {
       LOG.warn("User denied access to $attributes")
-      return null
+      return ACCESS_TO_KEY_CHAIN_DENIED
     }
 
     var store = if (fallbackStore.isInitialized()) fallbackStore.value else store
     try {
       val value = store.get(attributes)
-      if (value === ACCESS_TO_KEY_CHAIN_DENIED) {
+      if (attributes.cacheDeniedItems && value === ACCESS_TO_KEY_CHAIN_DENIED) {
         deniedItems.put(attributes, true)
       }
       return value
@@ -69,12 +75,8 @@ private class NativeCredentialStoreWrapper(private val store: CredentialStore) :
       return
     }
 
-    if (credentials == null) {
-      postponedRemovedCredentials.add(attributes)
-    }
-    else {
-      postponedCredentials.set(attributes, credentials)
-    }
+    val postponed = credentials ?: REMOVED_CREDENTIALS
+    postponedCredentials.set(attributes, postponed)
 
     queueProcessor.add {
       try {
@@ -95,10 +97,18 @@ private class NativeCredentialStoreWrapper(private val store: CredentialStore) :
         throw e
       }
       finally {
-        if (!postponedRemovedCredentials.remove(attributes)) {
+        val currentPostponed = postponedCredentials.get(attributes)
+        if (postponed == currentPostponed) {
           postponedCredentials.set(attributes, null)
         }
       }
+    }
+  }
+
+  override fun close() {
+    if (store is Closeable) {
+      queueProcessor.waitFor()
+      store.close()
     }
   }
 }
@@ -119,9 +129,37 @@ private class MacOsCredentialStoreFactory : CredentialStoreFactory {
   }
 }
 
-private class LinuxSecretCredentialStoreFactory : CredentialStoreFactory {
+private class LinuxCredentialStoreFactory : CredentialStoreFactory {
   override fun create(): CredentialStore? = when {
-    SystemInfo.isLinux && JnaLoader.isLoaded() -> NativeCredentialStoreWrapper(SecretCredentialStore("com.intellij.credentialStore.Credential"))
+    SystemInfo.isLinux -> {
+      val preferWallet = Registry.`is`("credentialStore.linux.prefer.kwallet", false)
+      var res: CredentialStore? = if (preferWallet)
+        KWalletCredentialStore.create()
+      else
+        null
+      if (res == null && JnaLoader.isLoaded()) {
+        try {
+          res = SecretCredentialStore.create("com.intellij.credentialStore.Credential")
+        }
+        catch (e: UnsatisfiedLinkError) {
+          res = if (!preferWallet) KWalletCredentialStore.create() else null
+          if (res == null) notifyUnsatisfiedLinkError(e)
+        }
+      }
+      if (res == null && !preferWallet) res = KWalletCredentialStore.create()
+      res?.let { NativeCredentialStoreWrapper(it) }
+    }
     else -> null
   }
 }
+
+@TestOnly
+fun wrappedInMemory(): CredentialStore = NativeCredentialStoreWrapper(InMemoryCredentialStore(), QueueProcessor<() -> Unit>(
+  BiConsumer { item, continuation ->
+    try {
+      QueueProcessor.runSafely(item)
+    }
+    finally {
+      continuation.run()
+    }
+  }, true, QueueProcessor.ThreadToUse.AWT, Conditions.alwaysFalse<Any>()))

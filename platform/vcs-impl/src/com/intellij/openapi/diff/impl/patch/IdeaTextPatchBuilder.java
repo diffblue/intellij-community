@@ -1,11 +1,11 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.diff.impl.patch;
 
 import com.intellij.diff.util.Side;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.vcs.*;
+import com.intellij.openapi.vcs.FilePath;
+import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.changes.*;
 import com.intellij.openapi.vcs.ex.PartialCommitHelper;
 import com.intellij.openapi.vcs.impl.PartialChangesUtil;
@@ -16,47 +16,25 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.Charset;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
-import static com.intellij.openapi.vcs.changes.ChangesUtil.getAfterPath;
-import static com.intellij.openapi.vcs.changes.ChangesUtil.getBeforePath;
-import static com.intellij.util.ObjectUtils.chooseNotNull;
-import static com.intellij.vcsUtil.VcsUtil.groupByRoots;
-
-public class IdeaTextPatchBuilder {
+public final class IdeaTextPatchBuilder {
   private IdeaTextPatchBuilder() {
   }
 
   private static List<BeforeAfter<AirContentRevision>> revisionsConvertor(@NotNull Project project,
                                                                           @NotNull List<? extends Change> changes,
-                                                                          boolean honorExcludedFromCommit) throws VcsException {
+                                                                          boolean honorExcludedFromCommit) {
     final List<BeforeAfter<AirContentRevision>> result = new ArrayList<>(changes.size());
-    Map<VcsRoot, List<Change>> byRoots =
-      groupByRoots(project, changes, true, change -> chooseNotNull(getBeforePath(change), getAfterPath(change)));
-
-    for (VcsRoot root : byRoots.keySet()) {
-      final Collection<Change> rootChanges = byRoots.get(root);
-
-      AbstractVcs vcs = root != null ? root.getVcs() : null;
-      if (vcs == null || vcs.getOutgoingChangesProvider() == null) {
-        addConvertChanges(project, rootChanges, result, null, honorExcludedFromCommit);
-      }
-      else {
-        final VcsOutgoingChangesProvider<?> provider = vcs.getOutgoingChangesProvider();
-        final Collection<Change> basedOnLocal = provider.filterLocalChangesBasedOnLocalCommits(rootChanges, root.getPath());
-        rootChanges.removeAll(basedOnLocal);
-
-        addConvertChanges(project, rootChanges, result, null, honorExcludedFromCommit);
-        addConvertChanges(project, basedOnLocal, result, provider, honorExcludedFromCommit);
-      }
-    }
+    addConvertChanges(project, changes, result, honorExcludedFromCommit);
     return result;
   }
 
   private static void addConvertChanges(@NotNull Project project,
                                         @NotNull Collection<? extends Change> changes,
                                         @NotNull List<? super BeforeAfter<AirContentRevision>> result,
-                                        @Nullable VcsOutgoingChangesProvider<?> provider,
                                         boolean honorExcludedFromCommit) {
     Collection<Change> otherChanges = PartialChangesUtil.processPartialChanges(project, changes, false, (partialChanges, tracker) -> {
       if (!tracker.hasPartialChangesToCommit()) return false;
@@ -67,14 +45,14 @@ public class IdeaTextPatchBuilder {
       PartialCommitHelper helper = tracker.handlePartialCommit(Side.LEFT, changelistIds, honorExcludedFromCommit);
       String actualText = helper.getContent();
 
-      result.add(new BeforeAfter<>(convertRevision(change.getBeforeRevision(), null, provider),
-                                   convertRevision(change.getAfterRevision(), actualText, provider)));
+      result.add(new BeforeAfter<>(convertRevision(change.getBeforeRevision(), null),
+                                   convertRevision(change.getAfterRevision(), actualText)));
       return true;
     });
 
     for (Change change : otherChanges) {
-      result.add(new BeforeAfter<>(convertRevision(change.getBeforeRevision(), null, provider),
-                                   convertRevision(change.getAfterRevision(), null, provider)));
+      result.add(new BeforeAfter<>(convertRevision(change.getBeforeRevision(), null),
+                                   convertRevision(change.getAfterRevision(), null)));
     }
   }
 
@@ -103,46 +81,28 @@ public class IdeaTextPatchBuilder {
                                         convertRevision(change.getAfterRevision())));
       }
     }
-    return TextPatchBuilder.buildPatch(revisions, basePath, reversePatch, SystemInfo.isFileSystemCaseSensitive,
-                                       () -> ProgressManager.checkCanceled());
+    return TextPatchBuilder.buildPatch(revisions, basePath, reversePatch, () -> ProgressManager.checkCanceled());
   }
 
   @Nullable
   private static AirContentRevision convertRevision(@Nullable ContentRevision cr) {
-    return convertRevision(cr, null, null);
+    return convertRevision(cr, null);
   }
 
   @Nullable
-  private static AirContentRevision convertRevision(@Nullable ContentRevision cr,
-                                                    @Nullable String actualTextContent,
-                                                    @Nullable VcsOutgoingChangesProvider provider) {
+  private static AirContentRevision convertRevision(@Nullable ContentRevision cr, @Nullable String actualTextContent) {
     if (cr == null) return null;
-    if (provider != null) {
-      final Date date = provider.getRevisionDate(cr.getRevisionNumber(), cr.getFile());
-      final Long ts = date == null ? null : date.getTime();
-      return convertRevisionToAir(cr, actualTextContent, ts);
-    }
-    else {
-      return convertRevisionToAir(cr, actualTextContent, null);
-    }
-  }
-
-  @NotNull
-  private static AirContentRevision convertRevisionToAir(@NotNull ContentRevision cr,
-                                                         @Nullable String actualTextContent,
-                                                         @Nullable Long ts) {
     final FilePath fp = cr.getFile();
-    final StaticPathDescription description = new StaticPathDescription(fp.isDirectory(),
-                                                                        ts == null ? fp.getIOFile().lastModified() : ts, fp.getPath());
+    final StaticPathDescription description = new StaticPathDescription(fp.isDirectory(), fp.getIOFile().lastModified(), fp.getPath());
 
     if (actualTextContent != null) {
-      return new PartialTextAirContentRevision(actualTextContent, cr, description, ts);
+      return new PartialTextAirContentRevision(actualTextContent, cr, description, null);
     }
     else if (cr instanceof BinaryContentRevision) {
-      return new BinaryAirContentRevision((BinaryContentRevision)cr, description, ts);
+      return new BinaryAirContentRevision((BinaryContentRevision)cr, description, null);
     }
     else {
-      return new TextAirContentRevision(cr, description, ts);
+      return new TextAirContentRevision(cr, description, null);
     }
   }
 

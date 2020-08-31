@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.annotator.intentions;
 
 import com.intellij.codeInsight.intention.IntentionAction;
@@ -30,7 +30,7 @@ import java.util.List;
 
 import static com.intellij.codeInspection.IntentionWrapper.wrapToQuickFixes;
 
-public class QuickfixUtil {
+public final class QuickfixUtil {
   @Nullable
   public static PsiClass findTargetClass(GrReferenceExpression refExpr) {
     if (refExpr.getQualifier() == null) {
@@ -158,7 +158,7 @@ public class QuickfixUtil {
   }
 
   @NotNull
-  public static List<IntentionAction> fixesToIntentions(@NotNull PsiElement highlightElement, @NotNull LocalQuickFix[] fixes) {
+  public static List<IntentionAction> fixesToIntentions(@NotNull PsiElement highlightElement, LocalQuickFix @NotNull [] fixes) {
     InspectionManager inspectionManager = InspectionManager.getInstance(highlightElement.getProject());
     // dummy problem descriptor, highlight element is only used
     ProblemDescriptor descriptor = inspectionManager.createProblemDescriptor(
@@ -167,8 +167,7 @@ public class QuickfixUtil {
     return ContainerUtil.map(fixes, it -> new LocalQuickFixAsIntentionAdapter(it, descriptor));
   }
 
-  @NotNull
-  public static LocalQuickFix[] intentionsToFixes(@NotNull PsiElement highlightElement, @NotNull List<? extends IntentionAction> actions) {
+  public static LocalQuickFix @NotNull [] intentionsToFixes(@NotNull PsiElement highlightElement, @NotNull List<? extends IntentionAction> actions) {
     return wrapToQuickFixes(actions, highlightElement.getContainingFile()).toArray(LocalQuickFix.EMPTY_ARRAY);
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ide.actions;
 
@@ -20,7 +20,6 @@ import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
@@ -32,22 +31,21 @@ import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.SearchTextField;
 import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Author: msk
  */
 public abstract class GotoActionBase extends AnAction {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.actions.GotoActionBase");
+  private static final Logger LOG = Logger.getInstance(GotoActionBase.class);
 
   protected static Class myInAction;
   private static final Map<Class, Pair<String, Integer>> ourLastStrings = new HashMap<>();
@@ -56,7 +54,7 @@ public abstract class GotoActionBase extends AnAction {
 
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
-    LOG.assertTrue(!getClass().equals(myInAction));
+    LOG.assertTrue(!getClass().equals(myInAction), "Action should be disabled if it's already in progress: " + getClass());
     try {
       myInAction = getClass();
       List<String> strings = ourHistory.get(myInAction);
@@ -295,7 +293,7 @@ public abstract class GotoActionBase extends AnAction {
 
       void setText(@NotNull List<String> strings) {
         String text = strings.get(myHistoryIndex);
-        if (Comparing.equal(text, editor.getText())) {//don't rebuild popup list, it blinks
+        if (Objects.equals(text, editor.getText())) {//don't rebuild popup list, it blinks
           return;
         }
         javax.swing.text.Document document = editor.getDocument();
@@ -328,16 +326,18 @@ public abstract class GotoActionBase extends AnAction {
     }.registerCustomShortcutSet(SearchTextField.SHOW_HISTORY_SHORTCUT, editor);
   }
 
-  protected void showInSearchEverywherePopup(String searchProviderID, AnActionEvent event, boolean useEditorSelection) {
-    showInSearchEverywherePopup(searchProviderID, event, useEditorSelection, false);
-  }
-
+  /**
+   * @deprecated if you have to use this method perhaps your Action better should extend
+   * {@link SearchEverywhereBaseAction} instead of {@link GotoActionBase}.
+   * Method is going to be removed in 2021.1
+   */
+  @ApiStatus.ScheduledForRemoval(inVersion = "2021.1")
+  @Deprecated
   protected void showInSearchEverywherePopup(@NotNull String searchProviderID,
                                              @NotNull AnActionEvent event,
                                              boolean useEditorSelection,
                                              boolean sendStatistics) {
     Project project = event.getProject();
-    if (project == null) return;
     SearchEverywhereManager seManager = SearchEverywhereManager.getInstance(project);
     FeatureUsageTracker.getInstance().triggerFeatureUsed(IdeActions.ACTION_SEARCH_EVERYWHERE);
 
@@ -358,7 +358,7 @@ public abstract class GotoActionBase extends AnAction {
     }
 
     if (sendStatistics) {
-      FeatureUsageData data = SearchEverywhereUsageTriggerCollector.createData(searchProviderID);
+      FeatureUsageData data = SearchEverywhereUsageTriggerCollector.createData(searchProviderID).addInputEvent(event);
       SearchEverywhereUsageTriggerCollector.trigger(project, SearchEverywhereUsageTriggerCollector.DIALOG_OPEN, data);
     }
     IdeEventQueue.getInstance().getPopupManager().closeAllPopups(false);

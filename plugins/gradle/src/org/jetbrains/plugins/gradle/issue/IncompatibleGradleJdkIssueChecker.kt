@@ -1,9 +1,15 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.issue
 
+import com.intellij.build.BuildConsoleUtils.getMessageTitle
+import com.intellij.build.FilePosition
+import com.intellij.build.events.BuildEvent
 import com.intellij.build.issue.BuildIssue
 import com.intellij.build.issue.BuildIssueQuickFix
 import com.intellij.openapi.application.ApplicationNamesInfo
+import com.intellij.openapi.externalSystem.issue.quickfix.ReimportQuickFix
+import com.intellij.openapi.project.Project
+import com.intellij.pom.Navigatable
 import com.intellij.util.PlatformUtils.getPlatformPrefix
 import com.intellij.util.lang.JavaVersion
 import org.gradle.util.GradleVersion
@@ -12,12 +18,13 @@ import org.jetbrains.jps.model.java.JdkVersionDetector
 import org.jetbrains.plugins.gradle.issue.quickfix.GradleSettingsQuickFix
 import org.jetbrains.plugins.gradle.issue.quickfix.GradleVersionQuickFix
 import org.jetbrains.plugins.gradle.issue.quickfix.GradleWrapperSettingsOpenQuickFix
-import org.jetbrains.plugins.gradle.issue.quickfix.ReimportQuickFix
 import org.jetbrains.plugins.gradle.service.execution.GradleExecutionErrorHandler.getRootCauseAndLocation
 import org.jetbrains.plugins.gradle.util.GradleBundle
+import org.jetbrains.plugins.gradle.util.GradleConstants
 import org.jetbrains.plugins.gradle.util.GradleUtil
 import java.util.*
 import java.util.function.BiPredicate
+import java.util.function.Consumer
 
 /**
  * This issue checker provides quick fixes for known compatibility issues with Gradle and Java:
@@ -100,9 +107,9 @@ class IncompatibleGradleJdkIssueChecker : GradleIssueChecker {
     }
     else {
       val wrapperSettingsOpenQuickFix = GradleWrapperSettingsOpenQuickFix(issueData.projectPath, "distributionUrl")
-      val reimportQuickFix = ReimportQuickFix(issueData.projectPath)
+      val reimportQuickFix = ReimportQuickFix(issueData.projectPath, GradleConstants.SYSTEM_ID)
       issueDescription.append(" - <a href=\"${wrapperSettingsOpenQuickFix.id}\">Open Gradle wrapper settings</a>, " +
-                              "upgrade version to 4.8.1 or newer and <a href=\"${reimportQuickFix.id}\">reimport the project</a>\n")
+                              "upgrade version to 4.8.1 or newer and <a href=\"${reimportQuickFix.id}\">reload the project</a>\n")
       quickFixes.add(wrapperSettingsOpenQuickFix)
       quickFixes.add(reimportQuickFix)
     }
@@ -118,10 +125,25 @@ class IncompatibleGradleJdkIssueChecker : GradleIssueChecker {
       issueDescription.append(" - Use Java 8 as Gradle JVM: <a href=\"${gradleSettingsFix.id}\">Open Gradle settings</a> \n")
     }
 
+    val description = issueDescription.toString()
+    val title = getMessageTitle(description)
     return object : BuildIssue {
-      override val description: String = issueDescription.toString()
+      override val title: String = title
+      override val description: String = description
       override val quickFixes = quickFixes
+      override fun getNavigatable(project: Project): Navigatable? = null
     }
+  }
+
+  override fun consumeBuildOutputFailureMessage(message: String,
+                                                failureCause: String,
+                                                stacktrace: String?,
+                                                location: FilePosition?,
+                                                parentEventId: Any,
+                                                messageConsumer: Consumer<in BuildEvent>): Boolean {
+    // JDK compatibility issues should be handled by IncompatibleGradleJdkIssueChecker.check method based on exceptions come from Gradle TAPI
+    if (failureCause.startsWith("Could not create service of type ") && failureCause.contains(" using BuildScopeServices.")) return true
+    return false
   }
 
   companion object {

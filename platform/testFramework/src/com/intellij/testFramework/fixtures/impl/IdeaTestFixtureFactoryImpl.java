@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework.fixtures.impl;
 
 import com.intellij.testFramework.LightProjectDescriptor;
@@ -9,33 +7,32 @@ import com.intellij.testFramework.builders.ModuleFixtureBuilder;
 import com.intellij.testFramework.fixtures.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.junit.Assert;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * @author mike
- */
-public class IdeaTestFixtureFactoryImpl extends IdeaTestFixtureFactory {
-  protected final Map<Class<? extends ModuleFixtureBuilder>, Class<? extends ModuleFixtureBuilder>> myFixtureBuilderProviders =
-    new HashMap<>();
+import static org.junit.Assert.assertTrue;
+
+public final class IdeaTestFixtureFactoryImpl extends IdeaTestFixtureFactory {
+  private final Map<Class<? extends ModuleFixtureBuilder<?>>, Class<? extends ModuleFixtureBuilder<?>>> myFixtureBuilderProviders = new HashMap<>();
 
   public IdeaTestFixtureFactoryImpl() {
     registerFixtureBuilder(EmptyModuleFixtureBuilder.class, MyEmptyModuleFixtureBuilderImpl.class);
   }
 
   @Override
-  public final <T extends ModuleFixtureBuilder> void registerFixtureBuilder(@NotNull Class<T> aClass, @NotNull Class<? extends T> implClass) {
+  public final <T extends ModuleFixtureBuilder<?>> void registerFixtureBuilder(@NotNull Class<T> aClass, @NotNull Class<? extends T> implClass) {
     myFixtureBuilderProviders.put(aClass, implClass);
   }
 
   @Override
-  public void registerFixtureBuilder(@NotNull Class<? extends ModuleFixtureBuilder> aClass, @NotNull String implClassName) {
+  public void registerFixtureBuilder(@NotNull Class<? extends ModuleFixtureBuilder<?>> aClass, @NotNull String implClassName) {
     try {
-      Class implClass = Class.forName(implClassName);
-      Assert.assertTrue(aClass.isAssignableFrom(implClass));
-      registerFixtureBuilder(aClass, implClass);
+      @SuppressWarnings("unchecked")
+      Class<? extends ModuleFixtureBuilder<?>> implClass = (Class<? extends ModuleFixtureBuilder<?>>)Class.forName(implClassName);
+      assertTrue(aClass.isAssignableFrom(implClass));
+      myFixtureBuilderProviders.put(aClass, implClass);
     }
     catch (ClassNotFoundException e) {
       throw new RuntimeException("Cannot instantiate fixture builder implementation", e);
@@ -45,7 +42,14 @@ public class IdeaTestFixtureFactoryImpl extends IdeaTestFixtureFactory {
   @NotNull
   @Override
   public TestFixtureBuilder<IdeaProjectTestFixture> createFixtureBuilder(@NotNull String name, boolean isDirectoryBasedProject) {
-    return new HeavyTestFixtureBuilderImpl(new HeavyIdeaTestFixtureImpl(name, isDirectoryBasedProject), myFixtureBuilderProviders);
+    return new HeavyTestFixtureBuilderImpl(new HeavyIdeaTestFixtureImpl(name, null, isDirectoryBasedProject), myFixtureBuilderProviders);
+  }
+
+  @Override
+  public TestFixtureBuilder<IdeaProjectTestFixture> createFixtureBuilder(@NotNull String name,
+                                                                         @Nullable Path projectPath,
+                                                                         boolean isDirectoryBasedProject) {
+    return new HeavyTestFixtureBuilderImpl(new HeavyIdeaTestFixtureImpl(name, projectPath, isDirectoryBasedProject), myFixtureBuilderProviders);
   }
 
   @NotNull
@@ -87,8 +91,8 @@ public class IdeaTestFixtureFactoryImpl extends IdeaTestFixtureFactory {
     return new BareTestFixtureImpl();
   }
 
-  public static class MyEmptyModuleFixtureBuilderImpl extends EmptyModuleFixtureBuilderImpl {
-    public MyEmptyModuleFixtureBuilderImpl(final TestFixtureBuilder<? extends IdeaProjectTestFixture> testFixtureBuilder) {
+  public static final class MyEmptyModuleFixtureBuilderImpl extends EmptyModuleFixtureBuilderImpl {
+    public MyEmptyModuleFixtureBuilderImpl(@NotNull TestFixtureBuilder<? extends IdeaProjectTestFixture> testFixtureBuilder) {
       super(testFixtureBuilder);
     }
 

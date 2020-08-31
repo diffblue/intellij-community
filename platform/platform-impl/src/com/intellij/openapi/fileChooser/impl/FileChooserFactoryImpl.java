@@ -33,7 +33,10 @@ public class FileChooserFactoryImpl extends FileChooserFactory {
     if (useNativeMacChooser(descriptor)) {
       return new MacPathChooserDialog(descriptor, parent, project);
     }
-    if (parent != null) {
+    else if (useNativeWinChooser(descriptor)) {
+      return new WinPathChooserDialog(descriptor, parent, project);
+    }
+    else if (parent != null) {
       return new FileChooserDialogImpl(descriptor, parent, project);
     }
     else {
@@ -74,14 +77,14 @@ public class FileChooserFactoryImpl extends FileChooserFactory {
   private static boolean useNativeWinChooser(FileChooserDescriptor descriptor) {
     return SystemInfo.isWindows &&
            !descriptor.isForcedToUseIdeaFileChooser() &&
-           Registry.is("ide.win.file.chooser.native");
+           Registry.is("ide.win.file.chooser.native", false);
   }
 
   private static boolean useNativeMacChooser(FileChooserDescriptor descriptor) {
     return SystemInfo.isMac &&
            SystemInfo.isJetBrainsJvm &&
            !descriptor.isForcedToUseIdeaFileChooser() &&
-           Registry.is("ide.mac.file.chooser.native");
+           Registry.is("ide.mac.file.chooser.native", true);
   }
 
   @NotNull
@@ -114,14 +117,14 @@ public class FileChooserFactoryImpl extends FileChooserFactory {
   @NotNull
   @Override
   public FileSaverDialog createSaveFileDialog(@NotNull FileSaverDescriptor descriptor, @Nullable Project project) {
-    return SystemInfo.isMac && Registry.is("ide.mac.native.save.dialog")
+    return SystemInfo.isMac && Registry.is("ide.mac.native.save.dialog", true)
            ? new MacFileSaverDialog(descriptor, project) : new FileSaverDialogImpl(descriptor, project);
   }
 
   @NotNull
   @Override
   public FileSaverDialog createSaveFileDialog(@NotNull FileSaverDescriptor descriptor, @NotNull Component parent) {
-    return SystemInfo.isMac && Registry.is("ide.mac.native.save.dialog")
+    return SystemInfo.isMac && Registry.is("ide.mac.native.save.dialog", true)
            ? new MacFileSaverDialog (descriptor, parent) : new FileSaverDialogImpl(descriptor, parent);
   }
 }

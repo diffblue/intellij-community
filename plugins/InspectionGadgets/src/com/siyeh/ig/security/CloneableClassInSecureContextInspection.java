@@ -41,12 +41,6 @@ public class CloneableClassInSecureContextInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("cloneable.class.in.secure.context.display.name");
-  }
-
-  @Override
-  @NotNull
   protected String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("cloneable.class.in.secure.context.problem.descriptor");
   }
@@ -64,8 +58,13 @@ public class CloneableClassInSecureContextInspection extends BaseInspection {
     if (CloneUtils.isDirectlyCloneable(aClass)) {
       return new RemoveCloneableFix();
     }
-    final boolean hasCloneMethod = Arrays.stream(aClass.findMethodsByName("clone", false)).anyMatch(CloneUtils::isClone);
-    if (hasCloneMethod) {
+    final boolean hasOwnCloneMethod = Arrays.stream(aClass.findMethodsByName("clone", false)).anyMatch(CloneUtils::isClone);
+    if (hasOwnCloneMethod) {
+      return null;
+    }
+    final boolean hasParentFinalCloneMethod = Arrays.stream(aClass.findMethodsByName("clone", true))
+      .anyMatch(m -> CloneUtils.isClone(m) && m.hasModifierProperty(PsiModifier.FINAL));
+    if (hasParentFinalCloneMethod) {
       return null;
     }
     return new CreateExceptionCloneMethodFix();
@@ -172,7 +171,7 @@ public class CloneableClassInSecureContextInspection extends BaseInspection {
       final PsiCodeBlock body = method.getBody();
       assert body != null;
       body.add(statement);
-      if (isOnTheFly()) {
+      if (isOnTheFly() && method.isPhysical()) {
         final Editor editor = FileEditorManager.getInstance(project).getSelectedTextEditor();
         if (editor != null) {
           GenerateMembersUtil.positionCaret(editor, method, true);

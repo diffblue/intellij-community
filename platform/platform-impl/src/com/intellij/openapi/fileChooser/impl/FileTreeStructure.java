@@ -12,7 +12,6 @@ import com.intellij.openapi.fileChooser.ex.RootFileElement;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.JarFileSystem;
 import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
@@ -21,13 +20,14 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
  * @author Yura Cangea
  */
 public class FileTreeStructure extends AbstractTreeStructure {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.chooser.FileTreeStructure");
+  private static final Logger LOG = Logger.getInstance(FileTreeStructure.class);
 
   private final RootFileElement myRootElement;
   private final FileChooserDescriptor myChooserDescriptor;
@@ -36,8 +36,8 @@ public class FileTreeStructure extends AbstractTreeStructure {
 
   public FileTreeStructure(Project project, FileChooserDescriptor chooserDescriptor) {
     myProject = project;
-    final VirtualFile[] rootFiles = VfsUtilCore.toVirtualFileArray(chooserDescriptor.getRoots());
-    final String name = rootFiles.length == 1 && rootFiles[0] != null ? rootFiles[0].getPresentableUrl() : chooserDescriptor.getTitle();
+    List<VirtualFile> rootFiles = chooserDescriptor.getRoots(); // Returns RandomAccess collection
+    String name = rootFiles.size() == 1 && rootFiles.get(0) != null ? rootFiles.get(0).getPresentableUrl() : chooserDescriptor.getTitle();
     myRootElement = new RootFileElement(rootFiles, name, chooserDescriptor.isShowFileSystemRoots());
     myChooserDescriptor = chooserDescriptor;
     myShowHidden = myChooserDescriptor.isShowHiddenFiles();
@@ -62,9 +62,8 @@ public class FileTreeStructure extends AbstractTreeStructure {
     return myRootElement;
   }
 
-  @NotNull
   @Override
-  public Object[] getChildElements(@NotNull Object nodeElement) {
+  public Object @NotNull [] getChildElements(@NotNull Object nodeElement) {
     if (!(nodeElement instanceof FileElement)) {
       return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
     }

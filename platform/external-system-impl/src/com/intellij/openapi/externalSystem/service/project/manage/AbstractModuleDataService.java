@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.manage;
 
+import com.intellij.build.BuildContentManager;
 import com.intellij.configurationStore.StateStorageManagerKt;
 import com.intellij.history.LocalHistory;
 import com.intellij.history.LocalHistoryAction;
@@ -14,14 +15,15 @@ import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.externalSystem.ExternalSystemModulePropertyManager;
 import com.intellij.openapi.externalSystem.model.DataNode;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
+import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.model.project.*;
-import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkProvider;
 import com.intellij.openapi.externalSystem.service.project.IdeModelsProvider;
 import com.intellij.openapi.externalSystem.service.project.IdeModifiableModelsProvider;
 import com.intellij.openapi.externalSystem.settings.AbstractExternalSystemLocalSettings;
 import com.intellij.openapi.externalSystem.settings.AbstractExternalSystemLocalSettings.SyncType;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle;
+import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.ProjectJdkTable;
@@ -37,7 +39,6 @@ import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.ui.CheckBoxList;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.ScrollPaneFactory;
@@ -72,7 +73,7 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
   private static final Key<AtomicInteger> ORPHAN_MODULE_HANDLERS_COUNTER = Key.create("ORPHAN_MODULE_HANDLERS_COUNTER");
 
   private static final NotificationGroup ORPHAN_MODULE_NOTIFICATION_GROUP =
-    NotificationGroup.toolWindowGroup("Build sync orphan modules", ToolWindowId.BUILD);
+    NotificationGroup.toolWindowGroup("Build sync orphan modules", BuildContentManager.TOOL_WINDOW_ID);
 
   private static final Logger LOG = Logger.getInstance(AbstractModuleDataService.class);
 
@@ -107,7 +108,7 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
         syncPaths(module, modifiableRootModel, node.getData());
 
         EP_NAME.forEachExtensionSafe(extension -> extension.importModule(modelsProvider, module, node.getData()));
-        setSdk(modifiableRootModel, node.getData());
+        importModuleSdk(modifiableRootModel, node.getData());
       }
     }
 
@@ -122,15 +123,19 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
     }
   }
 
+  @NotNull
+  protected Module createModule(@NotNull DataNode<E> module, @NotNull IdeModifiableModelsProvider modelsProvider) {
+    ModuleData data = module.getData();
+    return modelsProvider.newModule(data);
+  }
+
   private void createModules(@NotNull Collection<? extends DataNode<E>> toCreate, @NotNull IdeModifiableModelsProvider modelsProvider) {
-    for (final DataNode<E> module : toCreate) {
-      ModuleData data = module.getData();
-      final Module created = modelsProvider.newModule(data);
+    for (DataNode<E> module : toCreate) {
+      Module created = createModule(module, modelsProvider);
       module.putUserData(MODULE_KEY, created);
 
       // Ensure that the dependencies are clear (used to be not clear when manually removing the module and importing it via external system)
       final ModifiableRootModel modifiableRootModel = modelsProvider.getModifiableRootModel(created);
-      modifiableRootModel.inheritSdk();
 
       RootPolicy<Object> visitor = new RootPolicy<Object>() {
         @Override
@@ -164,12 +169,36 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
         if (unloadedModuleDescription == null) {
           result.add(node);
         }
+        markExistedModulesWithSameRoot(node, modelsProvider);
       }
       else {
         node.putUserData(MODULE_KEY, module);
       }
     }
     return result;
+  }
+
+  private void markExistedModulesWithSameRoot(DataNode<E> node,
+                                              IdeModifiableModelsProvider modelsProvider) {
+    ModuleData moduleData = node.getData();
+    ProjectSystemId projectSystemId = moduleData.getOwner();
+    Arrays.stream(modelsProvider.getModules())
+      .filter(ideModule -> isModulePointsSameRoot(moduleData, ideModule))
+      .filter(module -> !ExternalSystemApiUtil.isExternalSystemAwareModule(projectSystemId, module))
+      .forEach(module -> {
+        ExternalSystemModulePropertyManager.getInstance(module)
+          .setExternalOptions(projectSystemId, moduleData, node.getData(ProjectKeys.PROJECT));
+      });
+
+  }
+
+  private static boolean isModulePointsSameRoot(ModuleData moduleData, Module ideModule) {
+    for (VirtualFile root: ModuleRootManager.getInstance(ideModule).getContentRoots()) {
+      if (FileUtil.pathsEqual(root.getPath(), moduleData.getLinkedExternalProjectPath())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static void syncPaths(@NotNull Module module, @NotNull ModifiableRootModel modifiableModel, @NotNull ModuleData data) {
@@ -426,30 +455,38 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
       11, (o1, o2) -> {
       int order1 = o1.second.getOrder();
       int order2 = o2.second.getOrder();
-      return order1 != order2 ? order1 < order2 ? -1 : 1 : 0;
+      if (order1 != order2) {
+        return order1 < order2 ? -1 : 1;
+      }
+      return o1.second.toString().compareTo(o2.second.toString());
     });
-
-    int shift = 0;
+    final List<OrderEntry> noOrderAwareItems = new ArrayList<>();
     for (int i = 0; i < length; i++) {
       OrderEntry orderEntry = orderEntries[i];
       final OrderAware orderAware = orderEntryDataMap.get(orderEntry);
       if (orderAware == null) {
-        newOrder[i] = orderEntry;
-        shift++;
+        noOrderAwareItems.add(orderEntry);
       }
       else {
         priorityQueue.add(Pair.create(orderEntry, orderAware));
       }
     }
 
+    noOrderAwareItems.sort(new Comparator<OrderEntry>() {
+      @Override
+      public int compare(OrderEntry o1, OrderEntry o2) {
+        return o1.toString().compareTo(o2.toString());
+      }
+    });
+
+    for (int i = 0; i < noOrderAwareItems.size(); i++) {
+      newOrder[i] = noOrderAwareItems.get(i);
+    }
+    int index = noOrderAwareItems.size();
     Pair<OrderEntry, OrderAware> pair;
     while ((pair = priorityQueue.poll()) != null) {
-      final OrderEntry orderEntry = pair.first;
-      final OrderAware orderAware = pair.second;
-      final int order = orderAware.getOrder() != -1 ? orderAware.getOrder() : length - 1;
-      final int newPlace = findNewPlace(newOrder, order - shift);
-      assert newPlace != -1;
-      newOrder[newPlace] = orderEntry;
+      newOrder[index] = pair.first;
+      index++;
     }
 
     if (LOG.isDebugEnabled()) {
@@ -473,17 +510,22 @@ public abstract class AbstractModuleDataService<E extends ModuleData> extends Ab
     return idx;
   }
 
-  private void setSdk(@NotNull ModifiableRootModel modifiableRootModel, E data) {
+  private void importModuleSdk(@NotNull ModifiableRootModel modifiableRootModel, E data) {
+    if (!data.isSetSdkName()) return;
+    if (modifiableRootModel.getSdk() != null) return;
     String skdName = data.getSdkName();
-    if (skdName != null) {
-      ProjectJdkTable projectJdkTable = ProjectJdkTable.getInstance();
-      Sdk sdk = projectJdkTable.findJdk(skdName);
-      if (sdk != null) {
-        modifiableRootModel.setSdk(sdk);
-      }
-      else {
-        modifiableRootModel.setInvalidSdk(skdName, ExternalSystemJdkProvider.getInstance().getJavaSdkType().getName());
-      }
+    if (skdName == null) return;
+    ProjectJdkTable projectJdkTable = ProjectJdkTable.getInstance();
+    Sdk sdk = projectJdkTable.findJdk(skdName);
+    if (sdk == null) return;
+    Project project = modifiableRootModel.getProject();
+    ProjectRootManager projectRootManager = ProjectRootManager.getInstance(project);
+    Sdk projectSdk = projectRootManager.getProjectSdk();
+    if (sdk.equals(projectSdk)) {
+      modifiableRootModel.inheritSdk();
+    }
+    else {
+      modifiableRootModel.setSdk(sdk);
     }
   }
 }

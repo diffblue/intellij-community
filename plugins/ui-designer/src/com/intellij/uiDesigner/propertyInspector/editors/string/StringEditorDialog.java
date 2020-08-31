@@ -1,10 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.uiDesigner.propertyInspector.editors.string;
 
 import com.intellij.CommonBundle;
 import com.intellij.ide.util.TreeClassChooserFactory;
 import com.intellij.ide.util.TreeFileChooser;
 import com.intellij.lang.properties.IProperty;
+import com.intellij.lang.properties.PropertiesFileType;
 import com.intellij.lang.properties.PropertiesReferenceManager;
 import com.intellij.lang.properties.PropertiesUtilBase;
 import com.intellij.lang.properties.psi.PropertiesFile;
@@ -13,7 +14,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.undo.UndoUtil;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
@@ -55,7 +55,7 @@ import java.util.*;
  * @author Vladimir Kondratyev
  */
 public final class StringEditorDialog extends DialogWrapper{
-  private static final Logger LOG = Logger.getInstance("#com.intellij.uiDesigner.propertyInspector.editors.string.StringEditorDialog");
+  private static final Logger LOG = Logger.getInstance(StringEditorDialog.class);
 
   @NonNls private static final String CARD_STRING = "string";
   @NonNls private static final String CARD_BUNDLE = "bundle";
@@ -359,7 +359,7 @@ public final class StringEditorDialog extends DialogWrapper{
             PsiFile initialPropertiesFile = file == null ? null : file.getContainingFile();
             final GlobalSearchScope moduleScope = GlobalSearchScope.moduleWithDependenciesScope(myEditor.getModule());
             TreeFileChooser fileChooser = TreeClassChooserFactory.getInstance(project).createFileChooser(UIDesignerBundle.message("title.choose.properties.file"), initialPropertiesFile,
-                                                                                                         StdFileTypes.PROPERTIES, new TreeFileChooser.PsiFileFilter() {
+                                                                                                         PropertiesFileType.INSTANCE, new TreeFileChooser.PsiFileFilter() {
               @Override
               public boolean accept(PsiFile file) {
                 final VirtualFile virtualFile = file.getVirtualFile();
@@ -367,7 +367,8 @@ public final class StringEditorDialog extends DialogWrapper{
               }
             });
             fileChooser.showDialog();
-            PropertiesFile propertiesFile = (PropertiesFile)fileChooser.getSelectedFile();
+            PsiFile selectedFile = fileChooser.getSelectedFile();
+            PropertiesFile propertiesFile = selectedFile instanceof PropertiesFile ? (PropertiesFile)selectedFile : null;
             if (propertiesFile == null) {
               return;
             }

@@ -4,6 +4,7 @@ import sys
 
 from _pydev_bundle._pydev_tipper_common import do_find
 from _pydevd_bundle.pydevd_constants import IS_PY2
+from _pydevd_bundle.pydevd_resolver import suppress_warnings
 
 if IS_PY2:
     from inspect import getargspec as _originalgetargspec
@@ -12,7 +13,7 @@ if IS_PY2:
         ret.append([])
         ret.append({})
         return ret
-        
+
 else:
     from inspect import getfullargspec
 
@@ -179,6 +180,15 @@ def generate_imports_tip_for_module(obj_to_complete, dir_comps=None, getattr=get
             dir_comps.append('__dict__')
         if hasattr(obj_to_complete, '__class__'):
             dir_comps.append('__class__')
+        # Fix for PY-38151 - From python doc, metaclass attributes are not in the list returned by `dir`.
+        # This is why e.g. __name__ does not appear. Let's add the metaclass attributes here.
+        try:
+            if inspect.isclass(obj_to_complete):
+                dir_comps += dir(type(obj_to_complete))
+            # do not do it from instance, it might grab irrelevant items
+        except:
+            # ignore any error just in case
+            pass
 
     get_complete_info = True
 
@@ -200,9 +210,8 @@ def generate_imports_tip_for_module(obj_to_complete, dir_comps=None, getattr=get
         args = ''
 
         try:
-            try:
-                obj = getattr(obj_to_complete.__class__, d)
-            except:
+            # Fix for PY-38151: do not try to get `d` from the class, as it could be a descriptor
+            with suppress_warnings():
                 obj = getattr(obj_to_complete, d)
         except: #just ignore and get it without additional info
             ret.append((d, '', args, TYPE_BUILTIN))
@@ -231,20 +240,26 @@ def generate_imports_tip_for_module(obj_to_complete, dir_comps=None, getattr=get
                         except: #may happen on jython when checking java classes (so, just ignore it)
                             doc = ''
 
+                    if inspect.isclass(obj_to_complete) and (
+                            inspect.ismethoddescriptor(obj) or inspect.isdatadescriptor(obj)
+                            or inspect.isgetsetdescriptor(obj) or inspect.ismemberdescriptor(obj)):
+                        # Fix for PY-38151: `obj` is a descriptor definition, not a called descriptor
+                        # (`obj_to_complete` is the class defining it).
+                        retType = TYPE_ATTR
 
-                    if inspect.ismethod(obj) or inspect.isbuiltin(obj) or inspect.isfunction(obj) or inspect.isroutine(obj):
+                    elif inspect.ismethod(obj) or inspect.isbuiltin(obj) or inspect.isfunction(obj) or inspect.isroutine(obj):
                         try:
                             args, vargs, kwargs, defaults, kwonly_args, kwonly_defaults = getargspec(obj)
 
                             args = args[:]
-                                
+
                             for kwonly_arg in kwonly_args:
                                 default = kwonly_defaults.get(kwonly_arg, _SENTINEL)
                                 if default is not _SENTINEL:
                                     args.append('%s=%s' % (kwonly_arg, default))
                                 else:
                                     args.append(str(kwonly_arg))
-                            
+
                             args = '(%s)' % (', '.join(args))
                         except TypeError:
                             #ok, let's see if we can get the arguments from the doc

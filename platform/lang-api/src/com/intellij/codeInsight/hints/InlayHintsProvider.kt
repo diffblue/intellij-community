@@ -3,7 +3,9 @@ package com.intellij.codeInsight.hints
 
 import com.intellij.lang.Language
 import com.intellij.lang.LanguageExtension
+import com.intellij.lang.LanguageExtensionPoint
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.options.UnnamedConfigurable
 import com.intellij.psi.PsiFile
 import com.intellij.util.xmlb.annotations.Property
@@ -11,7 +13,25 @@ import org.jetbrains.annotations.Nls
 import javax.swing.JComponent
 import kotlin.reflect.KMutableProperty0
 
-object InlayHintsProviderExtension : LanguageExtension<InlayHintsProvider<*>>("com.intellij.codeInsight.inlayProvider")
+private const val EXTENSION_POINT_NAME = "com.intellij.codeInsight.inlayProvider"
+
+
+object InlayHintsProviderExtension : LanguageExtension<InlayHintsProvider<*>>(EXTENSION_POINT_NAME) {
+  private fun findLanguagesWithHintsSupport(): List<Language> {
+    val extensionPointName = inlayProviderName
+    return extensionPointName.extensionList.map { it.language }
+      .toSet()
+      .mapNotNull { Language.findLanguageByID(it) }
+  }
+
+  fun findProviders() : List<ProviderInfo<*>> {
+    return findLanguagesWithHintsSupport().flatMap { language ->
+      InlayHintsProviderExtension.allForLanguage(language).map { ProviderInfo(language, it) }
+    }
+  }
+
+  val inlayProviderName = ExtensionPointName<LanguageExtensionPoint<InlayHintsProvider<*>>>(EXTENSION_POINT_NAME)
+}
 
 /**
  * Provider of inlay hints for single language. If you need to create hints for multiple languages, please use InlayHintsProviderFactory.
@@ -97,12 +117,24 @@ interface ImmediateConfigurable {
   val cases : List<Case>
     get() = emptyList()
 
-  class Case(val name: String, private val loadFromSettings: () -> Boolean, private val onUserChanged: (Boolean) -> Unit) {
+  class Case(
+    @Nls val name: String,
+    val id: String,
+    private val loadFromSettings: () -> Boolean,
+    private val onUserChanged: (Boolean) -> Unit,
+    val extendedDescription: String? = null
+  ) {
     var value: Boolean
       get() = loadFromSettings()
       set(value) = onUserChanged(value)
 
-    constructor(name: String, property: KMutableProperty0<Boolean>) : this(name, { property.get() }, {property.set(it)})
+    constructor(name: String, id: String, property: KMutableProperty0<Boolean>, extendedDescription: String? = null) : this(
+      name,
+      id,
+      { property.get() },
+      {property.set(it)},
+      extendedDescription
+    )
   }
 }
 
@@ -129,8 +161,22 @@ class NoSettings {
 
 /**
  * Similar to [com.intellij.openapi.util.Key], but it also requires language to be unique
+ * Allows type-safe access to settings of provider
  */
 @Suppress("unused")
 data class SettingsKey<T>(val id: String) {
   fun getFullId(language: Language): String = language.id + "." + id
 }
+
+interface AbstractSettingsKey<T: Any> {
+  fun getFullId(language: Language): String
+}
+
+data class InlayKey<T: Any, C: Any>(val id: String) : AbstractSettingsKey<T>, ContentKey<C> {
+  override fun getFullId(language: Language): String = language.id + "." + id
+}
+
+/**
+ * Allows type-safe access to content of the root presentation
+ */
+interface ContentKey<C: Any>

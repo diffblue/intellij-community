@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.plugin.ui;
 
 import com.intellij.codeInsight.template.impl.TemplateEditorUtil;
@@ -145,7 +145,7 @@ public class SelectTemplateDialog extends DialogWrapper {
 
     final JPanel labelPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
     labelPanel.add(new JLabel(SSRBundle.message("selecttemplate.template.preview")));
-    if (!Registry.is("ssr.use.new.search.dialog") || !Registry.is("ssr.use.editor.inlays.instead.of.tool.tips")) {
+    if (!Registry.is("ssr.use.editor.inlays.instead.of.tool.tips")) {
       labelPanel.add(UIUtil.createCompleteMatchInfo(() -> {
         final Configuration[] configurations = getSelectedConfigurations();
         return configurations.length != 1 ? null : configurations[0];
@@ -229,7 +229,7 @@ public class SelectTemplateDialog extends DialogWrapper {
     }
   }
 
-  @NotNull public Configuration[] getSelectedConfigurations() {
+  public Configuration @NotNull [] getSelectedConfigurations() {
     if (showHistory) {
       final List<Configuration> selectedValues = existingTemplatesComponent.getHistoryList().getSelectedValuesList();
       return selectedValues.toArray(Configuration.EMPTY_ARRAY);
@@ -250,9 +250,5 @@ public class SelectTemplateDialog extends DialogWrapper {
       }
       return configurations.toArray(Configuration.EMPTY_ARRAY);
     }
-  }
-
-  public void selectConfiguration(String name) {
-    existingTemplatesComponent.selectConfiguration(name);
   }
 }

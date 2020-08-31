@@ -20,6 +20,7 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.util.UserDataHolder;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.PatternUtil;
+import com.jetbrains.python.sdk.PythonEnvUtil;
 import icons.PythonIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,7 +39,16 @@ public class IronPythonSdkFlavor extends PythonSdkFlavor {
   private IronPythonSdkFlavor() {
   }
 
-  public static IronPythonSdkFlavor INSTANCE = new IronPythonSdkFlavor();
+  @Override
+  public boolean isPlatformIndependent() {
+    return true;
+  }
+
+  @Nullable
+  @Override
+  public String envPathParam() {
+    return "IRONPYTHONPATH";
+  }
 
   @NotNull
   @Override
@@ -96,7 +106,7 @@ public class IronPythonSdkFlavor extends PythonSdkFlavor {
 
   @Override
   public void initPythonPath(Collection<String> path, boolean passParentEnvs, Map<String, String> env) {
-    addToEnv("IRONPYTHONPATH", StringUtil.join(path, File.pathSeparator), env);
+    PythonEnvUtil.addToEnv("IRONPYTHONPATH", StringUtil.join(path, File.pathSeparator), env);
   }
 
   @NotNull

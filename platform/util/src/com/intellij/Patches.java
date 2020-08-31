@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij;
 
 import com.intellij.openapi.util.SystemInfo;
@@ -6,7 +6,7 @@ import com.intellij.openapi.util.SystemInfo;
 import java.awt.*;
 
 @SuppressWarnings({"HardCodedStringLiteral", "UtilityClassWithoutPrivateConstructor"})
-public class Patches {
+public final class Patches {
   /**
    * See https://bugs.openjdk.java.net/browse/JDK-6322854.
    * java.lang.NullPointerException: Failed to retrieve atom name.
@@ -89,7 +89,7 @@ public class Patches {
 
   /**
    * XToolkit.getScreenInsets() may be very slow.
-   * See https://bugs.openjdk.java.net/browse/JDK-8004103.
+   * See https://bugs.openjdk.java.net/browse/JDK-8170937.
    */
   public static boolean isJdkBugId8004103() {
     return SystemInfo.isXWindow && !GraphicsEnvironment.isHeadless();
@@ -110,5 +110,8 @@ public class Patches {
   /**
    * https://bugs.openjdk.java.net/browse/JDK-8220231
    */
-  public static final boolean TEXT_LAYOUT_IS_SLOW = !SystemInfo.isJetBrainsJvm && !SystemInfo.isJavaVersionAtLeast(13);
+  public static final boolean TEXT_LAYOUT_IS_SLOW = !SystemInfo.isJetBrainsJvm &&
+                                                    !SystemInfo.isJavaVersionAtLeast(13) &&
+                                                    (SystemInfo.isJavaVersionAtLeast(12) ||
+                                                     !SystemInfo.isJavaVersionAtLeast(11, 0, 6));
 }

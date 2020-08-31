@@ -65,6 +65,7 @@ public class ReplaceWithMutableCollectionIntentionTest extends IPPTestCase {
   public void testImmutableListAssignment() { assertIntentionNotAvailable(); }
   public void testImmutableSetVarArgArray() { doTest(); }
   public void testImmutableSetVarArgTernary() { doTest(); }
+  public void testInsideTernary() { doTest(); }
 
   @Override
   protected String getIntentionName() {
@@ -79,6 +80,6 @@ public class ReplaceWithMutableCollectionIntentionTest extends IPPTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_13;
+    return JAVA_14;
   }
 }

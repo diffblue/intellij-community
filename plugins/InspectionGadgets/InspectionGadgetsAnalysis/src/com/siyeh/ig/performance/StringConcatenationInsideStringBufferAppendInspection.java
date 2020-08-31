@@ -28,17 +28,10 @@ import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 public class StringConcatenationInsideStringBufferAppendInspection extends BaseInspection {
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("string.concatenation.inside.string.buffer.append.display.name");
-  }
 
   @Override
   public boolean isEnabledByDefault() {
@@ -115,7 +108,7 @@ public class StringConcatenationInsideStringBufferAppendInspection extends BaseI
         return;
       }
       final PsiExpression argument = arguments[0];
-      if (!ExpressionUtils.isStringConcatenation(ParenthesesUtils.stripParentheses(argument)) ||
+      if (!ExpressionUtils.isStringConcatenation(PsiUtil.skipParenthesizedExprDown(argument)) ||
           PsiUtil.isConstantExpression(argument)) {
         return;
       }

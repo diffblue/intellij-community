@@ -29,6 +29,9 @@ import com.intellij.openapi.util.text.StringUtil;
   private boolean isQuoteOpen;
   private String heredocMarker;
   private boolean heredocWithWhiteSpaceIgnore;
+  private int regexStart = -1;
+  private int regexGroups = 0;
+  private int herestringStartPosition = -1;
   private final IntStack stateStack = new IntStack(1_000);
   private final IntStack parenStack = new IntStack(1_000);
 
@@ -69,6 +72,9 @@ import com.intellij.openapi.util.text.StringUtil;
     isArithmeticExpansion = false;
     isQuoteOpen = false;
     isBackquoteOpen = false;
+    herestringStartPosition = -1;
+    regexStart = -1;
+    regexGroups = 0;
   }
 %}
 
@@ -79,20 +85,22 @@ LineTerminator           = \r\n | \r | \n
 LineContinuation         = "\\" {LineTerminator}
 WhiteSpace               = [ \t\f] {LineContinuation}*
 
-Shebang                  = #\! {InputCharacter}* {LineTerminator}?
+Shebang                  = #\! {InputCharacter}*
 Comment                  = # {InputCharacter}*
 
 EscapedChar              = "\\" [^\n]
+EscapedAnyChar           = {EscapedChar} | {LineContinuation}
 Quote                    = \"
 
 UnclosedRawString        = '[^']*
-RawString                = {UnclosedRawString}'
+DollarSignRawString      = "$'"([^'] | {EscapedChar})*
+RawString                = {UnclosedRawString}' | {DollarSignRawString}'
 
-WordFirst                = [[:letter:]||[:digit:]||[_/@?.*:%\^+,~-]] | {EscapedChar} | [\u00C0-\u00FF] | {LineContinuation}
+WordFirst                = [[:letter:]||[:digit:]||[_/@?.*:%\^+,~-]] | {EscapedAnyChar} | [\u00C0-\u00FF]
 WordAfter                = {WordFirst} | [#!]
 Word                     = {WordFirst}{WordAfter}*
 
-ArithWordFirst           = [a-zA-Z_@.] | {EscapedChar} | {LineContinuation}
+ArithWordFirst           = [a-zA-Z_@.] | {EscapedAnyChar}
 ArithWordAfter           = {ArithWordFirst} | [0-9#!]
 ArithWord                = {ArithWordFirst}{ArithWordAfter}*
 
@@ -114,19 +122,18 @@ CasePattern              = {CaseFirst} ({LineContinuation}? {CaseAfter})*
 Filedescriptor           = "&" {IntegerLiteral} | "&-"  //todo:: check the usage ('<&' | '>&') (num | '-') in parser
 AssigOp                  = "=" | "+="
 
-ParamExpansion           = [^{}\\] | {EscapedChar}
-ParamExpansionBody       = {ParamExpansion}+
+ParamExpansionName       = ([a-zA-Z0-9_] | {EscapedAnyChar})*
+ParamExpansionSeparator  = "#""#"? | "!" | ":" | ":"?"=" | ":"?"+" | ":"?"-" | ":"?"?" | "@" | ","","? | "^""^"? | "*"
 
 HeredocMarker            = [^\r\n|&\\;()[] \t\"'] | {EscapedChar}
 HeredocMarkerInQuotes    = {HeredocMarker}+ | '{HeredocMarker}+' | \"{HeredocMarker}+\"
 
-RegexWord                = [^\r\n\\\"' \t] | {EscapedChar}
-RegexWordWithWhiteSpace  = [^\"'] | {EscapedChar}
-RegexInQuotes            = '{RegexWordWithWhiteSpace}+' | \"{RegexWordWithWhiteSpace}+\" | {RegexWord}+
+RegexWord                = [^\r\n\\\"' \t$`()] | {EscapedChar}
+Regex                    = {RegexWord}+
 
 HereString               = [^\r\n$` \"';()|>&] | {EscapedChar}
-StringContent            = [^$\"`(\\] | {EscapedChar}
-EvalContent              = [^\r\n$\"`'() ;] | {EscapedChar}
+StringContent            = [^$\"`(\\] | {EscapedAnyChar}
+EvalContent              = [^\r\n$\"`'() ;] | {EscapedAnyChar}
 
 %state ARITHMETIC_EXPRESSION
 %state OLD_ARITHMETIC_EXPRESSION
@@ -151,6 +158,7 @@ EvalContent              = [^\r\n$\"`'() ;] | {EscapedChar}
 %state HERE_DOC_BODY
 
 %state PARAMETER_EXPANSION
+%state PARAMETER_EXPANSION_EXPR
 %state PARENTHESES_COMMAND_SUBSTITUTION
 %state BACKQUOTE_COMMAND_SUBSTITUTION
 %%
@@ -246,21 +254,61 @@ EvalContent              = [^\r\n$\"`'() ;] | {EscapedChar}
 <CONDITIONAL_EXPRESSION> {
     "=="                          { return EQ; }
     "!="                          { return NE; }
-    "=~"                          { pushState(REGULAR_EXPRESSION); return REGEXP; }
+    "=~"                          { regexStart = getTokenEnd(); regexGroups = 0; pushState(REGULAR_EXPRESSION); return REGEXP; }
     "<"                           { return LT; }
     ">"                           { return GT; }
 }
 
+
+<REGULAR_EXPRESSION, PARAMETER_EXPANSION> {
+  "$(("                              { isArithmeticExpansion = true; yypushback(2); return DOLLAR; }
+  "$("                               { pushState(PARENTHESES_COMMAND_SUBSTITUTION); yypushback(1); return DOLLAR; }
+  "${"                               { pushState(PARAMETER_EXPANSION); yypushback(1); return DOLLAR;}
+  "$["                               { pushState(OLD_ARITHMETIC_EXPRESSION); return ARITH_SQUARE_LEFT; }
+  "`"                                { pushState(BACKQUOTE_COMMAND_SUBSTITUTION); isBackquoteOpen = true; return OPEN_BACKQUOTE; }
+
+  {Variable}                         { return VAR; }
+  {Quote}                            { pushState(STRING_EXPRESSION); return OPEN_QUOTE; }
+  {RawString}                        |
+  {UnclosedRawString}                { return RAW_STRING; }
+}
+
 <REGULAR_EXPRESSION> {
-  {WhiteSpace}+                   { return WHITESPACE;}
-  {RegexInQuotes}                 { popState(); return WORD; }
+  "(("                            { if (isArithmeticExpansion) { pushState(ARITHMETIC_EXPRESSION);
+                                       pushParentheses(DOUBLE_PARENTHESES); isArithmeticExpansion = false; return LEFT_DOUBLE_PAREN; }
+                                    else { yypushback(1); regexGroups++; return WORD; } }
+  "$"                             { return WORD; }
+  "("                             { regexGroups++; return WORD; }
+  ")"                             { if (regexGroups <= 0) { regexGroups = 0; popState(); return RIGHT_PAREN; } else { regexGroups--; return WORD; } }
+
+  {Regex}                         { return WORD; }
+  {WhiteSpace}+                   { if (regexGroups <= 0 && regexStart != getTokenStart()) { regexStart = -1; popState(); }; return WHITESPACE; }
 }
 
 <PARAMETER_EXPANSION> {
-  "${"                                { pushState(PARAMETER_EXPANSION); yypushback(1); return DOLLAR;}
-  "{"                                 {             return LEFT_CURLY; }
-  "}"                                 { popState(); return RIGHT_CURLY; }
-  {ParamExpansionBody} / "${"|"}"     {             return PARAMETER_EXPANSION_BODY; }
+  "(("                               { if (isArithmeticExpansion) { pushState(ARITHMETIC_EXPRESSION);
+                                          pushParentheses(DOUBLE_PARENTHESES); isArithmeticExpansion = false; return LEFT_DOUBLE_PAREN; }
+                                      else return WORD; }
+  "[["                               { pushState(CONDITIONAL_EXPRESSION); return LEFT_DOUBLE_BRACKET; }
+  "["                                { pushState(CONDITIONAL_EXPRESSION); return LEFT_SQUARE; }
+  "{"                                {             return LEFT_CURLY; }
+  "}"                                { popState(); return RIGHT_CURLY; }
+
+  {ParamExpansionSeparator}          { return PARAM_SEPARATOR; }
+  "%""%"? | "/""/"?                  { pushState(PARAMETER_EXPANSION_EXPR); return PARAM_SEPARATOR; }
+  {IntegerLiteral}                   { return INT; }
+  {HexIntegerLiteral}                { return HEX; }
+  {OctalIntegerLiteral}              { return OCTAL; }
+  {ParamExpansionName}               { return WORD; }
+  {WhiteSpace}+                      |
+  {LineContinuation}+                { return WHITESPACE; }
+  {LineTerminator}                   { return LINEFEED; }
+  [^]                                { return WORD; }
+}
+
+<PARAMETER_EXPANSION_EXPR> {
+  [^}/$`\"]*                               { popState(); return WORD; }
+  [^]                                  { popState(); yypushback(yylength()); }
 }
 
 <CASE_CONDITION> {
@@ -276,9 +324,9 @@ EvalContent              = [^\r\n$\"`'() ;] | {EscapedChar}
 
 <HERE_STRING> {
   ">"  | ";" | "|" | "(" | ")"  |
-  "&"  | "`"                    { popState(); yypushback(1);}
-  {LineTerminator}              { popState(); return LINEFEED; }
-  {WhiteSpace}+                 { popState(); return WHITESPACE; }
+  "&"  | "`"                    { herestringStartPosition=-1; popState(); yypushback(1);}
+  {LineTerminator}              { herestringStartPosition=-1; popState(); return LINEFEED; }
+  {WhiteSpace}+                 { if (herestringStartPosition != getTokenStart()) { herestringStartPosition=-1; popState(); } return WHITESPACE; }
   {HereString}+                 { return WORD; }
 }
 
@@ -390,7 +438,7 @@ EvalContent              = [^\r\n$\"`'() ;] | {EscapedChar}
     ">("                          { return OUTPUT_PROCESS_SUBSTITUTION; }
     "<("                          { return INPUT_PROCESS_SUBSTITUTION; }
 
-    "<<<" {WhiteSpace}*           { pushState(HERE_STRING); return REDIRECT_HERE_STRING; }
+    "<<<"                         { herestringStartPosition = getTokenEnd(); pushState(HERE_STRING); return REDIRECT_HERE_STRING; }
     "<<-"                         { if (yystate() != HERE_DOC_PIPELINE)
                                     { pushState(HERE_DOC_START_MARKER); heredocWithWhiteSpaceIgnore = true; return HEREDOC_MARKER_TAG; }
                                     else return SHIFT_LEFT; }

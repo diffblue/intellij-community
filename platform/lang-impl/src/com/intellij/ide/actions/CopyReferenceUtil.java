@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions;
 
 import com.intellij.codeInsight.TargetElementUtil;
@@ -11,8 +11,6 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.LangDataKeys;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
@@ -35,24 +33,24 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class CopyReferenceUtil {
+public final class CopyReferenceUtil {
   static void highlight(Editor editor, Project project, List<? extends PsiElement> elements) {
     HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager manager = EditorColorsManager.getInstance();
-    TextAttributes attributes = manager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     if (elements.size() == 1 && editor != null && project != null) {
       PsiElement element = elements.get(0);
       PsiElement nameIdentifier = IdentifierUtil.getNameIdentifier(element);
       if (nameIdentifier != null) {
-        highlightManager.addOccurrenceHighlights(editor, new PsiElement[]{nameIdentifier}, attributes, true, null);
+        highlightManager
+          .addOccurrenceHighlights(editor, new PsiElement[]{nameIdentifier}, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
       }
       else {
         PsiReference reference = TargetElementUtil.findReference(editor, editor.getCaretModel().getOffset());
         if (reference != null) {
-          highlightManager.addOccurrenceHighlights(editor, new PsiReference[]{reference}, attributes, true, null);
+          highlightManager
+            .addOccurrenceHighlights(editor, new PsiReference[]{reference}, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
         }
         else if (element != PsiDocumentManager.getInstance(project).getCachedPsiFile(editor.getDocument())) {
-          highlightManager.addOccurrenceHighlights(editor, new PsiElement[]{element}, attributes, true, null);
+          highlightManager.addOccurrenceHighlights(editor, new PsiElement[]{element}, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
         }
       }
     }
@@ -111,13 +109,8 @@ public class CopyReferenceUtil {
   @Nullable
   static String getQualifiedNameFromProviders(@Nullable PsiElement element) {
     if (element == null) return null;
-    DumbService.getInstance(element.getProject()).setAlternativeResolveEnabled(true);
-    try {
-      return QualifiedNameProviderUtil.getQualifiedName(element);
-    }
-    finally {
-      DumbService.getInstance(element.getProject()).setAlternativeResolveEnabled(false);
-    }
+    return DumbService.getInstance(element.getProject()).computeWithAlternativeResolveEnabled(() ->
+      QualifiedNameProviderUtil.getQualifiedName(element));
   }
 
   static String doCopy(List<? extends PsiElement> elements, @Nullable Editor editor) {
@@ -182,7 +175,11 @@ public class CopyReferenceUtil {
       }
     }
 
-    String relativePath = VfsUtilCore.getRelativePath(virtualFile, project.getBaseDir());
+    VirtualFile dir = project.getBaseDir();
+    if (dir == null) {
+      return virtualFile.getPath();
+    }
+    String relativePath = VfsUtilCore.getRelativePath(virtualFile, dir);
     if (relativePath != null) {
       return relativePath;
     }

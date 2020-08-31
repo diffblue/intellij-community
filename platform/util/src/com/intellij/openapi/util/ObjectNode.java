@@ -15,7 +15,7 @@ import java.util.List;
 final class ObjectNode {
   private static final ObjectNode[] EMPTY_ARRAY = new ObjectNode[0];
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.util.objectTree.ObjectNode");
+  private static final Logger LOG = Logger.getInstance(ObjectNode.class);
 
   private final ObjectTree myTree;
 
@@ -23,7 +23,7 @@ final class ObjectNode {
   private final Disposable myObject;
 
   private List<ObjectNode> myChildren; // guarded by myTree.treeLock
-  private final Throwable myTrace;
+  private Throwable myTrace;
 
   ObjectNode(@NotNull ObjectTree tree,
              @Nullable ObjectNode parentNode,
@@ -67,51 +67,54 @@ final class ObjectNode {
     }
   }
 
-  void execute(@NotNull final ObjectTreeAction<Disposable> action, @NotNull List<? super Throwable> exceptions) {
-    ObjectTree.executeActionWithRecursiveGuard(this, myTree.getNodesInExecution(), new ObjectTreeAction<ObjectNode>() {
-      @Override
-      public void execute(@NotNull ObjectNode each) {
-        if (myTree.getDisposalInfo(myObject) != null) return; // already disposed. may happen when someone does `register(obj, ()->Disposer.dispose(t));` abomination
+  void execute(@NotNull List<? super Throwable> exceptions, boolean onlyChildren) {
+    ObjectTree.executeActionWithRecursiveGuard(this, myTree.getNodesInExecution(), each -> {
+      if (myTree.getDisposalInfo(myObject) != null) {
+        return; // already disposed. may happen when someone does `register(obj, ()->Disposer.dispose(t));` abomination
+      }
+
+      if (!onlyChildren && myObject instanceof Disposable.Parent) {
         try {
-          action.beforeTreeExecution(myObject);
+          ((Disposable.Parent)myObject).beforeTreeDispose();
         }
         catch (Throwable t) {
           LOG.error(t);
         }
+      }
 
-        ObjectNode[] childrenArray;
-        synchronized (myTree.treeLock) {
-          List<ObjectNode> children = myChildren;
-          childrenArray = children == null || children.isEmpty() ? EMPTY_ARRAY : children.toArray(EMPTY_ARRAY);
-          myChildren = null;
-        }
+      ObjectNode[] childrenArray;
+      synchronized (myTree.treeLock) {
+        List<ObjectNode> children = myChildren;
+        childrenArray = children == null || children.isEmpty() ? EMPTY_ARRAY : children.toArray(EMPTY_ARRAY);
+        myChildren = null;
+      }
 
-        for (int i = childrenArray.length - 1; i >= 0; i--) {
-          try {
-            ObjectNode childNode = childrenArray[i];
-            childNode.execute(action, exceptions);
-            synchronized (myTree.treeLock) {
-              childNode.myParent = null;
-            }
-          }
-          catch (Throwable e) {
-            exceptions.add(e);
-          }
-        }
-
+      for (int i = childrenArray.length - 1; i >= 0; i--) {
         try {
-          action.execute(myObject);
-          myTree.rememberDisposedTrace(myObject);
+          ObjectNode childNode = childrenArray[i];
+          childNode.execute(exceptions, false);
+          synchronized (myTree.treeLock) {
+            childNode.myParent = null;
+          }
         }
         catch (Throwable e) {
           exceptions.add(e);
         }
-        removeFromObjectTree();
       }
 
-      @Override
-      public void beforeTreeExecution(@NotNull ObjectNode parent) {
+      if (onlyChildren) {
+        return;
       }
+
+      try {
+        //noinspection SSBasedInspection
+        myObject.dispose();
+        myTree.rememberDisposedTrace(myObject);
+      }
+      catch (Throwable e) {
+        exceptions.add(e);
+      }
+      removeFromObjectTree();
     });
   }
 
@@ -137,6 +140,10 @@ final class ObjectNode {
 
   Throwable getTrace() {
     return myTrace;
+  }
+
+  void clearTrace() {
+    myTrace = null;
   }
 
   @TestOnly

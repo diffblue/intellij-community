@@ -18,6 +18,7 @@ package com.siyeh.ig.psiutils;
 import com.intellij.psi.*;
 import com.intellij.psi.util.MethodSignature;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,8 +34,7 @@ public class UninitializedReadCollector {
     uninitializedReads = new HashSet<>();
   }
 
-  @NotNull
-  public PsiExpression[] getUninitializedReads() {
+  public PsiExpression @NotNull [] getUninitializedReads() {
     return uninitializedReads.toArray(PsiExpression.EMPTY_ARRAY);
   }
 
@@ -423,7 +423,7 @@ public class UninitializedReadCollector {
 
   private boolean assignmentExpressionAssignsVariable(@NotNull PsiAssignmentExpression assignment, @NotNull PsiVariable variable,
     int stamp, @NotNull Set<MethodSignature> checkedMethods) {
-    final PsiExpression lhs = ParenthesesUtils.stripParentheses(assignment.getLExpression());
+    final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(assignment.getLExpression());
     if (expressionAssignsVariable(lhs, variable, stamp, checkedMethods)) {
       return true;
     }

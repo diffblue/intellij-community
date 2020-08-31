@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.yaml;
 
 import com.intellij.application.options.CodeStyleAbstractPanel;
@@ -15,21 +15,20 @@ import org.jetbrains.yaml.formatter.YAMLCodeStyleSettings;
 
 import javax.swing.*;
 
-/**
- * @author oleg
- */
 public class YAMLLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSettingsProvider {
-  public static final int[] ALIGN_VALUES = new int[]{
-    YAMLCodeStyleSettings.DO_NOT_ALIGN,
-    YAMLCodeStyleSettings.ALIGN_ON_COLON,
-    YAMLCodeStyleSettings.ALIGN_ON_VALUE
-  };
+  private static class Holder {
+    private static final int[] ALIGN_VALUES = new int[]{
+      YAMLCodeStyleSettings.DO_NOT_ALIGN,
+      YAMLCodeStyleSettings.ALIGN_ON_COLON,
+      YAMLCodeStyleSettings.ALIGN_ON_VALUE
+    };
 
-  public static final String[] ALIGN_OPTIONS = new String[]{
-    YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.no"),
-    YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.colon"),
-    YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.value")
-  };
+    private static final String[] ALIGN_OPTIONS = new String[]{
+      YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.no"),
+      YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.colon"),
+      YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.options.value")
+    };
+  }
 
   @Override
   protected void customizeDefaults(@NotNull CommonCodeStyleSettings commonSettings,
@@ -37,6 +36,8 @@ public class YAMLLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
     indentOptions.INDENT_SIZE = 2;
     indentOptions.CONTINUATION_INDENT_SIZE = 2;
     indentOptions.USE_TAB_CHARACTER = false;
+    commonSettings.SPACE_WITHIN_BRACES = true;
+    commonSettings.SPACE_WITHIN_BRACKETS = true;
   }
 
   @Override
@@ -55,6 +56,10 @@ public class YAMLLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
     if (settingsType == SettingsType.INDENT_SETTINGS) {
       consumer.showStandardOptions("INDENT_SIZE", "KEEP_INDENTS_ON_EMPTY_LINES");
     }
+    else if (settingsType == SettingsType.SPACING_SETTINGS) {
+      consumer.showStandardOptions("SPACE_WITHIN_BRACES", "SPACE_WITHIN_BRACKETS");
+      consumer.showCustomOption(YAMLCodeStyleSettings.class, "SPACE_BEFORE_COLON", "Before ':'", CodeStyleSettingsCustomizable.SPACES_OTHER);
+    }
     else if (settingsType == SettingsType.WRAPPING_AND_BRACES_SETTINGS) {
       consumer.showStandardOptions("KEEP_LINE_BREAKS");
 
@@ -62,8 +67,8 @@ public class YAMLLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
                                 "ALIGN_VALUES_PROPERTIES",
                                 YAMLBundle.message("YAMLLanguageCodeStyleSettingsProvider.align.values"),
                                 null,
-                                ALIGN_OPTIONS,
-                                ALIGN_VALUES);
+                                Holder.ALIGN_OPTIONS,
+                                Holder.ALIGN_VALUES);
 
       consumer.showCustomOption(YAMLCodeStyleSettings.class,
                                 "SEQUENCE_ON_NEW_LINE",

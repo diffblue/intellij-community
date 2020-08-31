@@ -386,8 +386,10 @@ public class SMTestProxy extends AbstractTestProxy {
   public String getDurationString(TestConsoleProperties consoleProperties) {
     switch (getMagnitudeInfo()) {
       case PASSED_INDEX:
-      case RUNNING_INDEX:
         return !isSubjectToHide(consoleProperties) ? getDurationString() : null;
+      case RUNNING_INDEX:
+        // pad duration with zeros, like "1m 02 s 003 ms" to avoid annoying flickering
+        return !isSubjectToHide(consoleProperties) ? getDurationPaddedString() : null;
       case COMPLETE_INDEX:
       case FAILED_INDEX:
       case ERROR_INDEX:
@@ -407,6 +409,10 @@ public class SMTestProxy extends AbstractTestProxy {
   private String getDurationString() {
     final Long duration = getDuration();
     return duration != null ? StringUtil.formatDuration(duration.longValue(), "\u2009") : null;
+  }
+  private String getDurationPaddedString() {
+    final Long duration = getDuration();
+    return duration != null ? StringUtil.formatDurationPadded(duration.longValue(), "\u2009") : null;
   }
 
   @Override
@@ -955,6 +961,7 @@ public class SMTestProxy extends AbstractTestProxy {
     private String myRootLocationUrl;
     private ProcessHandler myHandler;
     private boolean myShouldPrintOwnContentOnly = false;
+    private long myExecutionId;
     @NotNull
     private TestDurationStrategy myDurationStrategy = TestDurationStrategy.AUTOMATIC;
 
@@ -995,6 +1002,14 @@ public class SMTestProxy extends AbstractTestProxy {
 
     public void setComment(String comment) {
       myComment = comment;
+    }
+
+    public long getExecutionId() {
+      return myExecutionId;
+    }
+
+    public void setExecutionId(long executionId) {
+      myExecutionId = executionId;
     }
 
     @Override

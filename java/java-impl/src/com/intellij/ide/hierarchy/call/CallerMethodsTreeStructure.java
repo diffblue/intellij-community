@@ -8,9 +8,12 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.MethodReferencesSearch;
+import com.intellij.psi.search.searches.ReferencesSearch;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -24,16 +27,27 @@ public final class CallerMethodsTreeStructure extends HierarchyTreeStructure {
   /**
    * Should be called in read action
    */
-  public CallerMethodsTreeStructure(@NotNull Project project, @NotNull PsiMethod method, final String scopeType) {
-    super(project, new CallHierarchyNodeDescriptor(project, null, method, true, false));
+  public CallerMethodsTreeStructure(@NotNull Project project, @NotNull PsiMember member, final String scopeType) {
+    super(project, new CallHierarchyNodeDescriptor(project, null, member, true, false));
     myScopeType = scopeType;
+  } 
+  
+  /**
+   * @deprecated use CallerMethodsTreeStructure#CallerMethodsTreeStructure(Project, PsiMember, String)
+   */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
+  public CallerMethodsTreeStructure(@NotNull Project project, @NotNull PsiMethod method, final String scopeType) {
+    this(project, ((PsiMember)method), scopeType);
   }
 
-  @NotNull
   @Override
-  protected final Object[] buildChildren(@NotNull final HierarchyNodeDescriptor descriptor) {
+  protected final Object @NotNull [] buildChildren(@NotNull final HierarchyNodeDescriptor descriptor) {
     PsiMember enclosingElement = ((CallHierarchyNodeDescriptor)descriptor).getEnclosingElement();
+    if (enclosingElement == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
+
     HierarchyNodeDescriptor nodeDescriptor = getBaseDescriptor();
+    if (nodeDescriptor == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
 
     if (enclosingElement instanceof PsiMethod) {
       PsiClass clazz = enclosingElement.getContainingClass();
@@ -47,38 +61,48 @@ public final class CallerMethodsTreeStructure extends HierarchyTreeStructure {
       }
     }
 
-    if (!(enclosingElement instanceof PsiMethod) || nodeDescriptor == null) {
-      return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
+    PsiMember baseMember = (PsiMember)((CallHierarchyNodeDescriptor)nodeDescriptor).getTargetElement();
+    if (baseMember == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
+
+    SearchScope searchScope = getSearchScope(myScopeType, baseMember.getContainingClass());
+
+    PsiMember member = enclosingElement;
+    PsiClass originalClass = member.getContainingClass();
+    
+    if (originalClass == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
+    
+    PsiClassType originalType = JavaPsiFacade.getElementFactory(myProject).createType(originalClass);
+    Set<PsiMethod> methodsToFind = new HashSet<>();
+
+    if (enclosingElement instanceof PsiMethod) {
+      PsiMethod method = (PsiMethod)enclosingElement;
+      methodsToFind.add(method);
+      ContainerUtil.addAll(methodsToFind, method.findDeepestSuperMethods());
+
+      Map<PsiMember, NodeDescriptor> methodToDescriptorMap = new HashMap<>();
+      for (PsiMethod methodToFind : methodsToFind) {
+        JavaCallHierarchyData data = new JavaCallHierarchyData(originalClass, methodToFind, originalType, method, methodsToFind, descriptor, methodToDescriptorMap, myProject);
+
+        MethodReferencesSearch.search(methodToFind, searchScope, true).forEach(reference -> {
+          // references in javadoc really couldn't "call" anything
+          if (!PsiUtil.isInsideJavadocComment(reference.getElement())) {
+            for (CallReferenceProcessor processor : CallReferenceProcessor.EP_NAME.getExtensions()) {
+              if (!processor.process(reference, data)) break;
+            }
+          }
+          return true;
+        });
+      }
+
+      return ArrayUtil.toObjectArray(methodToDescriptorMap.values());
     }
+    
+    assert enclosingElement instanceof PsiField : "Enclosing element should be a field, but was " + enclosingElement.getClass() + ", text: " + enclosingElement.getText();
 
-    final PsiMethod baseMethod = (PsiMethod)((CallHierarchyNodeDescriptor)nodeDescriptor).getTargetElement();
-    if (baseMethod == null) {
-      return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
-    }
-    final SearchScope searchScope = getSearchScope(myScopeType, baseMethod.getContainingClass());
-
-    final PsiMethod method = (PsiMethod)enclosingElement;
-    final PsiClass originalClass = method.getContainingClass();
-    assert originalClass != null;
-    final PsiClassType originalType = JavaPsiFacade.getElementFactory(myProject).createType(originalClass);
-    final Set<PsiMethod> methodsToFind = new HashSet<>();
-    methodsToFind.add(method);
-    ContainerUtil.addAll(methodsToFind, method.findDeepestSuperMethods());
-
-    final Map<PsiMember, NodeDescriptor> methodToDescriptorMap = new HashMap<>();
-    for (final PsiMethod methodToFind : methodsToFind) {
-      final JavaCallHierarchyData
-        data = new JavaCallHierarchyData(originalClass, methodToFind, originalType, method, methodsToFind, descriptor, methodToDescriptorMap, myProject);
-
-      MethodReferencesSearch.search(methodToFind, searchScope, true).forEach(reference -> {
-        for (CallReferenceProcessor processor : CallReferenceProcessor.EP_NAME.getExtensions()) {
-          if (!processor.process(reference, data)) break;
-        }
-        return true;
-      });
-    }
-
-    return ArrayUtil.toObjectArray(methodToDescriptorMap.values());
+    return ReferencesSearch
+      .search(enclosingElement, enclosingElement.getUseScope()).findAll().stream()
+      .map(PsiReference::getElement).distinct()
+      .map(e -> new CallHierarchyNodeDescriptor(myProject, nodeDescriptor, e, false, false)).toArray();
   }
 
   private static boolean isLocalOrAnonymousClass(PsiMember enclosingElement) {

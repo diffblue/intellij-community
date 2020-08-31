@@ -205,7 +205,7 @@ public class GitLogUtil {
   public static void readFullDetails(@NotNull Project project,
                                      @NotNull VirtualFile root,
                                      @NotNull Consumer<? super GitCommit> commitConsumer,
-                                     @NotNull String... parameters) throws VcsException {
+                                     String @NotNull ... parameters) throws VcsException {
     new GitFullDetailsCollector(project, root, new InternedGitLogRecordBuilder())
       .readFullDetails(commitConsumer, GitCommitRequirements.DEFAULT, false, parameters);
   }
@@ -254,9 +254,8 @@ public class GitLogUtil {
   static void sendHashesToStdin(@NotNull GitVcs vcs, @NotNull Collection<String> hashes, @NotNull GitHandler handler) {
     // if we close this stream, RunnerMediator won't be able to send ctrl+c to the process in order to softly kill it
     // see RunnerMediator.sendCtrlEventThroughStream
-    String separator = GitVersionSpecialty.LF_SEPARATORS_IN_STDIN.existsIn(vcs) ? "\n" : System.lineSeparator();
     handler.setInputProcessor(GitHandlerInputProcessorUtil.writeLines(hashes,
-                                                                      separator,
+                                                                      "\n",
                                                                       handler.getCharset(),
                                                                       true));
   }

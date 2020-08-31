@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.components.impl.stores;
 
 import com.intellij.openapi.components.StorageScheme;
@@ -9,11 +9,11 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.SystemIndependent;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public interface IProjectStore extends IComponentStore {
-  @SystemIndependent
   @NotNull
-  String getProjectBasePath();
+  Path getProjectBasePath();
 
   @NotNull
   String getProjectName();
@@ -46,12 +46,6 @@ public interface IProjectStore extends IComponentStore {
 
   boolean isProjectFile(@NotNull VirtualFile file);
 
-  /**
-   * Directory of project configuration files for directory-based project. Or null.
-   */
-  @Nullable
-  VirtualFile getDirectoryStoreFile();
-
   @Nullable
   @SystemIndependent
   String getDirectoryStorePath(boolean ignoreProjectStorageScheme);
@@ -59,9 +53,9 @@ public interface IProjectStore extends IComponentStore {
   /**
    * Directory of project configuration files for directory-based project. Or null.
    */
-  @SystemIndependent
-  default String getDirectoryStorePath() {
-    return getDirectoryStorePath(false);
+  default Path getDirectoryStorePath() {
+    String result = getDirectoryStorePath(false);
+    return result == null ? null : Paths.get(result);
   }
 
   @NotNull

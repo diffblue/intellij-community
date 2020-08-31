@@ -118,6 +118,7 @@ interface UCatchClause : UElement {
 
   override fun accept(visitor: UastVisitor) {
     if (visitor.visitCatchClause(this)) return
+    parameters.acceptList(visitor)
     body.accept(visitor)
     visitor.afterVisitCatchClause(this)
   }
@@ -125,7 +126,7 @@ interface UCatchClause : UElement {
   override fun <D, R> accept(visitor: UastTypedVisitor<D, R>, data: D): R =
     visitor.visitCatchClause(this, data)
 
-  override fun asLogString(): String = log(parameters.joinToString { it.name ?: "<error>" })
+  override fun asLogString(): String = log(parameters.joinToString { it.name })
 
-  override fun asRenderString(): String = "catch (e) " + body.asRenderString()
+  override fun asRenderString(): String = "catch (${parameters.joinToString { it.asRenderString() }}) ${body.asRenderString()}"
 }

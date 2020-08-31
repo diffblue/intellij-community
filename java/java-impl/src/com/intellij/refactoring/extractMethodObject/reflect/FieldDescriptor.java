@@ -41,7 +41,7 @@ public class FieldDescriptor implements ItemToReplaceDescriptor {
       PsiClass containingClass = field.getContainingClass();
 
 
-      if (!Objects.equals(containingClass, outerClass) && needReplace(field, expression)) {
+      if (!Objects.equals(containingClass, outerClass) && needReplace(outerClass, field, expression)) {
         Array.getLength(new int[3]);
         return new FieldDescriptor(field, expression);
       }
@@ -105,7 +105,7 @@ public class FieldDescriptor implements ItemToReplaceDescriptor {
     PsiClass containingClass = myField.getContainingClass();
     String className = containingClass == null ? null : ClassUtil.getJVMClassName(containingClass);
     String fieldName = myField.getName();
-    if (className == null || fieldName == null) {
+    if (className == null) {
       LOG.warn("Code is incomplete. Class name or field name not found");
       return null;
     }
@@ -127,9 +127,8 @@ public class FieldDescriptor implements ItemToReplaceDescriptor {
     return methodBuilder.build(elementFactory, outerClass);
   }
 
-  private static boolean needReplace(@NotNull PsiField field, @NotNull PsiReferenceExpression expression) {
-    return !PsiReflectionAccessUtil.isAccessibleMember(field) ||
-           !PsiReflectionAccessUtil.isQualifierAccessible(expression.getQualifierExpression());
+  private static boolean needReplace(@NotNull PsiClass outerClass, @NotNull PsiField field, @NotNull PsiReferenceExpression expression) {
+    return !PsiReflectionAccessUtil.isAccessibleMember(field, outerClass, expression.getQualifierExpression());
   }
 
   @NotNull

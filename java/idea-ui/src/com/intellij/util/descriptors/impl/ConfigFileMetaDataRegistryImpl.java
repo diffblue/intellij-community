@@ -27,9 +27,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * @author nik
- */
 public class ConfigFileMetaDataRegistryImpl implements ConfigFileMetaDataRegistry {
   private final List<ConfigFileMetaData> myMetaData = new ArrayList<>();
   private final Map<String, ConfigFileMetaData> myId2MetaData = new HashMap<>();
@@ -45,8 +42,7 @@ public class ConfigFileMetaDataRegistryImpl implements ConfigFileMetaDataRegistr
   }
 
   @Override
-  @NotNull
-  public ConfigFileMetaData[] getMetaData() {
+  public ConfigFileMetaData @NotNull [] getMetaData() {
     if (myCachedMetaData == null) {
       myCachedMetaData = myMetaData.toArray(new ConfigFileMetaData[0]);
     }
@@ -60,11 +56,21 @@ public class ConfigFileMetaDataRegistryImpl implements ConfigFileMetaDataRegistr
   }
 
   @Override
-  public void registerMetaData(@NotNull final ConfigFileMetaData... metaData) {
+  public void registerMetaData(final ConfigFileMetaData @NotNull ... metaData) {
     for (ConfigFileMetaData data : metaData) {
       myMetaData.add(data);
       myId2MetaData.put(data.getId(), data);
     }
     myCachedMetaData = null;
+  }
+
+  @Override
+  public void unregisterMetaData(@NotNull ConfigFileMetaData metaData) {
+    boolean changed = myMetaData.remove(metaData);
+    ConfigFileMetaData actual = myId2MetaData.remove(metaData.getId());
+    changed |= (actual != null);
+    if (changed) {
+      myCachedMetaData = null;
+    }
   }
 }

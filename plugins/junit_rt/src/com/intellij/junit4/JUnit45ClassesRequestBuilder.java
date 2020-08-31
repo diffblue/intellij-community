@@ -33,9 +33,9 @@ import org.junit.runners.model.FrameworkMethod;
 import java.lang.reflect.Method;
 
 public class JUnit45ClassesRequestBuilder {
-  public static Request getClassesRequest(String suiteName, Class[] classes) {
+  public static Request getClassesRequest(String suiteName, Class<?>[] classes) {
     try {
-      return Request.runner(new IdeaSuite(new org.junit.internal.builders.AllDefaultPossibilitiesBuilder(true), classes, suiteName));
+      return Request.runner(new IdeaSuite(new AllDefaultPossibilitiesBuilder(true), classes, suiteName));
     }
     catch (Exception initializationError) {
       initializationError.printStackTrace();
@@ -44,28 +44,34 @@ public class JUnit45ClassesRequestBuilder {
   }
 
 
-  static Request createIgnoreIgnoredClassRequest(final Class clazz, final boolean recursively) throws ClassNotFoundException {
+  static Request createIgnoreIgnoredClassRequest(final Class<?> clazz, final boolean recursively) throws ClassNotFoundException {
     Class.forName("org.junit.runners.BlockJUnit4ClassRunner"); //ignore IgnoreIgnored for junit4.4 and <
     return new ClassRequest(clazz) {
+      @Override
       public Runner getRunner() {
         try {
           return new AllDefaultPossibilitiesBuilder(true) {
+            @Override
             protected IgnoredBuilder ignoredBuilder() {
               return new IgnoredBuilder() {
+                @Override
                 public Runner runnerForClass(Class testClass) {
                   return null;
                 }
               };
             }
 
+            @Override
             protected JUnit4Builder junit4Builder() {
               return new JUnit4Builder() {
+                @Override
                 public Runner runnerForClass(Class testClass) throws Throwable {
                   if (!recursively) return super.runnerForClass(testClass);
                   try {
-                    Method ignored = BlockJUnit4ClassRunner.class.getDeclaredMethod("isIgnored", new Class[]{FrameworkMethod.class});
+                    Method ignored = BlockJUnit4ClassRunner.class.getDeclaredMethod("isIgnored", FrameworkMethod.class);
                     if (ignored != null) {
                       return new BlockJUnit4ClassRunner(testClass) {
+                        @Override
                         protected boolean isIgnored(FrameworkMethod child) {
                           return false;
                         }
@@ -75,6 +81,7 @@ public class JUnit45ClassesRequestBuilder {
                   catch (NoSuchMethodException ignored) {}
                   //older versions
                   return new BlockJUnit4ClassRunner(testClass) {
+                    @Override
                     protected void runChild(FrameworkMethod method, RunNotifier notifier) {
                       final Description description = describeChild(method);
                       final EachTestNotifier eachNotifier = new EachTestNotifier(notifier, description);
@@ -105,19 +112,23 @@ public class JUnit45ClassesRequestBuilder {
     };
   }
 
-  static Runner createIgnoreAnnotationAndJUnit4ClassRunner(Class clazz) throws Throwable {
+  static Runner createIgnoreAnnotationAndJUnit4ClassRunner(Class<?> clazz) throws Throwable {
     return new AllDefaultPossibilitiesBuilder(true) {
+      @Override
       protected AnnotatedBuilder annotatedBuilder() {
         return new AnnotatedBuilder(this) {
-          public Runner runnerForClass(Class testClass) throws Exception {
+          @Override
+          public Runner runnerForClass(Class testClass) {
             return null;
           }
         };
       }
 
+      @Override
       protected JUnit4Builder junit4Builder() {
         return new JUnit4Builder() {
-          public Runner runnerForClass(Class testClass) throws Throwable {
+          @Override
+          public Runner runnerForClass(Class testClass) {
             return null;
           }
         };

@@ -7,28 +7,40 @@
                 secondary="false"
                 canCloseContents="true"/>
     <projectService serviceImplementation="org.jetbrains.plugins.terminal.TerminalView"/>
+    <applicationService serviceImplementation="org.jetbrains.plugins.terminal.DefaultTerminalRunnerFactory"/>
 
-    <projectConfigurable groupId="tools" groupWeight="130" displayName="Terminal" id="terminal" instance="org.jetbrains.plugins.terminal.TerminalOptionsConfigurable"/>
+    <projectConfigurable groupId="tools" groupWeight="130"
+                         bundle="messages.IdeBundle"
+                         key="configurable.TerminalOptionsConfigurable.display.name"
+                         id="terminal" instance="org.jetbrains.plugins.terminal.TerminalOptionsConfigurable"/>
 
     <fileEditorProvider implementation="org.jetbrains.plugins.terminal.vfs.TerminalSessionEditorProvider"/>
 
     <applicationService serviceImplementation="org.jetbrains.plugins.terminal.TerminalOptionsProvider"/>
     <projectService serviceImplementation="org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider"/>
+    <projectService serviceImplementation="org.jetbrains.plugins.terminal.TerminalProjectOptionsProviderOld"/>
 
     <projectService serviceImplementation="org.jetbrains.plugins.terminal.arrangement.TerminalArrangementManager"/>
-    <statistics.counterUsagesCollector groupId="terminalShell" version="1"/>
+    <statistics.counterUsagesCollector groupId="terminalShell" version="3"/>
 
     <registryKey key="terminal.Ctrl-E.opens.RecentFiles.popup" defaultValue="false"
                  description="Ctrl+E in terminal opens 'Recent Files' popup on Linux/Windows"/>
 
-    <terminal.shellCommandHandler implementation="org.jetbrains.plugins.terminal.impl.DiffCustomCommandHandler"/>
+    <terminal.shellCommandHandler implementation="com.intellij.diff.actions.DiffCustomCommandHandler"/>
     <experimentalFeature id="terminal.shell.command.handling" percentOfUsers="100"/>
+    <terminal.shellCommandHandler implementation="com.intellij.ide.actions.runAnything.RunAnythingTerminalBridge"/>
+    <notificationAllowlist groupIds="Terminal"/>
+    <terminal.shellCommandHandler implementation="com.intellij.terminal.impl.OpenFileShellCommandHandler"/>
+  </extensions>
+
+  <extensions defaultExtensionNs="org.jetbrains.plugins.terminal">
+    <localTerminalCustomizer implementation="org.jetbrains.plugins.terminal.TerminalCommandHandlerCustomizer"/>
   </extensions>
 
   <extensionPoints>
     <extensionPoint qualifiedName="org.jetbrains.plugins.terminal.localTerminalCustomizer"
-                    interface="org.jetbrains.plugins.terminal.LocalTerminalCustomizer"/>
+                    interface="org.jetbrains.plugins.terminal.LocalTerminalCustomizer" dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.terminal.shellCommandHandler"
-                    interface="com.intellij.terminal.TerminalShellCommandHandler"/>
+                    interface="com.intellij.terminal.TerminalShellCommandHandler" dynamic="true"/>
   </extensionPoints>
 </idea-plugin>

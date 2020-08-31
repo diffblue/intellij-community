@@ -25,7 +25,7 @@ import com.intellij.psi.impl.PsiManagerImpl;
 import org.jetbrains.annotations.NotNull;
 
 public class PsiMigrationManager {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.migration.PsiMigrationManager");
+  private static final Logger LOG = Logger.getInstance(PsiMigrationManager.class);
 
   public static PsiMigrationManager getInstance(Project project) {
     return ServiceManager.getService(project, PsiMigrationManager.class);
@@ -44,7 +44,7 @@ public class PsiMigrationManager {
 
   /**
    * Initiates a migrate refactoring. The refactoring is finished when
-   * {@link com.intellij.psi.PsiMigration#finish()} is called.
+   * {@link PsiMigration#finish()} is called.
    *
    * @return the migrate operation object.
    */

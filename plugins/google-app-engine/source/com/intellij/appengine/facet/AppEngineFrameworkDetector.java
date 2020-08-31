@@ -22,8 +22,8 @@ import com.intellij.facet.FacetType;
 import com.intellij.framework.FrameworkType;
 import com.intellij.framework.detection.FacetBasedFrameworkDetector;
 import com.intellij.framework.detection.FileContentPattern;
+import com.intellij.ide.highlighter.XmlFileType;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.roots.ModifiableRootModel;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.util.indexing.FileContent;
@@ -31,9 +31,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-/**
- * @author nik
- */
 public class AppEngineFrameworkDetector extends FacetBasedFrameworkDetector<AppEngineFacet,  AppEngineFacetConfiguration> {
   public AppEngineFrameworkDetector() {
     super("appengine-java");
@@ -46,7 +43,7 @@ public class AppEngineFrameworkDetector extends FacetBasedFrameworkDetector<AppE
   }
 
   @Override
-  public FrameworkType getFrameworkType() {
+  public @NotNull FrameworkType getFrameworkType() {
     return AppEngineFrameworkType.getFrameworkType();
   }
 
@@ -61,7 +58,7 @@ public class AppEngineFrameworkDetector extends FacetBasedFrameworkDetector<AppE
   @NotNull
   @Override
   public FileType getFileType() {
-    return StdFileTypes.XML;
+    return XmlFileType.INSTANCE;
   }
 
   @NotNull

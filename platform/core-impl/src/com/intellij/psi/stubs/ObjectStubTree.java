@@ -1,23 +1,11 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.stubs;
 
 import com.intellij.openapi.util.Key;
 import com.intellij.util.ArrayUtil;
+import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashMap;
+import gnu.trove.TObjectHashingStrategy;
 import gnu.trove.TObjectObjectProcedure;
 import gnu.trove.TObjectProcedure;
 import org.jetbrains.annotations.NotNull;
@@ -26,17 +14,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * @author Dmitry Avdeev
  */
 public class ObjectStubTree<T extends Stub> {
-  private static final Key<ObjectStubTree> STUB_TO_TREE_REFERENCE = Key.create("stub to tree reference");
-  protected final ObjectStubBase myRoot;
+  private static final Key<ObjectStubTree<?>> STUB_TO_TREE_REFERENCE = Key.create("stub to tree reference");
+  protected final ObjectStubBase<?> myRoot;
   private String myDebugInfo;
+  private boolean myHasBackReference;
   private final List<T> myPlainList;
 
-  public ObjectStubTree(@NotNull final ObjectStubBase root, final boolean withBackReference) {
+  public ObjectStubTree(final @NotNull ObjectStubBase<?> root, boolean withBackReference) {
     myRoot = root;
     myPlainList = enumerateStubs(root);
     if (withBackReference) {
@@ -44,13 +34,11 @@ public class ObjectStubTree<T extends Stub> {
     }
   }
 
-  @NotNull
-  public Stub getRoot() {
+  public @NotNull Stub getRoot() {
     return myRoot;
   }
 
-  @NotNull
-  public List<T> getPlainList() {
+  public @NotNull List<T> getPlainList() {
     return myPlainList;
   }
 
@@ -59,9 +47,13 @@ public class ObjectStubTree<T extends Stub> {
     return getPlainList();
   }
 
-  @NotNull
-  public Map<StubIndexKey, Map<Object, int[]>> indexStubTree() {
-    StubIndexSink sink = new StubIndexSink();
+  @Deprecated
+  public @NotNull Map<StubIndexKey<?, ?>, Map<Object, int[]>> indexStubTree() {
+    return indexStubTree(key -> ContainerUtil.canonicalStrategy());
+  }
+
+  public @NotNull Map<StubIndexKey<?, ?>, Map<Object, int[]>> indexStubTree(@NotNull Function<StubIndexKey<?, ?>, TObjectHashingStrategy<?>> keyHashingStrategyFunction) {
+    StubIndexSink sink = new StubIndexSink(keyHashingStrategyFunction);
     final List<T> plainList = getPlainListFromAllRoots();
     for (int i = 0, plainListSize = plainList.size(); i < plainListSize; i++) {
       final Stub stub = plainList.get(i);
@@ -72,8 +64,7 @@ public class ObjectStubTree<T extends Stub> {
     return sink.getResult();
   }
 
-  @NotNull
-  protected List<T> enumerateStubs(@NotNull Stub root) {
+  protected @NotNull List<T> enumerateStubs(@NotNull Stub root) {
     List<T> result = new ArrayList<>();
     //noinspection unchecked
     enumerateStubsInto(root, (List)result);
@@ -92,38 +83,43 @@ public class ObjectStubTree<T extends Stub> {
   }
 
   public void setDebugInfo(@NotNull String info) {
-    ObjectStubTree ref = getStubTree(myRoot);
+    ObjectStubTree<?> ref = getStubTree(myRoot);
     if (ref != null) {
       assert ref == this;
-      info += "; with backReference";
     }
+    myHasBackReference = ref != null;
     myDebugInfo = info;
   }
 
-  @Nullable
-  public static ObjectStubTree getStubTree(@NotNull ObjectStubBase root) {
+  public static @Nullable ObjectStubTree getStubTree(@NotNull ObjectStubBase root) {
     return root.getUserData(STUB_TO_TREE_REFERENCE);
   }
 
   public String getDebugInfo() {
-    return myDebugInfo;
+    return myHasBackReference ? myDebugInfo + "; with backReference" : myDebugInfo;
   }
 
   @Override
   public String toString() {
-    return getClass().getSimpleName() + "{myDebugInfo='" + myDebugInfo + '\'' + ", myRoot=" + myRoot + '}' + hashCode();
+    return getClass().getSimpleName() + "{myDebugInfo='" + getDebugInfo() + '\'' + ", myRoot=" + myRoot + '}' + hashCode();
   }
 
-  private static class StubIndexSink implements IndexSink, TObjectProcedure<Map<Object, int[]>>, TObjectObjectProcedure<Object,int[]> {
-    private final THashMap<StubIndexKey, Map<Object, int[]>> myResult = new THashMap<>();
+  private static final class StubIndexSink implements IndexSink, TObjectProcedure<Map<Object, int[]>>, TObjectObjectProcedure<Object,int[]> {
+    private final THashMap<StubIndexKey<?, ?>, Map<Object, int[]>> myResult = new THashMap<>();
+    private final Function<StubIndexKey<?, ?>, TObjectHashingStrategy<?>> myHashingStrategyFunction;
     private int myStubIdx;
     private Map<Object, int[]> myProcessingMap;
 
+    private StubIndexSink(@NotNull Function<StubIndexKey<?, ?>, TObjectHashingStrategy<?>> hashingStrategyFunction) {
+      myHashingStrategyFunction = hashingStrategyFunction;
+    }
+
     @Override
-    public void occurrence(@NotNull final StubIndexKey indexKey, @NotNull final Object value) {
+    public void occurrence(final @NotNull StubIndexKey indexKey, final @NotNull Object value) {
       Map<Object, int[]> map = myResult.get(indexKey);
       if (map == null) {
-        map = new THashMap<>();
+        //noinspection unchecked
+        map = new THashMap<>((TObjectHashingStrategy<Object>)myHashingStrategyFunction.apply(indexKey));
         myResult.put(indexKey, map);
       }
 
@@ -147,8 +143,7 @@ public class ObjectStubTree<T extends Stub> {
       }
     }
 
-    @NotNull
-    public Map<StubIndexKey, Map<Object, int[]>> getResult() {
+    public @NotNull Map<StubIndexKey<?, ?>, Map<Object, int[]>> getResult() {
       myResult.forEachValue(this);
       return myResult;
     }

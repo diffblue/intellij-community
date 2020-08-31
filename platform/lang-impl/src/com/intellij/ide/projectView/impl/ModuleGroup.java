@@ -38,8 +38,7 @@ public class ModuleGroup {
     return myGroupPath.hashCode();
   }
 
-  @NotNull
-  public String[] getGroupPath() {
+  public String @NotNull [] getGroupPath() {
     return ArrayUtilRt.toStringArray(myGroupPath);
   }
 
@@ -51,6 +50,14 @@ public class ModuleGroup {
   @NotNull
   public Collection<Module> modulesInGroup(@NotNull Project project, boolean recursively) {
     return modulesInGroup(ModuleGrouper.instanceFor(project), recursively);
+  }
+
+  /**
+   * Returns modules in this group (without modules in sub-groups) using cache built for default project grouper.
+   */
+  @NotNull
+  public Collection<Module> modulesInGroup(@NotNull Project project) {
+    return ModuleGroupsTree.getModuleGroupTree(project).getModulesInGroup(this);
   }
 
   @NotNull
@@ -68,6 +75,14 @@ public class ModuleGroup {
 
   private static boolean isUnderGroupWithSameNameAsSomeModule(@NotNull List<String> parent, @NotNull List<String> descendant, @NotNull Set<List<String>> moduleNamesAsGroups) {
     return descendant.size() > parent.size() && moduleNamesAsGroups.contains(descendant.subList(0, parent.size() + 1));
+  }
+
+  /**
+   * Returns direct subgroups of this group using cache built for default project grouper.
+   */
+  @NotNull
+  public Collection<ModuleGroup> childGroups(@NotNull Project project) {
+    return ModuleGroupsTree.getModuleGroupTree(project).getChildGroups(this);
   }
 
   @NotNull

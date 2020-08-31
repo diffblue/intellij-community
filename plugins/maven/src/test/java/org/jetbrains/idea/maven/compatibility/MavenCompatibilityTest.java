@@ -8,13 +8,14 @@ import com.intellij.testFramework.RunAll;
 import com.intellij.testFramework.TestLoggerFactory;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.text.VersionComparatorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.idea.maven.MavenImportingTestCase;
 import org.jetbrains.idea.maven.server.MavenServerManager;
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Rule;
-import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -25,37 +26,36 @@ import java.util.Arrays;
 import java.util.List;
 
 @RunWith(value = Parameterized.class)
-public class MavenCompatibilityTest extends MavenImportingTestCase {
+public abstract class MavenCompatibilityTest extends MavenImportingTestCase {
   @Rule public TestName name = new TestName();
 
   @NotNull
-  private MavenWrapperTestFixture myWrapperTestFixture;
+  protected MavenWrapperTestFixture myWrapperTestFixture;
 
   @Parameter
   public String myMavenVersion;
 
 
-  @Test
-  public void testSmokeImport() throws Throwable {
 
-    doTest(() -> {
-
-      assertEquals(myMavenVersion, MavenServerManager.getInstance().getCurrentMavenVersion());
-      importProject("<groupId>test</groupId>" +
-                    "<artifactId>project</artifactId>" +
-                    "<version>1</version>");
-
-
-      assertModules("project");
-    });
+  protected void assumeVersionMoreThan(String version) {
+    Assume.assumeTrue("Version should be more than " + version, VersionComparatorUtil.compare(myMavenVersion, version) > 0);
   }
 
-  private void doTest(ThrowableRunnable<Throwable> throwableRunnable) throws Throwable {
+  protected void assumeVersionLessThan(String version) {
+    Assume.assumeTrue("Version should be less than " + version, VersionComparatorUtil.compare(myMavenVersion, version) > 0);
+  }
+
+  protected void assumeVersionNot(String version) {
+    Assume.assumeTrue("Version " + version + " skipped", VersionComparatorUtil.compare(myMavenVersion, version) != 0);
+  }
+
+  protected void doTest(ThrowableRunnable<Throwable> throwableRunnable) throws Throwable {
     final Throwable[] throwables = new Throwable[1];
 
     Runnable runnable = () -> {
       try {
         TestLoggerFactory.onTestStarted();
+        assertEquals(myMavenVersion, MavenServerManager.getInstance().getConnector(myProject).getMavenDistribution().getVersion());
         throwableRunnable.run();
         TestLoggerFactory.onTestFinished(true);
       }
@@ -92,7 +92,7 @@ public class MavenCompatibilityTest extends MavenImportingTestCase {
   @Before
   public void setUp() throws Exception {
     super.setUp();
-    myWrapperTestFixture = new MavenWrapperTestFixture(myMavenVersion);
+    myWrapperTestFixture = new MavenWrapperTestFixture(myProject, myMavenVersion);
     myWrapperTestFixture.setUp();
   }
 
@@ -114,6 +114,8 @@ public class MavenCompatibilityTest extends MavenImportingTestCase {
   @Parameterized.Parameters(name = "with Maven-{0}")
   public static List<String[]> getMavenVersions() {
     return Arrays.asList(
+      new String[]{"3.6.3"},
+      new String[]{"3.6.2"},
       new String[]{"3.6.1"},
       new String[]{"3.6.0"},
       new String[]{"3.5.4"},

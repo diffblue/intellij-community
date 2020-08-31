@@ -1,14 +1,18 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.editorActions;
 
+import com.intellij.codeInsight.daemon.impl.analysis.HighlightingFeature;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
+import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.impl.source.tree.ElementType;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
+import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -98,23 +102,33 @@ public class JavaQuoteHandler extends SimpleTokenSetQuoteHandler implements Java
   @Override
   public boolean hasNonClosedLiteral(Editor editor, HighlighterIterator iterator, int offset) {
     if (iterator.getTokenType() == JavaTokenType.TEXT_BLOCK_LITERAL) {
-      Document document = iterator.getDocument();
-      if (document != null && StringUtil.equals(document.getCharsSequence().subSequence(iterator.getStart(), offset + 1), "\"\"\"")) {
-        return true;
+      Document document = editor.getDocument();
+      Project project = editor.getProject();
+      PsiFile file = project == null ? null : PsiDocumentManager.getInstance(project).getPsiFile(document);
+      if (file == null || !HighlightingFeature.TEXT_BLOCKS.isAvailable(file)) return false;
+      String text = document.getText();
+      boolean hasOpenQuotes = StringUtil.equals(text.substring(iterator.getStart(), offset + 1), "\"\"\"");
+      if (hasOpenQuotes) {
+        boolean hasCloseQuotes = StringUtil.contains(text.substring(offset + 1, iterator.getEnd()), "\"\"\"");
+        if (!hasCloseQuotes) return true;
+        // check if parser interpreted next text block start quotes as end quotes for the current one
+        int nTextBlockQuotes = StringUtil.getOccurrenceCount(text.substring(iterator.getEnd()), "\"\"\"");
+        return nTextBlockQuotes % 2 != 0;
       }
     }
     return super.hasNonClosedLiteral(editor, iterator, offset);
   }
 
   @Override
-  public void insertClosingQuote(@NotNull Editor editor, int offset, @NotNull CharSequence closingQuote) {
-    if (closingQuote.charAt(0) == '`') {
-      editor.getDocument().insertString(offset, " " + closingQuote);
-      editor.getSelectionModel().setSelection(offset, offset + 1);
-    }
-    else {
-      editor.getDocument().insertString(offset, "\n" + closingQuote);
-      editor.getCaretModel().moveToOffset(offset + 1);
-    }
+  public void insertClosingQuote(@NotNull Editor editor, int offset, @NotNull PsiFile file, @NotNull CharSequence closingQuote) {
+    editor.getDocument().insertString(offset, "\n\"\"\"");
+    Project project = file.getProject();
+    PsiDocumentManager.getInstance(project).commitDocument(editor.getDocument());
+    PsiJavaToken token = ObjectUtils.tryCast(file.findElementAt(offset), PsiJavaToken.class);
+    if (token == null) return;
+    PsiLiteralExpression textBlock = ObjectUtils.tryCast(token.getParent(), PsiLiteralExpression.class);
+    if (textBlock == null) return;
+    CodeStyleManager.getInstance(project).reformat(textBlock);
+    editor.getCaretModel().moveToOffset(textBlock.getTextRange().getEndOffset() - 3);
   }
 }

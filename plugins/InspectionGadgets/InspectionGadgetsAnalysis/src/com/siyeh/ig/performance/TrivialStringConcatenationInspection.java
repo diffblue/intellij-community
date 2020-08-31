@@ -41,12 +41,6 @@ public class TrivialStringConcatenationInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("trivial.string.concatenation.display.name");
-  }
-
-  @Override
-  @NotNull
   public String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("trivial.string.concatenation.problem.descriptor");
   }
@@ -59,8 +53,8 @@ public class TrivialStringConcatenationInspection extends BaseInspection {
     }
     if (parent instanceof PsiBinaryExpression) {
       final PsiBinaryExpression binaryExpression = (PsiBinaryExpression)parent;
-      final PsiExpression lOperand = ParenthesesUtils.stripParentheses(binaryExpression.getLOperand());
-      final PsiExpression rOperand = ParenthesesUtils.stripParentheses(binaryExpression.getROperand());
+      final PsiExpression lOperand = PsiUtil.skipParenthesizedExprDown(binaryExpression.getLOperand());
+      final PsiExpression rOperand = PsiUtil.skipParenthesizedExprDown(binaryExpression.getROperand());
       final PsiExpression replacement;
       if (ExpressionUtils.isEmptyStringLiteral(lOperand)) {
         replacement = rOperand;
@@ -92,7 +86,7 @@ public class TrivialStringConcatenationInspection extends BaseInspection {
         replaced = true;
         continue;
       }
-      if (ParenthesesUtils.stripParentheses(operand) == expression) {
+      if (PsiUtil.skipParenthesizedExprDown(operand) == expression) {
         seenEmpty = true;
         continue;
       }
@@ -155,7 +149,7 @@ public class TrivialStringConcatenationInspection extends BaseInspection {
     @NotNull
     @Override
     public String getFamilyName() {
-      return "Replace concatenation";
+      return InspectionGadgetsBundle.message("unnecessary.temporary.object.fix.family.name");
     }
 
     @Override
@@ -186,7 +180,7 @@ public class TrivialStringConcatenationInspection extends BaseInspection {
       }
       final PsiExpression[] operands = expression.getOperands();
       for (PsiExpression operand : operands) {
-        operand = ParenthesesUtils.stripParentheses(operand);
+        operand = PsiUtil.skipParenthesizedExprDown(operand);
         if (operand == null) {
           return;
         }

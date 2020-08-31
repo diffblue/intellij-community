@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileEditor.impl.text;
 
 import com.intellij.openapi.Disposable;
@@ -20,7 +20,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileTypeEvent;
 import com.intellij.openapi.fileTypes.FileTypeListener;
 import com.intellij.openapi.fileTypes.FileTypeManager;
-import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
@@ -28,11 +27,8 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileEvent;
 import com.intellij.openapi.vfs.VirtualFileListener;
 import com.intellij.openapi.vfs.VirtualFilePropertyEvent;
-import com.intellij.openapi.wm.WindowManager;
-import com.intellij.openapi.wm.ex.StatusBarEx;
 import com.intellij.ui.components.JBLoadingPanel;
 import com.intellij.util.FileContentUtilCore;
-import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.JBSwingUtilities;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -46,7 +42,7 @@ import java.awt.*;
  * @author Vladimir Kondratyev
  */
 class TextEditorComponent extends JBLoadingPanel implements DataProvider, Disposable, BackgroundableDataProvider {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.fileEditor.impl.text.TextEditorComponent");
+  private static final Logger LOG = Logger.getInstance(TextEditorComponent.class);
 
   private final Project myProject;
   @NotNull private final VirtualFile myFile;
@@ -66,6 +62,8 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
    * Whether the editor is valid or not
    */
   private boolean myValid;
+
+  private final EditorHighlighterUpdater myEditorHighlighterUpdater;
 
   TextEditorComponent(@NotNull final Project project, @NotNull final VirtualFile file, @NotNull final TextEditorImpl textEditor) {
     super(new BorderLayout(), textEditor);
@@ -88,19 +86,10 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
     MyVirtualFileListener myVirtualFileListener = new MyVirtualFileListener();
     myFile.getFileSystem().addVirtualFileListener(myVirtualFileListener);
     Disposer.register(this, ()-> myFile.getFileSystem().removeVirtualFileListener(myVirtualFileListener));
-    MessageBusConnection myConnection = project.getMessageBus().connect(this);
-    myConnection.subscribe(FileTypeManager.TOPIC, new MyFileTypeListener());
-    myConnection.subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
-      @Override
-      public void enteredDumbMode() {
-        updateHighlighters();
-      }
 
-      @Override
-      public void exitDumbMode() {
-        updateHighlighters();
-      }
-    });
+    myEditorHighlighterUpdater = new EditorHighlighterUpdater(myProject, this, (EditorEx)myEditor, myFile);
+
+    project.getMessageBus().connect(this).subscribe(FileTypeManager.TOPIC, new MyFileTypeListener());
   }
 
   private volatile boolean myDisposed;
@@ -119,12 +108,12 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
     return myDisposed;
   }
 
-  /**
-   * Should be invoked when the corresponding {@code TextEditorImpl}
-   * is selected. Updates the status bar.
-   */
-  void selectNotify(){
-    updateStatusBar();
+  public void loadingFinished() {
+    if (isLoading()) {
+      stopLoading();
+    }
+
+    getContentPanel().setVisible(true);
   }
 
   private static void assertThread(){
@@ -206,25 +195,6 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
     myTextEditor.firePropertyChange(FileEditor.PROP_VALID, oldValid, myValid);
   }
 
-  /**
-   * Updates editors' highlighters. This should be done when the opened file
-   * changes its file type.
-   */
-  private void updateHighlighters(){
-    if (!myProject.isDisposed() && !myEditor.isDisposed()) {
-      AsyncHighlighterUpdater.updateHighlighters(myProject, myEditor, myFile);
-    }
-  }
-
-  /**
-   * Updates frame's status bar: insert/overwrite mode, caret position
-   */
-  private void updateStatusBar(){
-    final StatusBarEx statusBar = (StatusBarEx)WindowManager.getInstance().getStatusBar(myProject);
-    if (statusBar == null) return;
-    statusBar.updateWidgets(); // TODO: do we need this?!
-  }
-
   @Nullable
   private Editor validateCurrentEditor() {
     Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
@@ -288,10 +258,6 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
     }
   }
 
-  /**
-   * Listen changes of file types. When type of the file changes we need
-   * to also change highlighter.
-   */
   private final class MyFileTypeListener implements FileTypeListener {
     @Override
     public void fileTypesChanged(@NotNull final FileTypeEvent event) {
@@ -299,7 +265,6 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
       // File can be invalid after file type changing. The editor should be removed
       // by the FileEditorManager if it's invalid.
       updateValidProperty();
-      updateHighlighters();
     }
   }
 
@@ -316,7 +281,7 @@ class TextEditorComponent extends JBLoadingPanel implements DataProvider, Dispos
         if (Comparing.equal(e.getFile(), myFile) &&
             (FileContentUtilCore.FORCE_RELOAD_REQUESTOR.equals(e.getRequestor()) ||
              !Comparing.equal(e.getOldValue(), e.getNewValue()))) {
-          updateHighlighters();
+          myEditorHighlighterUpdater.updateHighlighters();
         }
       }
     }

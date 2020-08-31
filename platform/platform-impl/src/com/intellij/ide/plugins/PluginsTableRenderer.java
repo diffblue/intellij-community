@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.plugins;
 
 import com.intellij.icons.AllIcons;
@@ -20,15 +20,14 @@ import com.intellij.ui.speedSearch.SpeedSearchUtil;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.text.Matcher;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.TableModel;
 import java.awt.*;
 import java.text.DecimalFormat;
 import java.util.Objects;
-import java.util.Set;
 
 /**
 * @author Konstantin Bulenkov
@@ -73,7 +72,7 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
       myInfoPanel.remove(myBottomPanel);
     }
 
-    myPanel.setBorder(UIUtil.isJreHiDPI(myPanel) ? JBUI.Borders.empty(4, 3) : JBUI.Borders.empty(2, 3));
+    myPanel.setBorder(StartupUiUtil.isJreHiDPI(myPanel) ? JBUI.Borders.empty(4, 3) : JBUI.Borders.empty(2, 3));
   }
 
   private void createUIComponents() {
@@ -101,8 +100,8 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
       myCategory.clear();
       myCategory.setOpaque(false);
       Object query = table.getClientProperty(SpeedSearchSupply.SEARCH_QUERY_KEY);
-      SimpleTextAttributes attr = new SimpleTextAttributes(UIUtil.getListBackground(isSelected),
-                                                           UIUtil.getListForeground(isSelected),
+      SimpleTextAttributes attr = new SimpleTextAttributes(UIUtil.getListBackground(isSelected, hasFocus),
+                                                           UIUtil.getListForeground(isSelected, hasFocus),
                                                            JBColor.RED,
                                                            SimpleTextAttributes.STYLE_PLAIN);
       Matcher matcher = NameUtil.buildMatcher("*" + query, NameUtil.MatchingCaseSensitivity.NONE);
@@ -110,7 +109,7 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
       String category = myPluginDescriptor.getCategory() == null ? null : StringUtil.toUpperCase(myPluginDescriptor.getCategory());
       if (category != null) {
         if (query instanceof String) {
-          SpeedSearchUtil.appendColoredFragmentForMatcher(category, myCategory, attr, matcher, UIUtil.getTableBackground(isSelected), true);
+          SpeedSearchUtil.appendColoredFragmentForMatcher(category, myCategory, attr, matcher, UIUtil.getTableBackground(isSelected, hasFocus), true);
         }
         else {
           myCategory.append(category);
@@ -176,10 +175,11 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
           myPanel.setToolTipText(IdeBundle.message("plugin.manager.update.available.tooltip"));
         }
       }
-      else if (isIncompatible(myPluginDescriptor, table.getModel())) {
+      else if (isIncompatible(myPluginDescriptor)) {
         // a plugin is incompatible with current installation (both views)
         if (!isSelected) myName.setForeground(JBColor.RED);
-        myPanel.setToolTipText(whyIncompatible(myPluginDescriptor, table.getModel()));
+        table.getModel();
+        myPanel.setToolTipText(IdeBundle.message("plugin.manager.incompatible.tooltip", ApplicationNamesInfo.getInstance().getFullProductName()));
       }
       else if (!myPluginDescriptor.isEnabled() && myPluginsView) {
         // a plugin is disabled (plugins view only)
@@ -193,7 +193,7 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
         if (!Objects.equals(initialNameForeground, myName.getForeground())) {
           attr = attr.derive(attr.getStyle(), myName.getForeground(), attr.getBgColor(), attr.getWaveColor());
         }
-        SpeedSearchUtil.appendColoredFragmentForMatcher(pluginName, myName, attr, matcher, UIUtil.getTableBackground(isSelected), true);
+        SpeedSearchUtil.appendColoredFragmentForMatcher(pluginName, myName, attr, matcher, UIUtil.getTableBackground(isSelected, hasFocus), true);
       }
       else {
         myName.append(pluginName);
@@ -203,38 +203,7 @@ public class PluginsTableRenderer extends DefaultTableCellRenderer {
     return myPanel;
   }
 
-  private static boolean isIncompatible(IdeaPluginDescriptor descriptor, TableModel model) {
-    return PluginManagerCore.isIncompatible(descriptor) ||
-           model instanceof InstalledPluginsTableModel && ((InstalledPluginsTableModel)model).hasProblematicDependencies(descriptor.getPluginId());
-  }
-
-  private static String whyIncompatible(IdeaPluginDescriptor descriptor, TableModel model) {
-    if (model instanceof InstalledPluginsTableModel) {
-      InstalledPluginsTableModel installedModel = (InstalledPluginsTableModel)model;
-      Set<PluginId> required = installedModel.getRequiredPlugins(descriptor.getPluginId());
-
-      if (required != null && required.size() > 0) {
-        StringBuilder sb = new StringBuilder();
-
-        if (!installedModel.isLoaded(descriptor.getPluginId())) {
-          sb.append(IdeBundle.message("plugin.manager.incompatible.not.loaded.tooltip")).append('\n');
-        }
-
-        if (required.contains(PluginId.getId("com.intellij.modules.ultimate"))) {
-          sb.append(IdeBundle.message("plugin.manager.incompatible.ultimate.tooltip"));
-        }
-        else {
-          String deps = StringUtil.join(required, id -> {
-            IdeaPluginDescriptor plugin = PluginManagerCore.getPlugin(id);
-            return plugin != null ? plugin.getName() : id.getIdString();
-          }, ", ");
-          sb.append(IdeBundle.message("plugin.manager.incompatible.deps.tooltip", required.size(), deps));
-        }
-
-        return sb.toString();
-      }
-    }
-
-    return IdeBundle.message("plugin.manager.incompatible.tooltip", ApplicationNamesInfo.getInstance().getFullProductName());
+  private static boolean isIncompatible(IdeaPluginDescriptor descriptor) {
+    return PluginManagerCore.isIncompatible(descriptor);
   }
 }

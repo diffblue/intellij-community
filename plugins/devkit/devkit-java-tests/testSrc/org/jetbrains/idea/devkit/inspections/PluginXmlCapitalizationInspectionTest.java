@@ -5,6 +5,7 @@ import com.intellij.spellchecker.inspections.SpellCheckingInspection;
 import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
 import org.jetbrains.idea.devkit.DevkitJavaTestsUtil;
+import org.jetbrains.idea.devkit.util.PsiUtil;
 
 @TestDataPath("$CONTENT_ROOT/testData/inspections/pluginXmlCapitalization/")
 public class PluginXmlCapitalizationInspectionTest extends LightJavaCodeInsightFixtureTestCase {
@@ -20,9 +21,26 @@ public class PluginXmlCapitalizationInspectionTest extends LightJavaCodeInsightF
     myFixture.enableInspections(new PluginXmlCapitalizationInspection());
   }
 
-  public void testAction() {
-    myFixture.testHighlighting("pluginXmlCapitalization_Action.xml",
-                               "MyBundle.properties", "MyAction.java");
+  public void testActionPluginName() {
+    myFixture.testHighlighting("pluginXmlCapitalization_ActionPluginName.xml",
+                               "MyBundle.properties", "MyAction.java", "AnotherBundle.properties");
+  }
+
+  public void testActionCorePluginId() {
+    myFixture.testHighlighting("pluginXmlCapitalization_CorePluginId.xml",
+                               "messages/ActionsBundle.properties");
+  }
+
+  public void testActionNoPluginIdInIdeaProject() {
+    PsiUtil.markAsIdeaProject(getProject(), true);
+
+    try {
+      myFixture.testHighlighting("pluginXmlCapitalization_NoPluginIdInIdeaProject.xml",
+                                 "messages/ActionsBundle.properties");
+    }
+    finally {
+      PsiUtil.markAsIdeaProject(getProject(), false);
+    }
   }
 
   public void testExtensionPoint() {

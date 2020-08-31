@@ -17,6 +17,8 @@ import com.intellij.openapi.vcs.VcsNotifier
 import com.intellij.openapi.vcs.changes.ChangeListManagerImpl
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl
+import com.intellij.openapi.vcs.impl.VcsInitialization
+import com.intellij.openapi.vcs.impl.projectlevelman.NewMappings
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -59,6 +61,7 @@ abstract class VcsPlatformTest : HeavyPlatformTestCase() {
 
     changeListManager = ChangeListManagerImpl.getInstanceImpl(project)
     vcsManager = ProjectLevelVcsManager.getInstance(project) as ProjectLevelVcsManagerImpl
+    vcsManager.waitForInitialized()
 
     vcsNotifier = TestVcsNotifier(myProject)
     project.replaceService(VcsNotifier::class.java, vcsNotifier, testRootDisposable)
@@ -81,7 +84,7 @@ abstract class VcsPlatformTest : HeavyPlatformTestCase() {
       RunAll()
         .append(ThrowableRunnable { AsyncVfsEventsPostProcessorImpl.waitEventsProcessed() })
         .append(ThrowableRunnable { changeListManager.waitEverythingDoneInTestMode() })
-        .append(ThrowableRunnable { if (wasInit { vcsNotifier }) vcsNotifier.cleanup() })
+        .append(ThrowableRunnable { if (::vcsNotifier.isInitialized) vcsNotifier.cleanup() })
         .append(ThrowableRunnable { waitForPendingTasks() })
         .run()
     }
@@ -102,7 +105,10 @@ abstract class VcsPlatformTest : HeavyPlatformTestCase() {
    * not to erase log categories from the super class.
    * (e.g. by calling `super.getDebugLogCategories().plus(additionalCategories)`.
    */
-  protected open fun getDebugLogCategories(): Collection<String> = emptyList()
+  protected open fun getDebugLogCategories(): Collection<String> = mutableListOf(
+    "#" + UsefulTestCase::class.java.name,
+    "#" + NewMappings::class.java.name,
+    "#" + VcsInitialization::class.java.name)
 
   override fun getProjectDirOrFile(): Path {
     val projectRoot = File(testRoot, "project")
@@ -125,16 +131,6 @@ abstract class VcsPlatformTest : HeavyPlatformTestCase() {
       name = name.substring(1)
     }
     return name
-  }
-
-  protected inline fun wasInit(f: () -> Unit): Boolean {
-    try {
-      f()
-    }
-    catch(e: UninitializedPropertyAccessException) {
-      return false
-    }
-    return true
   }
 
   @JvmOverloads

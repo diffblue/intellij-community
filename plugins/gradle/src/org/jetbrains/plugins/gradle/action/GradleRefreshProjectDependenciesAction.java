@@ -8,7 +8,6 @@ import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
 import com.intellij.openapi.externalSystem.model.project.AbstractExternalEntityData;
 import com.intellij.openapi.externalSystem.model.project.ExternalConfigPathAware;
-import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode;
 import com.intellij.openapi.externalSystem.settings.ExternalProjectSettings;
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil;
@@ -27,8 +26,8 @@ import java.util.List;
  */
 public class GradleRefreshProjectDependenciesAction extends RefreshExternalProjectAction {
   public GradleRefreshProjectDependenciesAction() {
-    getTemplatePresentation().setText(GradleBundle.message("gradle.action.refresh.dependencies.text"));
-    getTemplatePresentation().setDescription(GradleBundle.message("gradle.action.refresh.dependencies.description"));
+    getTemplatePresentation().setText(GradleBundle.messagePointer("gradle.action.refresh.dependencies.text"));
+    getTemplatePresentation().setDescription(GradleBundle.messagePointer("gradle.action.refresh.dependencies.description"));
   }
 
   @Override
@@ -69,9 +68,6 @@ public class GradleRefreshProjectDependenciesAction extends RefreshExternalProje
 
     ExternalSystemUtil.refreshProject(externalProjectPath,
                                       new ImportSpecBuilder(project, projectSystemId)
-                                        .useDefaultCallback()
-                                        .use(ProgressExecutionMode.IN_BACKGROUND_ASYNC)
-                                        .withArguments("--refresh-dependencies")
-                                        .build());
+                                        .withArguments("--refresh-dependencies"));
   }
 }

@@ -2,6 +2,7 @@
 package com.intellij.ui.mac.touchbar;
 
 import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,6 +25,10 @@ class BarContainer {
   private @NotNull TouchBar myMain;
   private TouchBar myCurrent;
   private Runnable myOnHideCallback;
+
+  // TODO Yet another work around to IDEA-227511
+  // consider using separate stacks for each project
+  private Project myProject = null;
 
   BarContainer(@NotNull BarType type, @NotNull TouchBar main, Map<Long, TouchBar> alts, Container parentComponent) {
     myParentComponent = parentComponent;
@@ -79,12 +84,6 @@ class BarContainer {
       myOnHideCallback.run();
   }
 
-  void setComponent(Component component) {
-    myMain.setComponent(component);
-    if (myKeyMask2Alt != null)
-      myKeyMask2Alt.values().forEach(tb -> tb.setComponent(component));
-  }
-
   void setOptionalContextActions(@Nullable ActionGroup actions, @NotNull String contextName) {
     if (actions == null)
       myMain.removeOptionalContextItems(contextName);
@@ -105,6 +104,12 @@ class BarContainer {
     myKeyMask2Alt = null;
     myMain = TouchBar.EMPTY;
   }
+
+
+  public void setProject(Project project) { myProject = project; }
+
+  @Nullable
+  public Project getProject() { return myProject; }
 
   private void _updateTouchBarsParents() {
     myMain.setBarContainer(this);

@@ -1,11 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.moduleDependencies;
 
 import com.intellij.CommonBundle;
 import com.intellij.ProjectTopics;
-import com.intellij.analysis.AnalysisScopeBundle;
+import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.CommonActionsManager;
+import com.intellij.ide.DefaultTreeExpander;
 import com.intellij.ide.TreeExpander;
 import com.intellij.idea.ActionsBundle;
 import com.intellij.openapi.Disposable;
@@ -86,7 +87,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
   private Graph<Module> myModuleGraph;
   private final Map<Module, Boolean> myCycleMap = new HashMap<>();
 
-  public ModulesDependenciesPanel(@NotNull Project project, @Nullable Module[] modules) {
+  public ModulesDependenciesPanel(@NotNull Project project, Module @Nullable [] modules) {
     super(new BorderLayout());
 
     myProject = project;
@@ -238,7 +239,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
   private JComponent createNorthPanel() {
     DefaultActionGroup group = new DefaultActionGroup();
 
-    group.add(new AnAction(CommonBundle.message("action.close"), null, AllIcons.Actions.Cancel) {
+    group.add(new AnAction(CommonBundle.messagePointer("action.close"), AllIcons.Actions.Cancel) {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
         DependenciesAnalyzeManager.getInstance(myProject).closeContent(myContent);
@@ -258,7 +259,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
       }
     });
 
-    group.add(new ToggleAction(AnalysisScopeBundle.message("action.module.dependencies.direction")) {
+    group.add(new ToggleAction(CodeInsightBundle.message("action.module.dependencies.direction")) {
       @Override
       public boolean isSelected(@NotNull AnActionEvent e) {
         return !myState.forwardDirection;
@@ -277,7 +278,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
       }
     });
 
-    group.add(new ToggleAction(AnalysisScopeBundle.message("action.module.dependencies.tests"), null, AllIcons.Modules.TestSourceFolder) {
+    group.add(new ToggleAction(CodeInsightBundle.message("action.module.dependencies.tests"), null, AllIcons.Nodes.TestSourceFolder) {
       @Override
       public boolean isSelected(@NotNull AnActionEvent e) {
         return myState.includeTests;
@@ -305,7 +306,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
     ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
       for (Module module : myModules) {
         if (module.isDisposed()) continue;
-        ProgressManager.progress(AnalysisScopeBundle.message("update.module.tree.progress.text", module.getName()));
+        ProgressManager.progress(CodeInsightBundle.message("update.module.tree.progress.text", module.getName()));
 
         DefaultMutableTreeNode moduleNode = new DefaultMutableTreeNode(new MyUserObject(isInCycle(module), module));
         root.add(moduleNode);
@@ -313,7 +314,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
           moduleNode.add(new DefaultMutableTreeNode(new MyUserObject(isInCycle(dependency), dependency)));
         }
       }
-    }, AnalysisScopeBundle.message("update.module.tree.progress.title"), true, myProject);
+    }, CodeInsightBundle.message("update.module.tree.progress.title"), true, myProject);
 
     TreeUtil.sortRecursively(root, NODE_COMPARATOR);
     ((DefaultTreeModel)myLeftTree.getModel()).reload();
@@ -327,7 +328,7 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
     Set<List<Module>> cycles = GraphAlgorithms.getInstance().findCycles(myModuleGraph, module);
     int index = 1;
     for (List<Module> modules : cycles) {
-      DefaultMutableTreeNode cycle = new DefaultMutableTreeNode(AnalysisScopeBundle.message("module.dependencies.cycle.node.text", index++));
+      DefaultMutableTreeNode cycle = new DefaultMutableTreeNode(CodeInsightBundle.message("module.dependencies.cycle.node.text", index++));
       root.add(cycle);
       cycle.add(new DefaultMutableTreeNode(new MyUserObject(false, module)));
       for (Module moduleInCycle : modules) {
@@ -433,33 +434,22 @@ public class ModulesDependenciesPanel extends JPanel implements Disposable {
     }
   }
 
-  private static class MyTreeExpander implements TreeExpander {
-    private final Tree myTree;
+  private static class MyTreeExpander extends DefaultTreeExpander {
     private final boolean myEnableExpandAll;
 
     MyTreeExpander(Tree tree, boolean enableExpandAll) {
-      myTree = tree;
+      super(tree);
       myEnableExpandAll = enableExpandAll;
     }
 
     @Override
-    public void expandAll() {
-      TreeUtil.expandAll(myTree);
-    }
-
-    @Override
     public boolean canExpand() {
-      return myEnableExpandAll;
+      return myEnableExpandAll && super.canExpand();
     }
 
     @Override
-    public void collapseAll() {
-      TreeUtil.collapseAll(myTree, 3);
-    }
-
-    @Override
-    public boolean canCollapse() {
-      return true;
+    protected void collapseAll(@NotNull JTree tree, int keepSelectionLevel) {
+      super.collapseAll(tree, 3);
     }
   }
 }

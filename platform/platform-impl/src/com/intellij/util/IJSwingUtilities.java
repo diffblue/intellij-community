@@ -1,9 +1,8 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util;
 
-import com.intellij.ide.ui.UISettings;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.ex.WindowManagerEx;
-import com.intellij.util.ui.JBSwingUtilities;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -15,8 +14,7 @@ import java.awt.*;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-public class IJSwingUtilities extends JBSwingUtilities {
-
+public final class IJSwingUtilities {
   /**
    * @return true if javax.swing.SwingUtilities.findFocusOwner(component) != null
    */
@@ -59,6 +57,9 @@ public class IJSwingUtilities extends JBSwingUtilities {
     return SwingUtilities.isDescendingFrom(focusedComponent, component);
   }
 
+  /**
+   * @deprecated no functionality
+   */
   @Deprecated
   @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
   public static void adjustComponentsOnMac(@Nullable JLabel label, @Nullable JComponent component) {
@@ -100,8 +101,7 @@ public class IJSwingUtilities extends JBSwingUtilities {
 
   public static void moveMousePointerOn(Component component) {
     if (component != null && component.isShowing()) {
-      UISettings settings = UISettings.getInstanceOrNull();
-      if (settings != null && settings.getMoveMouseOnDefaultButton()) {
+      if (Registry.is("ide.settings.move.mouse.on.default.button", false)) {
         Point point = component.getLocationOnScreen();
         int dx = component.getWidth() / 2;
         int dy = component.getHeight() / 2;
@@ -114,5 +114,16 @@ public class IJSwingUtilities extends JBSwingUtilities {
         }
       }
     }
+  }
+
+  @ApiStatus.Internal
+  public static void appendComponentClassNames(@NotNull StringBuilder sb, @Nullable Component root) {
+    UIUtil.uiTraverser(root).forEach(c -> appendComponentClassName(sb, root, c));
+  }
+
+  private static void appendComponentClassName(@NotNull StringBuilder sb, @Nullable Component root, @NotNull Component component) {
+    sb.append("\n    ");
+    for (Component p = component; root != p && p != null; p = p.getParent()) sb.append("  ");
+    sb.append(component.getClass().getName());
   }
 }

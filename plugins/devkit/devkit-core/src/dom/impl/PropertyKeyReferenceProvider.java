@@ -1,14 +1,15 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.dom.impl;
 
 import com.intellij.lang.properties.BundleNameEvaluator;
-import com.intellij.lang.properties.IProperty;
 import com.intellij.lang.properties.PropertiesReferenceManager;
 import com.intellij.lang.properties.psi.PropertiesFile;
 import com.intellij.lang.properties.references.PropertyReference;
+import com.intellij.lang.properties.references.PropertyReferenceBase;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.PsiReferenceProvider;
@@ -17,12 +18,15 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.xml.XmlAttribute;
 import com.intellij.psi.xml.XmlAttributeValue;
 import com.intellij.psi.xml.XmlTag;
+import com.intellij.util.NullableFunction;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.xml.DomElement;
 import com.intellij.util.xml.DomUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.idea.devkit.dom.Actions;
 import org.jetbrains.idea.devkit.dom.IdeaPlugin;
+import org.jetbrains.idea.devkit.util.DescriptorI18nUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,23 +35,33 @@ import java.util.List;
 class PropertyKeyReferenceProvider extends PsiReferenceProvider {
 
   private final boolean myTagMode;
-  private final String myFallbackKeyName;
-  private final String myFallbackGroupName;
 
-  PropertyKeyReferenceProvider(boolean tagMode, String fallbackKeyName, String fallbackGroupName) {
+  @Nullable private final String myFallbackKeyName;
+  @Nullable private final String myFallbackBundleName;
+
+  @Nullable private final NullableFunction<? super XmlTag, String> myBundleNameFunction;
+
+  PropertyKeyReferenceProvider(boolean tagMode, @Nullable String fallbackKeyName, @Nullable String fallbackBundleName) {
     myTagMode = tagMode;
     myFallbackKeyName = fallbackKeyName;
-    myFallbackGroupName = fallbackGroupName;
+    myFallbackBundleName = fallbackBundleName;
+    myBundleNameFunction = null;
+  }
+
+  PropertyKeyReferenceProvider(@NotNull NullableFunction<? super XmlTag, String> bundleNameFunction) {
+    myBundleNameFunction = bundleNameFunction;
+    myTagMode = false;
+    myFallbackKeyName = null;
+    myFallbackBundleName = null;
   }
 
   @Override
   public boolean acceptsTarget(@NotNull PsiElement target) {
-    return target instanceof IProperty;
+    return PropertyReferenceBase.isPropertyPsi(target);
   }
 
   @Override
-  @NotNull
-  public PsiReference[] getReferencesByElement(@NotNull PsiElement element, @NotNull final ProcessingContext context) {
+  public PsiReference @NotNull [] getReferencesByElement(@NotNull PsiElement element, @NotNull final ProcessingContext context) {
     if (myTagMode && element instanceof XmlTag) {
       return getTagReferences(((XmlTag)element));
     }
@@ -60,13 +74,13 @@ class PropertyKeyReferenceProvider extends PsiReferenceProvider {
 
       final XmlTag tag = xmlAttribute.getParent();
       String value = null;
-      String bundle = tag.getAttributeValue("bundle");
+      String bundle = myBundleNameFunction == null ? tag.getAttributeValue("bundle") : myBundleNameFunction.fun(tag);
       if ("key".equals(xmlAttribute.getName())) {
         value = xmlAttribute.getValue();
       }
-      else if (myFallbackKeyName.equals(xmlAttribute.getName())) {
+      else if (xmlAttribute.getName().equals(myFallbackKeyName)) {
         value = xmlAttribute.getValue();
-        final String groupBundle = tag.getAttributeValue(myFallbackGroupName);
+        final String groupBundle = tag.getAttributeValue(myFallbackBundleName);
         if (groupBundle != null) {
           bundle = groupBundle;
         }
@@ -82,8 +96,8 @@ class PropertyKeyReferenceProvider extends PsiReferenceProvider {
   private PsiReference[] getTagReferences(XmlTag element) {
     final XmlTag parent = PsiTreeUtil.getParentOfType(element, XmlTag.class);
     if (parent == null) return PsiReference.EMPTY_ARRAY;
-    final XmlTag groupNameTag = parent.findFirstSubTag(myFallbackGroupName);
-    String bundleName = groupNameTag != null ? groupNameTag.getValue().getTrimmedText() : null;
+    final XmlTag bundleNameTag = parent.findFirstSubTag(myFallbackBundleName);
+    String bundleName = bundleNameTag != null ? bundleNameTag.getValue().getTrimmedText() : null;
     return new PsiReference[]{new MyPropertyReference(element.getValue().getText(), element, bundleName)};
   }
 
@@ -138,7 +152,16 @@ class PropertyKeyReferenceProvider extends PsiReferenceProvider {
       if (!(rootElement instanceof IdeaPlugin)) return null;
 
       IdeaPlugin plugin = (IdeaPlugin)rootElement;
-      return plugin.getResourceBundle().getStringValue();
+      final String resourceBundle = plugin.getResourceBundle().getStringValue();
+      if (StringUtil.isNotEmpty(resourceBundle)) {
+        return resourceBundle;
+      }
+
+      final Actions actions = DomUtil.getParentOfType(domElement, Actions.class, true);
+      if (DescriptorI18nUtil.canFallbackToCoreActionsBundle(actions)) {
+        return DescriptorI18nUtil.CORE_ACTIONS_BUNDLE;
+      }
+      return null;
     }
   }
 }

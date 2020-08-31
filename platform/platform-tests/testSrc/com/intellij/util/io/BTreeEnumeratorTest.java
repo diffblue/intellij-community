@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.testFramework.rules.TempDirectory;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.IntObjectCache;
 import gnu.trove.THashMap;
 import org.junit.*;
@@ -25,7 +26,7 @@ public class BTreeEnumeratorTest {
 
   static class TestStringEnumerator extends PersistentBTreeEnumerator<String> {
     TestStringEnumerator(File file) throws IOException {
-      super(file, new EnumeratorStringDescriptor(), 4096);
+      super(file.toPath(), new EnumeratorStringDescriptor(), 4096);
     }
   }
 
@@ -85,7 +86,8 @@ public class BTreeEnumeratorTest {
 
     assertEquals(COLLISION_1, myEnumerator.valueOf(id1));
     assertEquals(COLLISION_2, myEnumerator.valueOf(id2));
-    assertEquals(new HashSet<>(Arrays.asList(COLLISION_1, COLLISION_2)), new HashSet<>(myEnumerator.getAllDataObjects(null)));
+    assertEquals(ContainerUtil.set(COLLISION_1, COLLISION_2),
+                 new HashSet<>(myEnumerator.getAllDataObjects(null)));
   }
 
   @Test
@@ -104,7 +106,7 @@ public class BTreeEnumeratorTest {
 
     assertEquals(COLLISION_1, myEnumerator.valueOf(id1));
     assertEquals(COLLISION_2, myEnumerator.valueOf(id2));
-    assertEquals(new HashSet<>(Arrays.asList(COLLISION_1, COLLISION_2)), new HashSet<>(myEnumerator.getAllDataObjects(null)));
+    assertEquals(ContainerUtil.set(COLLISION_1, COLLISION_2), new HashSet<>(myEnumerator.getAllDataObjects(null)));
   }
 
   @Test
@@ -115,7 +117,7 @@ public class BTreeEnumeratorTest {
 
     assertEquals(UTF_1, myEnumerator.valueOf(id1));
     assertEquals(UTF_2, myEnumerator.valueOf(id2));
-    assertEquals(new HashSet<>(Arrays.asList(UTF_1, UTF_2)), new HashSet<>(myEnumerator.getAllDataObjects(null)));
+    assertEquals(ContainerUtil.set(UTF_1, UTF_2), new HashSet<>(myEnumerator.getAllDataObjects(null)));
   }
 
   @Test
@@ -148,6 +150,30 @@ public class BTreeEnumeratorTest {
     myEnumerator.enumerate(additionalString);
     assertTrue(myEnumerator.isDirty());
     assertEquals(allStringsSet, new HashSet<>(myEnumerator.getAllDataObjects(null)));
+  }
+
+  @Test
+  public void testValueOfForUnExistedData() throws IOException {
+    assertNull(myEnumerator.valueOf(-10));
+    assertNull(myEnumerator.valueOf(0));
+
+    assertNull(myEnumerator.valueOf(1));
+    assertNull(myEnumerator.valueOf(1000));
+
+    String string = createRandomString();
+    int value = myEnumerator.enumerate(string);
+    assertNotEquals(1000, value);
+
+    assertNull(myEnumerator.valueOf(1000));
+    assertTrue(myEnumerator.isCorrupted());
+    assertEquals(string, myEnumerator.valueOf(value));
+
+    myEnumerator.force();
+
+    assertNull(myEnumerator.valueOf(1000));
+    assertEquals(string, myEnumerator.valueOf(value));
+
+    assertTrue(myEnumerator.isCorrupted());
   }
 
   @Test

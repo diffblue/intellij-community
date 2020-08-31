@@ -3,6 +3,7 @@ package com.intellij.vcs.log.data;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
@@ -96,9 +97,10 @@ public class VcsLogData implements Disposable, VcsLogDataProvider {
       // restart won't help here
       // and can not shut down ide because of this
       // so use memory storage (probably leading to out of memory at some point) + no index
-      String message = "Could not delete " + PersistentUtil.LOG_CACHE + "\nDelete it manually and restart IDEA.";
-      LOG.error(message);
-      myFatalErrorsConsumer.displayFatalErrorMessage(message);
+
+      LOG.error("Could not delete caches at " + PersistentUtil.LOG_CACHE);
+      myFatalErrorsConsumer.displayFatalErrorMessage(VcsLogBundle.message("vcs.log.fatal.error.message", PersistentUtil.LOG_CACHE,
+                                                                          ApplicationNamesInfo.getInstance().getFullProductName()));
       myStorage = new InMemoryStorage();
       myIndex = new EmptyIndex();
     }
@@ -141,7 +143,9 @@ public class VcsLogData implements Disposable, VcsLogDataProvider {
       if (myState.equals(State.CREATED)) {
         myState = State.INITIALIZED;
         StopWatch stopWatch = StopWatch.start("initialize");
-        Task.Backgroundable backgroundable = new Task.Backgroundable(myProject, "Loading History...", false) {
+        Task.Backgroundable backgroundable = new Task.Backgroundable(myProject,
+                                                                     VcsLogBundle.message("vcs.log.initial.loading.process"),
+                                                                     false) {
           @Override
           public void run(@NotNull ProgressIndicator indicator) {
             indicator.setIndeterminate(true);
@@ -222,7 +226,7 @@ public class VcsLogData implements Disposable, VcsLogDataProvider {
       for (DataPackChangeListener listener : myDataPackChangeListeners) {
         listener.onDataPackChange(dataPack);
       }
-    });
+    }, o -> Disposer.isDisposed(this));
   }
 
   public void addDataPackChangeListener(@NotNull final DataPackChangeListener listener) {

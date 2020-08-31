@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.formatter;
 
 import com.intellij.lang.Language;
@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @author Denis Zhdanov
  */
-public class WhiteSpaceFormattingStrategyFactory {
+public final class WhiteSpaceFormattingStrategyFactory {
 
   private static final List<WhiteSpaceFormattingStrategy> SHARED_STRATEGIES = Collections.singletonList(
     new StaticSymbolWhiteSpaceDefinitionStrategy(' ', '\t', '\n')
@@ -45,6 +45,7 @@ public class WhiteSpaceFormattingStrategyFactory {
    * @return            white space strategy to use for the given language
    * @throws IllegalStateException      if white space strategies configuration is invalid
    */
+  @NotNull
   public static WhiteSpaceFormattingStrategy getStrategy(@NotNull Language language) throws IllegalStateException {
     CompositeWhiteSpaceFormattingStrategy result = new CompositeWhiteSpaceFormattingStrategy(SHARED_STRATEGIES);
     WhiteSpaceFormattingStrategy strategy = LanguageWhiteSpaceFormattingStrategy.INSTANCE.forLanguage(language);

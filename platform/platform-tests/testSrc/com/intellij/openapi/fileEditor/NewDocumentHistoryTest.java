@@ -19,7 +19,7 @@ public class NewDocumentHistoryTest extends HeavyFileEditorManagerTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    myHistory = new IdeDocumentHistoryImpl(getProject(), FileEditorManagerEx.getInstanceEx(getProject()));
+    myHistory = new IdeDocumentHistoryImpl(getProject());
   }
 
   @Override
@@ -37,8 +37,7 @@ public class NewDocumentHistoryTest extends HeavyFileEditorManagerTestCase {
   }
 
   public void testBackNavigationBetweenEditors() {
-    FileEditorProvider.EP_FILE_EDITOR_PROVIDER
-      .getPoint(null).registerExtension(new FileEditorManagerTest.MyFileEditorProvider(), myFixture.getTestRootDisposable());
+    FileEditorProvider.EP_FILE_EDITOR_PROVIDER.getPoint().registerExtension(new FileEditorManagerTest.MyFileEditorProvider(), myFixture.getTestRootDisposable());
     VirtualFile file = getFile("/src/1.txt");
     assertNotNull(file);
     FileEditorManagerEx manager = FileEditorManagerEx.getInstanceEx(getProject());

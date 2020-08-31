@@ -19,6 +19,10 @@ import com.intellij.lang.ASTNode;
 import com.intellij.lang.LighterAST;
 import com.intellij.lang.LighterASTNode;
 import com.intellij.lang.LighterLazyParseableNode;
+import com.intellij.lang.impl.TokenSequence;
+import com.intellij.lang.java.JavaParserDefinition;
+import com.intellij.lexer.Lexer;
+import com.intellij.lexer.TokenList;
 import com.intellij.psi.JavaTokenType;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaFile;
@@ -28,12 +32,13 @@ import com.intellij.psi.stubs.LightStubBuilder;
 import com.intellij.psi.stubs.StubElement;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
+import com.intellij.psi.util.PsiUtil;
 import org.jetbrains.annotations.NotNull;
 
 public class JavaLightStubBuilder extends LightStubBuilder {
   @NotNull
   @Override
-  protected StubElement createStubForFile(@NotNull PsiFile file, @NotNull LighterAST tree) {
+  protected StubElement<?> createStubForFile(@NotNull PsiFile file, @NotNull LighterAST tree) {
     if (!(file instanceof PsiJavaFile)) {
       return super.createStubForFile(file, tree);
     }
@@ -56,13 +61,23 @@ public class JavaLightStubBuilder extends LightStubBuilder {
 
     if (checkByTypes(parentType, nodeType)) return true;
 
-    if (nodeType == JavaElementType.CODE_BLOCK) {
-      CodeBlockVisitor visitor = new CodeBlockVisitor();
-      ((TreeElement)node).acceptTree(visitor);
-      return visitor.result;
-    }
+    if (nodeType == JavaElementType.CODE_BLOCK) return isCodeBlockWithoutStubs(node);
 
     return false;
+  }
+
+  private static boolean isCodeBlockWithoutStubs(@NotNull ASTNode node) {
+    CodeBlockVisitor visitor = new CodeBlockVisitor();
+    if (TreeUtil.isCollapsedChameleon(node)) {
+      Lexer lexer = JavaParserDefinition.createLexer(PsiUtil.getLanguageLevel(node.getPsi()));
+      TokenList tokens = TokenSequence.performLexing(node.getChars(), lexer);
+      for (int i = 0; i < tokens.getTokenCount(); i++) {
+        visitor.visit(tokens.getTokenType(i));
+      }
+    } else {
+      ((TreeElement)node).acceptTree(visitor);
+    }
+    return visitor.result;
   }
 
   @Override
@@ -154,6 +169,15 @@ public class JavaLightStubBuilder extends LightStubBuilder {
       else if (type == JavaTokenType.CLASS_KEYWORD && (last != JavaTokenType.DOT || preLast != JavaTokenType.IDENTIFIER || seenModifier)
                || type == JavaTokenType.ENUM_KEYWORD 
                || type == JavaTokenType.INTERFACE_KEYWORD) {
+        return (result = false);
+      }
+      // if record is inside lazy parseable element, tokens are not remapped and record token is still identifier
+      // This token combination may be "record RecordName (" or "record RecordName<..."
+      // Local records without < or ( won't be parsed
+      else if (preLast == JavaTokenType.IDENTIFIER &&
+               last == JavaTokenType.IDENTIFIER &&
+               (type == JavaTokenType.LPARENTH || type == JavaTokenType.LT)
+      ) {
         return (result = false);
       }
 

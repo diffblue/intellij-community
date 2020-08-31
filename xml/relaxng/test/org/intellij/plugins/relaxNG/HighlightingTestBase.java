@@ -148,13 +148,13 @@ public abstract class HighlightingTestBase extends UsefulTestCase implements Ide
   protected void doCustomHighlighting(boolean checkWeakWarnings, Boolean includeExternalToolPass) {
     final PsiFile file = myTestFixture.getFile();
     final Document doc = myTestFixture.getEditor().getDocument();
-    ExpectedHighlightingData data = new ExpectedHighlightingData(doc, true, checkWeakWarnings, false, file);
+    ExpectedHighlightingData data = new ExpectedHighlightingData(doc, true, checkWeakWarnings, false);
     data.init();
     PsiDocumentManager.getInstance(myTestFixture.getProject()).commitAllDocuments();
 
     Collection<HighlightInfo> highlights1 = doHighlighting(includeExternalToolPass);
 
-    data.checkResult(highlights1, doc.getText());
+    data.checkResult(file, highlights1, doc.getText());
   }
 
   @NotNull
@@ -210,9 +210,8 @@ public abstract class HighlightingTestBase extends UsefulTestCase implements Ide
   }
 
   private static class DefaultInspectionProvider implements InspectionToolProvider {
-    @NotNull
     @Override
-    public Class<? extends LocalInspectionTool>[] getInspectionClasses() {
+    public Class<? extends LocalInspectionTool> @NotNull [] getInspectionClasses() {
       //noinspection unchecked
       return new Class[]{RngDomInspection.class, RequiredAttributesInspection.class};
     }

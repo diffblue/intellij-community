@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.refactoring.convertToJava;
 
 import com.intellij.psi.PsiClass;
@@ -39,7 +25,7 @@ import org.jetbrains.plugins.groovy.lang.psi.util.GroovyConstantExpressionEvalua
 /**
  * @author Maxim.Medvedev
  */
-public class SwitchStatementGenerator {
+public final class SwitchStatementGenerator {
 
   private SwitchStatementGenerator() { }
 
@@ -74,7 +60,7 @@ public class SwitchStatementGenerator {
   private static void generateIfs(@NotNull StringBuilder builder,
                                   @NotNull ExpressionContext context,
                                   @NotNull GrExpression condition,
-                                  @NotNull GrCaseSection[] caseSections) {
+                                  GrCaseSection @NotNull [] caseSections) {
     final GrExpression ref;
     if (condition instanceof GrReferenceExpression) {
       ref = condition;
@@ -89,9 +75,9 @@ public class SwitchStatementGenerator {
 
   private static void generateIfFromCaseSection(@NotNull StringBuilder builder,
                                                 @NotNull ExpressionContext context,
-                                                @NotNull final GrCaseSection[] caseSections,
+                                                final GrCaseSection @NotNull [] caseSections,
                                                 final int i,
-                                                @NotNull final GrExpression[] args) {
+                                                final GrExpression @NotNull [] args) {
 
     GenerationUtil.writeStatement(builder, context, null, new StatementWriter() {
       @Override
@@ -131,7 +117,7 @@ public class SwitchStatementGenerator {
   private static void writeCaseBody(@NotNull StringBuilder builder,
                                     @NotNull ExpressionContext context,
                                     int i,
-                                    @NotNull GrCaseSection[] caseSections) {
+                                    GrCaseSection @NotNull [] caseSections) {
     builder.append("{\n");
 
     final ExpressionContext extended = context.extend();
@@ -205,7 +191,7 @@ public class SwitchStatementGenerator {
   private static void generateSwitch(@NotNull StringBuilder builder,
                                      @NotNull ExpressionContext context,
                                      @Nullable GrExpression condition,
-                                     @NotNull GrCaseSection[] caseSections) {
+                                     GrCaseSection @NotNull [] caseSections) {
     builder.append("switch (");
     if (condition != null) {
       condition.accept(new ExpressionGenerator(builder, context));

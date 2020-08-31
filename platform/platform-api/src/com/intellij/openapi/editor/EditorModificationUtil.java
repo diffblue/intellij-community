@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor;
 
 import com.intellij.codeInsight.hint.HintManager;
@@ -13,8 +11,9 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.LineTokenizer;
 import com.intellij.psi.PsiDocumentManager;
+import com.intellij.util.MathUtil;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.Producer;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,16 +27,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class EditorModificationUtil {
+public final class EditorModificationUtil {
   private static final Key<ReadOnlyHint> READ_ONLY_VIEW_HINT_KEY = Key.create("READ_ONLY_VIEW_HINT_KEY");
-
-  /**
-   * @deprecated Use {@link #setReadOnlyHint(Editor, String)}
-   */
-  @Deprecated
-  @SuppressWarnings("DeprecatedIsStillUsed")
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.3")
-  public static final Key<String> READ_ONLY_VIEW_MESSAGE_KEY = Key.create("READ_ONLY_VIEW_MESSAGE_KEY");
 
   private EditorModificationUtil() { }
 
@@ -168,7 +159,7 @@ public class EditorModificationUtil {
     else {
       return producer.produce();
     }
-  } 
+  }
 
   @Nullable
   public static String getStringContent(@NotNull Transferable content) {
@@ -287,6 +278,16 @@ public class EditorModificationUtil {
           buf.append(properIndent.charAt(i));
           if (afterLineEnd == 0) break;
         }
+      } else {
+        EditorSettings editorSettings = editor.getSettings();
+        boolean useTab = editorSettings.isUseTabCharacter(editor.getProject());
+        if (useTab) {
+          int tabSize = editorSettings.getTabSize(project);
+          while (afterLineEnd >= tabSize) {
+            buf.append('\t');
+            afterLineEnd -= tabSize;
+          }
+        }
       }
     }
 
@@ -329,7 +330,7 @@ public class EditorModificationUtil {
   }
 
   /**
-   * This method is safe to run both in and out of {@link com.intellij.openapi.editor.CaretModel#runForEachCaret(CaretAction)} context.
+   * This method is safe to run both in and out of {@link CaretModel#runForEachCaret(CaretAction)} context.
    * It scrolls to primary caret in both cases, and, in the former case, avoids performing excessive scrolling in case of large number
    * of carets.
    */
@@ -338,12 +339,12 @@ public class EditorModificationUtil {
       editor.getScrollingModel().scrollToCaret(ScrollType.RELATIVE);
     }
   }
-  
+
   @NotNull
-  public static List<CaretState> calcBlockSelectionState(@NotNull Editor editor, 
+  public static List<CaretState> calcBlockSelectionState(@NotNull Editor editor,
                                                          @NotNull LogicalPosition blockStart, @NotNull LogicalPosition blockEnd) {
-    int startLine = Math.max(Math.min(blockStart.line, editor.getDocument().getLineCount() - 1), 0);
-    int endLine = Math.max(Math.min(blockEnd.line, editor.getDocument().getLineCount() - 1), 0);
+    int startLine = MathUtil.clamp(blockStart.line, 0, editor.getDocument().getLineCount() - 1);
+    int endLine = MathUtil.clamp(blockEnd.line, 0, editor.getDocument().getLineCount() - 1);
     int step = endLine < startLine ? -1 : 1;
     int count = 1 + Math.abs(endLine - startLine);
     List<CaretState> caretStates = new LinkedList<>();
@@ -400,7 +401,7 @@ public class EditorModificationUtil {
     if (!editor.isViewer()) return true;
     if (ApplicationManager.getApplication().isHeadlessEnvironment() || editor instanceof TextComponentEditor) return false;
 
-    ReadOnlyHint hint = getReadOnlyHint(editor);
+    ReadOnlyHint hint = ObjectUtils.chooseNotNull(READ_ONLY_VIEW_HINT_KEY.get(editor), new ReadOnlyHint(EditorBundle.message("editing.viewer.hint"), null));
     HintManager.getInstance().showInformationHint(editor, hint.message, hint.linkListener);
     return false;
   }
@@ -422,19 +423,7 @@ public class EditorModificationUtil {
     editor.putUserData(READ_ONLY_VIEW_HINT_KEY, message != null ? new ReadOnlyHint(message, linkListener) : null);
   }
 
-  @NotNull
-  private static ReadOnlyHint getReadOnlyHint(@NotNull Editor editor) {
-    ReadOnlyHint hint = READ_ONLY_VIEW_HINT_KEY.get(editor);
-    if (hint != null) return hint;
-
-    String message = READ_ONLY_VIEW_MESSAGE_KEY.get(editor);
-    if (message != null) return new ReadOnlyHint(message, null);
-
-    return ReadOnlyHint.DEFAULT;
-  }
-
   private static class ReadOnlyHint {
-    private static final ReadOnlyHint DEFAULT = new ReadOnlyHint(EditorBundle.message("editing.viewer.hint"), null);
 
     @NotNull public final String message;
     @Nullable public final HyperlinkListener linkListener;

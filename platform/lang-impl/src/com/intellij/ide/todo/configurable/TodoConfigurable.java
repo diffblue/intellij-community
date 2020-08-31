@@ -6,7 +6,6 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.todo.TodoConfiguration;
 import com.intellij.ide.todo.TodoFilter;
 import com.intellij.openapi.options.Configurable;
-import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.psi.search.TodoAttributesUtil;
@@ -95,7 +94,7 @@ public class TodoConfigurable implements SearchableConfigurable, Configurable.No
   }
 
   @Override
-  public void apply() throws ConfigurationException {
+  public void apply() {
     stopEditing();
     TodoConfiguration.getInstance().setMultiLine(myMultiLineCheckBox.isSelected());
     if (arePatternsModified()) {
@@ -213,7 +212,7 @@ public class TodoConfigurable implements SearchableConfigurable, Configurable.No
     // double click in "Patterns" table should also start editing of selected pattern
     new DoubleClickListener() {
       @Override
-      protected boolean onDoubleClick(MouseEvent e) {
+      protected boolean onDoubleClick(@NotNull MouseEvent e) {
         editSelectedPattern();
         return true;
       }
@@ -268,7 +267,7 @@ public class TodoConfigurable implements SearchableConfigurable, Configurable.No
 
     new DoubleClickListener() {
       @Override
-      protected boolean onDoubleClick(MouseEvent e) {
+      protected boolean onDoubleClick(@NotNull MouseEvent e) {
         editSelectedFilter();
         return true;
       }
@@ -374,8 +373,7 @@ public class TodoConfigurable implements SearchableConfigurable, Configurable.No
     myFiltersModel.fireTableDataChanged();
   }
 
-  @NotNull
-  protected TodoPattern[] getTodoPatternsToDisplay(TodoConfiguration todoConfiguration) {
+  protected TodoPattern @NotNull [] getTodoPatternsToDisplay(TodoConfiguration todoConfiguration) {
     return todoConfiguration.getTodoPatterns();
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.build;
 
 import com.intellij.build.events.*;
@@ -9,18 +9,22 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.Toggleable;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.AtomicClearableLazyValue;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Key;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ToolWindow;
-import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.ui.SystemNotifications;
+import com.intellij.ui.UIBundle;
 import com.intellij.ui.content.Content;
+import com.intellij.ui.content.ContentManager;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.DisposableWrapperList;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.ApiStatus;
@@ -29,16 +33,19 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static com.intellij.build.ExecutionNode.getEventResultIcon;
 
 /**
+ * Provides base implementation of the {@link ViewManager}
+ *
  * @author Vladislav.Soroka
  */
-@ApiStatus.Experimental
 public abstract class AbstractViewManager implements ViewManager, BuildProgressListener, Disposable {
+  private static final Logger LOG = Logger.getInstance(ViewManager.class);
   private static final Key<Boolean> PINNED_EXTRACTED_CONTENT = new Key<>("PINNED_EXTRACTED_CONTENT");
 
   protected final Project myProject;
@@ -47,15 +54,15 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   private final Set<MultipleBuildsView> myPinnedViews;
   private final AtomicBoolean isDisposed = new AtomicBoolean(false);
   // todo [Vlad] remove the map when BuildProgressListener.onEvent(BuildEvent) method will be removed
-  private final Map<Object, Object> idsMap = ContainerUtil.newConcurrentMap();
+  private final Map<Object, Object> idsMap = new ConcurrentHashMap<>();
+  private final DisposableWrapperList<BuildProgressListener> myListeners = new DisposableWrapperList<>();
 
-  public AbstractViewManager(Project project, BuildContentManager buildContentManager) {
+  public AbstractViewManager(Project project) {
     myProject = project;
-    myBuildContentManager = buildContentManager;
+    myBuildContentManager = project.getService(BuildContentManager.class);
     myBuildsViewValue = new AtomicClearableLazyValue<MultipleBuildsView>() {
-      @NotNull
       @Override
-      protected MultipleBuildsView compute() {
+      protected @NotNull MultipleBuildsView compute() {
         MultipleBuildsView buildsView = new MultipleBuildsView(myProject, myBuildContentManager, AbstractViewManager.this);
         Disposer.register(AbstractViewManager.this, buildsView);
         return buildsView;
@@ -74,10 +81,14 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
     return true;
   }
 
-  @NotNull
-  protected abstract String getViewName();
+  @ApiStatus.Experimental
+  public void addListener(@NotNull BuildProgressListener listener, @NotNull Disposable disposable) {
+    myListeners.add(listener, disposable);
+  }
 
-  protected Map<BuildInfo, BuildView> getBuildsMap() {
+  protected abstract @NotNull @NlsContexts.TabTitle String getViewName();
+
+  protected Map<BuildDescriptor, BuildView> getBuildsMap() {
     return myBuildsViewValue.getValue().getBuildsMap();
   }
 
@@ -85,6 +96,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   public void onEvent(@NotNull Object buildId, @NotNull BuildEvent event) {
     if (isDisposed.get()) return;
 
+    //noinspection deprecation
     if (buildId == UNKNOWN_BUILD_ID) {
       Object buildIdCandidate = event instanceof StartBuildEvent ? event.getId() :
                                 idsMap.get(ObjectUtils.notNull(event.getParentId(), event.getId()));
@@ -103,17 +115,37 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
       buildsView = myBuildsViewValue.getValue();
     }
     else {
-      buildsView = myBuildsViewValue.getValue();
-      if (!buildsView.shouldConsume(buildId, event)) {
-        Object finalBuildId = buildId;
-        buildsView = myPinnedViews.stream()
-          .filter(pinnedView -> pinnedView.shouldConsume(finalBuildId, event))
-          .findFirst().orElse(null);
-      }
+      buildsView = getMultipleBuildsView(buildId);
     }
     if (buildsView != null) {
       buildsView.onEvent(buildId, event);
     }
+
+    for (BuildProgressListener listener : myListeners) {
+      try {
+        listener.onEvent(buildId, event);
+      } catch (Exception e) {
+        LOG.warn(e);
+      }
+    }
+  }
+
+  private @Nullable MultipleBuildsView getMultipleBuildsView(@NotNull Object buildId) {
+    MultipleBuildsView buildsView = myBuildsViewValue.getValue();
+    if (!buildsView.shouldConsume(buildId)) {
+      buildsView = myPinnedViews.stream()
+        .filter(pinnedView -> pinnedView.shouldConsume(buildId))
+        .findFirst().orElse(null);
+    }
+    return buildsView;
+  }
+
+  @ApiStatus.Internal
+  public @Nullable BuildView getBuildView(@NotNull Object buildId) {
+    MultipleBuildsView buildsView = getMultipleBuildsView(buildId);
+    if (buildsView == null) return null;
+
+    return buildsView.getBuildView(buildId);
   }
 
   void configureToolbar(@NotNull DefaultActionGroup toolbarActions,
@@ -125,8 +157,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
     toolbarActions.add(BuildTreeFilters.createFilteringActionsGroup(view));
   }
 
-  @Nullable
-  protected Icon getContentIcon() {
+  protected @Nullable Icon getContentIcon() {
     return null;
   }
 
@@ -145,9 +176,9 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
       Failure failure = failures.get(0);
       Notification notification = failure.getNotification();
       if (notification != null) {
-        final String title = notification.getTitle();
-        final String content = notification.getContent();
-        SystemNotifications.getInstance().notify(ToolWindowId.BUILD, title, content);
+        String title = notification.getTitle();
+        String content = notification.getContent();
+        SystemNotifications.getInstance().notify(UIBundle.message("tool.window.name.build"), title, content);
       }
     }
   }
@@ -175,10 +206,11 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
 
   private void clearIdsOf(@NotNull Collection<? extends BuildDescriptor> builds) {
     if (idsMap.isEmpty()) return;
-    Set ids = builds.stream().map(BuildDescriptor::getId).collect(Collectors.toSet());
+    Set<?> ids = builds.stream().map(BuildDescriptor::getId).collect(Collectors.toSet());
     idsMap.values().removeIf(val -> ids.contains(val));
   }
 
+  @ApiStatus.Internal
   static class BuildInfo extends DefaultBuildDescriptor {
     String message;
     String statusMessage;
@@ -186,11 +218,8 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
     EventResult result;
     Content content;
 
-    BuildInfo(@NotNull Object id,
-                     @NotNull String title,
-                     @NotNull String workingDir,
-                     long startTime) {
-      super(id, title, workingDir, startTime);
+    BuildInfo(@NotNull BuildDescriptor descriptor) {
+      super(descriptor);
     }
 
     public Icon getIcon() {
@@ -222,12 +251,12 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   }
 
   private String getPinnedTabName(MultipleBuildsView buildsView) {
-    Map<BuildInfo, BuildView> buildsMap = buildsView.getBuildsMap();
+    Map<BuildDescriptor, BuildView> buildsMap = buildsView.getBuildsMap();
 
-    AbstractViewManager.BuildInfo buildInfo =
-      buildsMap.keySet().stream()
-               .reduce((b1, b2) -> b1.getStartTime() <= b2.getStartTime() ? b1 : b2)
-               .orElse(null);
+    BuildDescriptor buildInfo = buildsMap.keySet()
+      .stream()
+      .reduce((b1, b2) -> b1.getStartTime() <= b2.getStartTime() ? b1 : b2)
+      .orElse(null);
     if (buildInfo != null) {
       String title = buildInfo.getTitle();
       String viewName = getViewName().split(" ")[0];
@@ -254,7 +283,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
         myContent.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.TRUE);
       }
       myContent.setPinned(selected);
-      e.getPresentation().putClientProperty(SELECTED_PROPERTY, selected);
+      Toggleable.setSelected(e.getPresentation(), selected);
     }
 
     @Override
@@ -266,11 +295,12 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
         return;
       }
 
-      boolean isActiveTab = myContent.getManager().getSelectedContent() == myContent;
+      ContentManager contentManager = myContent.getManager();
+      boolean isActiveTab = contentManager != null && contentManager.getSelectedContent() == myContent;
       boolean selected = myContent.isPinned();
 
       e.getPresentation().setIcon(AllIcons.General.Pin_tab);
-      e.getPresentation().putClientProperty(SELECTED_PROPERTY, selected);
+      Toggleable.setSelected(e.getPresentation(), selected);
 
       String text;
       if (!isActiveTab) {

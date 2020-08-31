@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.newvfs.persistent;
 
 import com.intellij.openapi.util.SystemInfo;
@@ -9,8 +9,10 @@ import com.intellij.openapi.vfs.impl.win32.Win32LocalFileSystem;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
 import com.intellij.openapi.vfs.newvfs.NewVirtualFileSystem;
+import com.intellij.openapi.vfs.newvfs.events.ChildInfo;
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent;
 import org.intellij.lang.annotations.MagicConstant;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,12 +29,13 @@ public abstract class PersistentFS extends ManagingFS {
   static final int IS_SYMLINK = 0x10;
   static final int IS_SPECIAL = 0x20;
   static final int IS_HIDDEN = 0x40;
+  static final int MUST_RELOAD_LENGTH = 0x80;
 
-  @MagicConstant(flags = {CHILDREN_CACHED_FLAG, IS_DIRECTORY_FLAG, IS_READ_ONLY, MUST_RELOAD_CONTENT, IS_SYMLINK, IS_SPECIAL, IS_HIDDEN})
+  @MagicConstant(flags = {CHILDREN_CACHED_FLAG, IS_DIRECTORY_FLAG, IS_READ_ONLY, MUST_RELOAD_CONTENT, MUST_RELOAD_LENGTH, IS_SYMLINK, IS_SPECIAL, IS_HIDDEN})
   public @interface Attributes { }
 
   static final int ALL_VALID_FLAGS =
-    CHILDREN_CACHED_FLAG | IS_DIRECTORY_FLAG | IS_READ_ONLY | MUST_RELOAD_CONTENT | IS_SYMLINK | IS_SPECIAL | IS_HIDDEN;
+    CHILDREN_CACHED_FLAG | IS_DIRECTORY_FLAG | IS_READ_ONLY | MUST_RELOAD_CONTENT | MUST_RELOAD_LENGTH | IS_SYMLINK | IS_SPECIAL | IS_HIDDEN;
 
   @SuppressWarnings("MethodOverridesStaticMethodOfSuperclass")
   public static PersistentFS getInstance() {
@@ -41,13 +44,13 @@ public abstract class PersistentFS extends ManagingFS {
 
   public abstract void clearIdCache();
 
-  @NotNull
-  public abstract String[] listPersisted(@NotNull VirtualFile parent);
+  public abstract String @NotNull [] listPersisted(@NotNull VirtualFile parent);
 
-  @NotNull
-  public abstract FSRecords.NameId[] listAll(@NotNull VirtualFile parent);
+  @ApiStatus.Internal
+  public abstract @NotNull List<? extends ChildInfo> listAll(@NotNull VirtualFile parent);
 
-  public abstract int getId(@NotNull VirtualFile parent, @NotNull String childName, @NotNull NewVirtualFileSystem delegate);
+  @ApiStatus.Internal
+  public abstract ChildInfo findChildInfo(@NotNull VirtualFile parent, @NotNull String childName, @NotNull NewVirtualFileSystem delegate);
 
   public abstract String getName(int id);
 
@@ -67,13 +70,11 @@ public abstract class PersistentFS extends ManagingFS {
   @Nullable
   public abstract NewVirtualFile findFileByIdIfCached(int id);
 
-  public abstract int storeUnlinkedContent(@NotNull byte[] bytes);
+  public abstract int storeUnlinkedContent(byte @NotNull [] bytes);
 
-  @NotNull
-  public abstract byte[] contentsToByteArray(int contentId) throws IOException;
+  public abstract byte @NotNull [] contentsToByteArray(int contentId) throws IOException;
 
-  @NotNull
-  public abstract byte[] contentsToByteArray(@NotNull VirtualFile file, boolean cacheContent) throws IOException;
+  public abstract byte @NotNull [] contentsToByteArray(@NotNull VirtualFile file, boolean cacheContent) throws IOException;
 
   public abstract int acquireContent(@NotNull VirtualFile file);
 
@@ -97,13 +98,7 @@ public abstract class PersistentFS extends ManagingFS {
   // true if FS persisted at least one child or it has never been queried for children
   public abstract boolean mayHaveChildren(int id);
 
-  @NotNull
-  public static FileAttributes toFileAttributes(int attributes) {
-    final boolean isDirectory = isSet(attributes, IS_DIRECTORY_FLAG);
-    final boolean isSpecial = isSet(attributes, IS_SPECIAL);
-    final boolean isSymlink = isSet(attributes, IS_SYMLINK);
-    final boolean isHidden = isSet(attributes, IS_HIDDEN);
-    final boolean isWritable = !isSet(attributes, IS_READ_ONLY);
-    return new FileAttributes(isDirectory, isSpecial, isSymlink, isHidden, -1, -1, isWritable);
+  public static @NotNull FileAttributes toFileAttributes(@Attributes int attr) {
+    return new FileAttributes(isDirectory(attr), isSpecialFile(attr), isSymLink(attr), isHidden(attr), -1, -1, isWritable(attr));
   }
 }

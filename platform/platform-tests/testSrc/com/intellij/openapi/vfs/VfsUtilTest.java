@@ -1,18 +1,15 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs;
 
-import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.application.ex.PathManagerEx;
-import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ex.ProjectManagerEx;
+import com.intellij.openapi.project.impl.ProjectManagerExImpl;
 import com.intellij.openapi.project.impl.ProjectManagerImpl;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
@@ -24,13 +21,12 @@ import com.intellij.openapi.vfs.newvfs.RefreshQueue;
 import com.intellij.openapi.vfs.newvfs.RefreshSession;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
 import com.intellij.testFramework.EdtTestUtil;
-import com.intellij.testFramework.HeavyPlatformTestCase;
+import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.testFramework.ServiceContainerUtil;
 import com.intellij.testFramework.fixtures.BareTestFixtureTestCase;
 import com.intellij.testFramework.rules.TempDirectory;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.concurrency.Semaphore;
-import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.junit.Rule;
@@ -102,8 +98,8 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
   }
 
   @Test
-  public void testFindChildWithTrailingSpace() throws IOException {
-    File tempDir = myTempDir.newFolder();
+  public void testFindChildWithTrailingSpace() {
+    File tempDir = myTempDir.newDirectory();
     VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempDir);
     assertNotNull(vDir);
     assertTrue(vDir.isDirectory());
@@ -209,7 +205,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
   }
 
   @Test
-  public void testFindRootWithDenormalizedPath() throws IOException {
+  public void testFindRootWithDenormalizedPath() {
     File tempJar = IoTestUtil.createTestJar(myTempDir.newFile("test.jar"));
     VirtualFile jar = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempJar);
     assertNotNull(jar);
@@ -234,7 +230,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
 
   @Test
   public void testNotCanonicallyNamedChild() throws IOException {
-    File tempDir = myTempDir.newFolder();
+    File tempDir = myTempDir.newDirectory();
     assertTrue(new File(tempDir, "libFiles").createNewFile());
     assertTrue(new File(tempDir, "CssInvalidElement").createNewFile());
     assertTrue(new File(tempDir, "extFiles").createNewFile());
@@ -269,7 +265,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
   private void doRenameAndRefreshTest(boolean full) throws IOException {
     assertFalse(ApplicationManager.getApplication().isDispatchThread());
 
-    File tempDir = myTempDir.newFolder();
+    File tempDir = myTempDir.newDirectory();
     assertTrue(new File(tempDir, "child").createNewFile());
 
     VirtualFile parent = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(tempDir);
@@ -301,36 +297,36 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
 
   @Test(timeout = 20_000)
   public void testScanNewChildrenMustNotBeRunOutsideOfProjectRoots() throws Exception {
-    checkNewDirAndRefresh(__-> {}, getAllExcludedCalled->assertFalse(getAllExcludedCalled.get()));
+    checkNewDirAndRefresh(__-> {}, getAllExcludedCalled -> assertFalse(getAllExcludedCalled.get()));
   }
 
   @Test(timeout = 20_000)
   public void testRefreshAndEspeciallyScanChildrenMustBeRunOutsideOfReadActionToAvoidUILags() throws Exception {
     AtomicReference<Project> project = new AtomicReference<>();
-    checkNewDirAndRefresh(temp ->
-        WriteCommandAction.runWriteCommandAction(null, ()->{
-          project.set(HeavyPlatformTestCase.createProject(temp));
-          assertTrue(ProjectManagerEx.getInstanceEx().openProject(project.get()));
+    checkNewDirAndRefresh(
+      temp -> {
+        Project p = PlatformTestUtil.loadAndOpenProject(temp);
+        project.set(p);
+        assertTrue(p.isOpen());
+      },
+      getAllExcludedCalled -> {
+        try {
+          assertTrue(getAllExcludedCalled.get());
+        }
+        finally {
+          // this concoction is to ensure close() is called on the mock ProjectManagerImpl
           assertTrue(project.get().isOpen());
-        }),
-    getAllExcludedCalled -> {
-      try {
-        assertTrue(getAllExcludedCalled.get());
+          PlatformTestUtil.forceCloseProjectWithoutSaving(project.get());
+        }
       }
-      finally {
-        // this concoction is to ensure close() is called on the mock ProjectManagerImpl
-        assertTrue(project.get().isOpen());
-        ApplicationManager.getApplication().invokeAndWait(() -> ProjectUtil.closeAndDispose(project.get()));
-      }
-    });
+    );
   }
 
-  private void checkNewDirAndRefresh(Consumer<? super Path> dirCreatedCallback, Consumer<? super AtomicBoolean> getAllExcludedCalledChecker) throws IOException {
+  private void checkNewDirAndRefresh(@NotNull Consumer<? super Path> dirCreatedCallback, @NotNull Consumer<? super AtomicBoolean> getAllExcludedCalledChecker) throws IOException {
     AtomicBoolean getAllExcludedCalled = new AtomicBoolean();
-    ProjectManagerImpl test = new ProjectManagerImpl() {
-      @NotNull
+    ProjectManagerImpl test = new ProjectManagerExImpl() {
       @Override
-      public String[] getAllExcludedUrls() {
+      public @NotNull List<String> getAllExcludedUrls() {
         getAllExcludedCalled.set(true);
         assertFalse(ApplicationManager.getApplication().isReadAccessAllowed());
         return super.getAllExcludedUrls();
@@ -341,7 +337,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
     assertSame(test, ProjectManager.getInstance());
 
     try {
-      final File temp = myTempDir.newFolder();
+      final File temp = myTempDir.newDirectory();
       VirtualDirectoryImpl vTemp = (VirtualDirectoryImpl)LocalFileSystem.getInstance().refreshAndFindFileByIoFile(temp);
       assertNotNull(vTemp);
       vTemp.getChildren(); //to force full dir refresh?!
@@ -359,7 +355,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
       LocalFileSystem.getInstance().refreshFiles(Collections.singletonList(vTemp), false, true, refreshed::countDown);
 
       while (refreshed.getCount() != 0) {
-        StartupUiUtil.pump();
+        UIUtil.pump();
       }
       getAllExcludedCalledChecker.accept(getAllExcludedCalled);
     }
@@ -369,14 +365,14 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
   }
 
   @Test
-  public void asyncRefreshInModalTransactionCompletesWithinIt() {
+  public void asyncRefreshInModalProgressCompletesWithinIt() {
     EdtTestUtil.runInEdtAndWait(() -> {
       VirtualDirectoryImpl vTemp = (VirtualDirectoryImpl)LocalFileSystem.getInstance().refreshAndFindFileByIoFile(myTempDir.getRoot());
       assertThat(vTemp.getChildren()).isEmpty();
 
       myTempDir.newFile("x.txt");
 
-      TransactionGuard.getInstance().submitTransactionAndWait(() -> ProgressManager.getInstance().run(new Task.Modal(null, "", false) {
+      ProgressManager.getInstance().run(new Task.Modal(null, "", false) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           assertFalse(ApplicationManager.getApplication().isDispatchThread());
@@ -386,25 +382,24 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
           assertTrue(semaphore.waitFor(10_000));
           assertThat(vTemp.getChildren()).hasSize(1);
         }
-      }));
-
+      });
     });
   }
 
   @Test(timeout = 20_000)
-  public void olderRefreshWithLessSpecificTransactionDoesNotBlockNewerRefresh_NoWaiting() {
+  public void olderRefreshWithLessSpecificModalityDoesNotBlockNewerRefresh_NoWaiting() {
     checkNonModalThenModalRefresh(false);
   }
 
   @Test(timeout = 20_000)
-  public void olderRefreshWithLessSpecificTransactionDoesNotBlockNewerRefresh_WithWaiting() {
+  public void olderRefreshWithLessSpecificModalityDoesNotBlockNewerRefresh_WithWaiting() {
     checkNonModalThenModalRefresh(true);
   }
 
   private void checkNonModalThenModalRefresh(boolean waitForDiskRefreshCompletionBeforeStartingModality) {
     EdtTestUtil.runInEdtAndWait(() -> {
-      File dir1 = myTempDir.newFolder("dir1");
-      File dir2 = myTempDir.newFolder("dir2");
+      File dir1 = myTempDir.newDirectory("dir1");
+      File dir2 = myTempDir.newDirectory("dir2");
       VirtualFile vDir = VfsUtil.findFileByIoFile(myTempDir.getRoot(), true);
       assertThat(Stream.of(vDir.getChildren()).map(VirtualFile::getName)).containsExactly(dir1.getName(), dir2.getName());
       VirtualFile vDir1 = vDir.getChildren()[0];
@@ -430,7 +425,7 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
         UIUtil.dispatchAllInvocationEvents();
       }
 
-      TransactionGuard.submitTransaction(getTestRootDisposable(), () -> ProgressManager.getInstance().run(new Task.Modal(null, "", false) {
+      ProgressManager.getInstance().run(new Task.Modal(null, "", false) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           assertFalse(ApplicationManager.getApplication().isDispatchThread());
@@ -443,12 +438,12 @@ public class VfsUtilTest extends BareTestFixtureTestCase {
           assertTrue(local.waitFor(10_000));
           assertThat(vDir2.getChildren()).hasSize(1);
         }
-      }));
+      });
 
-      int i = 0;
-      while (!semaphore.waitFor(1) & i < 10_000) {
+      for (int i = 0; i < 10_000 && !semaphore.waitFor(1); i++) {
         UIUtil.dispatchAllInvocationEvents();
       }
+      assertTrue(semaphore.waitFor(1));
 
       assertThat(vDir1.getChildren()).hasSize(1);
       assertThat(vDir2.getChildren()).hasSize(1);

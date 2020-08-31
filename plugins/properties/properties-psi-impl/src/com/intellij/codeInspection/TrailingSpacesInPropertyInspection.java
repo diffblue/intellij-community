@@ -40,17 +40,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.List;
 
-/**
- * @author cdr
- */
 public class TrailingSpacesInPropertyInspection extends PropertiesInspectionBase {
   public boolean myIgnoreVisibleSpaces;
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return PropertiesBundle.message("trail.spaces.property.inspection.display.name");
-  }
 
   @Override
   @NotNull

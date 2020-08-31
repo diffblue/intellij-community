@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.concurrency;
 
 import com.intellij.openapi.application.Application;
@@ -9,13 +9,14 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
 import com.intellij.util.Consumer;
-import com.intellij.util.PairConsumer;
-import com.intellij.util.containers.ContainerUtil;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * <p>QueueProcessor processes elements which are being added to a queue via {@link #add(Object)} and {@link #addFirst(Object)} methods.</p>
@@ -26,14 +27,15 @@ import java.util.Map;
  * This class is thread-safe.
  * @param <T> type of queue elements.
  */
-public class QueueProcessor<T> {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.util.concurrency.QueueProcessor");
+public final class QueueProcessor<T> {
+  private static final Logger LOG = Logger.getInstance(QueueProcessor.class);
+
   public enum ThreadToUse {
     AWT,
     POOLED
   }
 
-  private final PairConsumer<? super T, ? super Runnable> myProcessor;
+  private final BiConsumer<? super T, ? super Runnable> myProcessor;
   private final Deque<T> myQueue = new ArrayDeque<>();
 
   private boolean isProcessing;
@@ -41,7 +43,7 @@ public class QueueProcessor<T> {
 
   private final ThreadToUse myThreadToUse;
   private final Condition<?> myDeathCondition;
-  private final Map<Object, ModalityState> myModalityState = ContainerUtil.newIdentityTroveMap();
+  private final Map<Object, ModalityState> myModalityState = new Reference2ObjectOpenHashMap<>();
 
   /**
    * Constructs a QueueProcessor, which will autostart as soon as the first element is added to it.
@@ -68,11 +70,11 @@ public class QueueProcessor<T> {
 
   @NotNull
   public static QueueProcessor<Runnable> createRunnableQueueProcessor(ThreadToUse threadToUse) {
-    return new QueueProcessor<>(wrappingProcessor(new RunnableConsumer()), true, threadToUse, Conditions.FALSE);
+    return new QueueProcessor<>(wrappingProcessor(new RunnableConsumer()), true, threadToUse, Conditions.alwaysFalse());
   }
 
   @NotNull
-  private static <T> PairConsumer<T, Runnable> wrappingProcessor(@NotNull final Consumer<? super T> processor) {
+  private static <T> BiConsumer<T, Runnable> wrappingProcessor(@NotNull Consumer<? super T> processor) {
     return (item, continuation) -> {
       // try-with-resources is the most simple way to ensure no suppressed exception is lost
       try (SilentAutoClosable ignored = continuation::run) {
@@ -91,7 +93,7 @@ public class QueueProcessor<T> {
    *                  After QueueProcessor has started once, autostart setting doesn't matter anymore: all other elements will be processed immediately.
    */
 
-  public QueueProcessor(@NotNull PairConsumer<? super T, ? super Runnable> processor,
+  public QueueProcessor(@NotNull BiConsumer<? super T, ? super Runnable> processor,
                         boolean autostart,
                         @NotNull ThreadToUse threadToUse,
                         @NotNull Condition<?> deathCondition) {
@@ -209,7 +211,7 @@ public class QueueProcessor<T> {
         finishProcessing(false);
         return;
       }
-      runSafely(() -> myProcessor.consume(item, (Runnable)() -> finishProcessing(true)));
+      runSafely(() -> myProcessor.accept(item, (Runnable)() -> finishProcessing(true)));
     };
     final Application application = ApplicationManager.getApplication();
     if (myThreadToUse == ThreadToUse.AWT) {
@@ -222,7 +224,12 @@ public class QueueProcessor<T> {
       }
     }
     else {
-      application.executeOnPooledThread(runnable);
+      if (application != null) {
+        application.executeOnPooledThread(runnable);
+      }
+      else {
+        SwingUtilities.invokeLater(runnable);
+      }
     }
   }
 
@@ -234,6 +241,9 @@ public class QueueProcessor<T> {
       throw e;
     }
     catch (Throwable e) {
+      if (ApplicationManager.getApplication().isUnitTestMode()) {
+        throw e;
+      }
       try {
         LOG.error(e);
       }

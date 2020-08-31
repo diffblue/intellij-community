@@ -1,24 +1,10 @@
-/*
- * Copyright 2000-2009 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util.text;
 
 /**
  * @author lesya
  */
-public class StringHash {
+public final class StringHash {
   private static final long initialHash = 0xe12398c6d9ae3b8aL;  // initial values
   private static final long[] mixMaster = {
       /* 000 */ 0x4476081a7043a46fL, 0x45768b8a6e7eac19L, 0xebd556c1cf055952L,
@@ -128,7 +114,8 @@ public class StringHash {
   }
 
   /**
-   * Calculates hash value of string
+   * Calculates hash value of string using buzhash algorithm.
+   * See http://www.serve.net/buz/hash.adt/java.008.html for details.
    *
    * @param arg string to calculate hash value upon
    * @return calculated hash value
@@ -142,6 +129,13 @@ public class StringHash {
     return h;
   }
 
+  /**
+   * Calculates hash value of byte array buzhash algorithm.
+   * See http://www.serve.net/buz/hash.adt/java.008.html for details.
+   *
+   * @param arg byte arrayg to calculate hash value upon
+   * @return calculated hash value
+   */
   public static long calc(byte[] arg) {
     if (arg == null) return 0;
     long h = initialHash;

@@ -1,11 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.roots;
 
 import com.intellij.application.options.ReplacePathToMacroMap;
 import com.intellij.configurationStore.StoreUtil;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.ExpandMacroToPathMap;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.roots.*;
@@ -21,10 +20,17 @@ import com.intellij.testFramework.JavaModuleTestCase;
 import com.intellij.testFramework.PsiTestUtil;
 import org.jdom.Element;
 import org.jdom.JDOMException;
+import org.jetbrains.jps.model.module.JpsModuleSourceRootType;
+import org.jetbrains.jps.model.serialization.JpsModelSerializerExtension;
+import org.jetbrains.jps.model.serialization.module.JpsModuleSourceRootPropertiesSerializer;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.intellij.testFramework.assertions.Assertions.assertThat;
 
@@ -43,8 +49,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
 
   private ModuleRootManager createTempModuleRootManager() {
     File tmpModule = getTempDir().createTempFile("tst", ModuleFileType.DOT_DEFAULT_EXTENSION, false);
-    myFilesToDelete.add(tmpModule);
-    final Module module = createModule(tmpModule);
+    Module module = createModule(tmpModule);
     return ModuleRootManager.getInstance(module);
   }
 
@@ -88,7 +93,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     PsiTestUtil.setCompilerOutputPath(module, classesFile.getUrl(), false);
     PsiTestUtil.setCompilerOutputPath(module, testClassesFile.getUrl(), true);
 
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\">\n" +
@@ -122,10 +127,9 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
       JavaModuleExternalPaths extension = model.getModuleExtension(JavaModuleExternalPaths.class);
       extension.setExternalAnnotationUrls(new String[]{annotationsUrl});
       extension.setJavadocUrls(new String[]{javadocUrl});
-      WriteAction.run(() -> extension.commit());
     });
 
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +
@@ -140,6 +144,17 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
       "</component>",
       JDOMUtil.writeElement(JDOMUtil.load(moduleFile).getChild("component"))
     );
+  }
+
+  private static Collection<JpsModuleSourceRootPropertiesSerializer<?>> findSerializers(Collection<JpsModuleSourceRootType<?>> rootTypes) {
+    final Set<JpsModuleSourceRootType<?>> typesSet = rootTypes instanceof Set ? (Set<JpsModuleSourceRootType<?>>)rootTypes : new HashSet<>(rootTypes);
+    Set<JpsModuleSourceRootPropertiesSerializer<?>> result = new HashSet<>();
+    for (JpsModelSerializerExtension ext : JpsModelSerializerExtension.getExtensions()) {
+      result.addAll(
+        ext.getModuleSourceRootPropertiesSerializers().stream().filter(serializer -> typesSet.contains(serializer.getType())).collect(Collectors.toSet())
+      );
+    }
+    return result;
   }
 
   public void testModuleLibraries() throws IOException, JDOMException {
@@ -173,7 +188,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     assertEquals(libraryIterator.next(), namedLibrary);
 
     ApplicationManager.getApplication().runWriteAction(rootModel::commit);
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +
@@ -209,7 +224,7 @@ public class ModuleRootsExternalizationTest extends JavaModuleTestCase {
     final ModifiableRootModel rootModel = moduleRootManager.getModifiableModel();
     rootModel.getModuleExtension(CompilerModuleExtension.class).inheritCompilerOutputPath(true);
     ApplicationManager.getApplication().runWriteAction(rootModel::commit);
-    StoreUtil.saveSettings(module);
+    StoreUtil.saveDocumentsAndProjectSettings(myProject);
 
     assertEquals(
       "<component name=\"NewModuleRootManager\" inherit-compiler-output=\"true\">\n" +

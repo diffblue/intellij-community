@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.impl.local;
 
 import com.intellij.execution.process.OSProcessHandler;
@@ -19,6 +19,7 @@ import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.openapi.vfs.local.FileWatcherNotificationSink;
 import com.intellij.openapi.vfs.local.PluggableFileWatcher;
 import com.intellij.openapi.vfs.newvfs.ManagingFS;
+import com.intellij.util.ArrayUtil;
 import com.intellij.util.TimeoutUtil;
 import com.intellij.util.io.BaseDataReader;
 import com.intellij.util.io.BaseOutputReader;
@@ -33,19 +34,16 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.text.Normalizer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * @author dslomov
- */
 public class NativeFileWatcherImpl extends PluggableFileWatcher {
   private static final Logger LOG = Logger.getInstance(NativeFileWatcherImpl.class);
 
   private static final String PROPERTY_WATCHER_DISABLED = "idea.filewatcher.disabled";
   private static final String PROPERTY_WATCHER_EXECUTABLE_PATH = "idea.filewatcher.executable.path";
-  private static final File PLATFORM_NOT_SUPPORTED = new File("(platform not supported)");
   private static final String ROOTS_COMMAND = "ROOTS";
   private static final String EXIT_COMMAND = "EXIT";
   private static final int MAX_PROCESS_LAUNCH_ATTEMPT_COUNT = 10;
@@ -73,10 +71,15 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
       LOG.info("Native file watcher is disabled");
     }
     else if (myExecutable == null) {
-      notifyOnFailure(ApplicationBundle.message("watcher.exe.not.found"), null);
-    }
-    else if (myExecutable == PLATFORM_NOT_SUPPORTED) {
-      notifyOnFailure(ApplicationBundle.message("watcher.exe.not.exists"), null);
+      if (SystemInfo.isWindows || SystemInfo.isMac || SystemInfo.isLinux && ArrayUtil.contains(Platform.RESOURCE_PREFIX, "linux-x86", "linux-x86-64")) {
+        notifyOnFailure(ApplicationBundle.message("watcher.exe.not.found"), null);
+      }
+      else if (SystemInfo.isLinux) {
+        notifyOnFailure(ApplicationBundle.message("watcher.exe.compile"), NotificationListener.URL_OPENING_LISTENER);
+      }
+      else {
+        notifyOnFailure(ApplicationBundle.message("watcher.exe.not.exists"), null);
+      }
     }
     else if (!myExecutable.canExecute()) {
       String message = ApplicationBundle.message("watcher.exe.not.exe", myExecutable);
@@ -127,27 +130,44 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
   /**
    * Subclasses should override this method to provide a custom binary to run.
    */
-  @Nullable
-  protected File getExecutable() {
-    String execPath = System.getProperty(PROPERTY_WATCHER_EXECUTABLE_PATH);
-    if (execPath != null) return new File(execPath);
+  protected @Nullable File getExecutable() {
+    return getFSNotifierExecutable();
+  }
 
-    String[] names = null;
+  public static @Nullable File getFSNotifierExecutable() {
+    String customPath = System.getProperty(PROPERTY_WATCHER_EXECUTABLE_PATH);
+    if (customPath != null) {
+      Path customFile = PathManager.findBinFile(customPath);
+      return customFile != null ? customFile.toFile() : new File(customPath);
+    }
+
+    String[] names = ArrayUtil.EMPTY_STRING_ARRAY;
     if (SystemInfo.isWindows) {
-      if ("win32-x86".equals(Platform.RESOURCE_PREFIX)) names = new String[]{"fsnotifier.exe"};
-      else if ("win32-x86-64".equals(Platform.RESOURCE_PREFIX)) names = new String[]{"fsnotifier64.exe", "fsnotifier.exe"};
+      if ("win32-x86".equals(Platform.RESOURCE_PREFIX)) {
+        names = new String[]{"fsnotifier.exe"};
+      }
+      else if ("win32-x86-64".equals(Platform.RESOURCE_PREFIX)) {
+        names = new String[]{"fsnotifier64.exe", "fsnotifier.exe"};
+      }
     }
     else if (SystemInfo.isMac) {
       names = new String[]{"fsnotifier"};
     }
     else if (SystemInfo.isLinux) {
-      if ("linux-x86".equals(Platform.RESOURCE_PREFIX)) names = new String[]{"fsnotifier"};
-      else if ("linux-x86-64".equals(Platform.RESOURCE_PREFIX)) names = new String[]{"fsnotifier64"};
-      else if ("linux-arm".equals(Platform.RESOURCE_PREFIX)) names = new String[]{"fsnotifier-arm"};
+      if ("linux-x86".equals(Platform.RESOURCE_PREFIX)) {
+        names = new String[]{"fsnotifier"};
+      }
+      else if ("linux-x86-64".equals(Platform.RESOURCE_PREFIX)) {
+        names = new String[]{"fsnotifier64"};
+      }
     }
-    if (names == null) return PLATFORM_NOT_SUPPORTED;
-
-    return Arrays.stream(names).map(PathManager::findBinFile).filter(o -> o != null).findFirst().orElse(null);
+    for (String name : names) {
+      Path file = PathManager.findBinFile(name);
+      if (file != null) {
+        return file.toFile();
+      }
+    }
+    return null;
   }
 
   /* internal stuff */
@@ -196,12 +216,18 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
         try { writeLine(EXIT_COMMAND); }
         catch (IOException ignore) { }
         if (!processHandler.waitFor(10)) {
-          ApplicationManager.getApplication().executeOnPooledThread(() -> {
+          Runnable r = () -> {
             if (!processHandler.waitFor(500)) {
               LOG.warn("File watcher is still alive. Doing a force quit.");
               processHandler.destroyProcess();
             }
-          });
+          };
+          if (myIsShuttingDown) {
+            new Thread(r, "fsnotifier shutdown").start();
+          }
+          else {
+            ApplicationManager.getApplication().executeOnPooledThread(r);
+          }
         }
       }
 
@@ -212,7 +238,7 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
   private void setWatchRoots(List<String> recursive, List<String> flat, boolean restart) {
     if (myProcessHandler == null || myProcessHandler.isProcessTerminated()) return;
 
-    if (ApplicationManager.getApplication().isDisposeInProgress()) {
+    if (ApplicationManager.getApplication().isDisposed()) {
       recursive = flat = Collections.emptyList();
     }
 
@@ -264,6 +290,7 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
     @Override public boolean withSeparators() { return false; }
   };
 
+  @SuppressWarnings("SpellCheckingInspection")
   private enum WatcherOp { GIVEUP, RESET, UNWATCHEABLE, REMAP, MESSAGE, CREATE, DELETE, STATS, CHANGE, DIRTY, RECDIRTY }
 
   private class MyProcessHandler extends OSProcessHandler {
@@ -282,9 +309,8 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
       myWriter.flush();
     }
 
-    @NotNull
     @Override
-    protected BaseOutputReader.Options readerOptions() {
+    protected @NotNull BaseOutputReader.Options readerOptions() {
       return READER_OPTIONS;
     }
 
@@ -421,7 +447,7 @@ public class NativeFileWatcherImpl extends PluggableFileWatcher {
   }
 
   protected boolean isRepetition(String path) {
-    // collapse subsequent change file change notifications that happen once we copy large file,
+    // collapse subsequent change file change notifications that happen once we copy a large file,
     // this allows reduction of path checks at least 20% for Windows
     synchronized (myLastChangedPaths) {
       for (int i = 0; i < myLastChangedPaths.length; ++i) {

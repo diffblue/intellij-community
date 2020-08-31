@@ -1,13 +1,20 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.tabs.impl;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.ui.UISettings;
-import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
-import com.intellij.ui.*;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.InplaceButton;
+import com.intellij.ui.LayeredIcon;
+import com.intellij.ui.SimpleColoredComponent;
+import com.intellij.ui.SimpleColoredText;
+import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.panels.Wrapper;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.tabs.JBTabsEx;
@@ -28,7 +35,9 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
 
-public class TabLabel extends JPanel implements Accessible, Disposable {
+public class TabLabel extends JPanel implements Accessible {
+  private static final Logger LOG = Logger.getInstance(TabLabel.class);
+
   // If this System property is set to true 'close' button would be shown on the left of text (it's on the right by default)
   protected final SimpleColoredComponent myLabel;
 
@@ -54,9 +63,11 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
     // navigate through the other tabs using the LEFT/RIGHT keys.
     setFocusable(ScreenReader.isActive());
     setOpaque(false);
-    setLayout(new BorderLayout());
+    setLayout(new MyTabLabelLayout());
 
     myLabelPlaceholder.setOpaque(false);
+    myLabelPlaceholder.setFocusable(false);
+    myLabel.setFocusable(false);
     add(myLabelPlaceholder, BorderLayout.CENTER);
 
     setAlignmentToCenter(true);
@@ -149,10 +160,6 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
     }
   }
 
-  @Override
-  public void dispose() {
-  }
-
   private void setHovered(boolean value) {
     if (myTabs.isHoveredTab(this) == value) return;
     if (value) {
@@ -176,11 +183,6 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
   private SimpleColoredComponent createLabel(final JBTabsImpl tabs) {
     SimpleColoredComponent label = new SimpleColoredComponent() {
       @Override
-      protected boolean shouldDrawDimmed() {
-        return myTabs.getSelectedInfo() != myInfo || myTabs.useBoldLabels();
-      }
-
-      @Override
       public Font getFont() {
         if (isFontSet() || !myTabs.useSmallLabels()) {
           return super.getFont();
@@ -192,11 +194,12 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
       protected Color getActiveTextColor(Color attributesColor) {
         TabPainterAdapter painterAdapter = myTabs.getTabPainterAdapter();
         TabTheme theme = painterAdapter.getTabTheme();
-        return myTabs.getSelectedInfo() == myInfo && (UIUtil.getLabelForeground().equals(attributesColor) || attributesColor == null) ?
-               myTabs.isActiveTabs(myInfo) ? theme.getUnderlinedTabForeground() : theme.getUnderlinedTabInactiveForeground()
-                                                   : super.getActiveTextColor(attributesColor);
+        return myTabs.getSelectedInfo() == myInfo && (UIUtil.getLabelForeground().equals(attributesColor) || attributesColor == null)
+               ? myTabs.isActiveTabs(myInfo)
+                 ? theme.getUnderlinedTabForeground()
+                 : theme.getUnderlinedTabInactiveForeground()
+               : super.getActiveTextColor(attributesColor);
       }
-
     };
     label.setOpaque(false);
     label.setBorder(null);
@@ -278,7 +281,7 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
 
     if (toShow.getChildrenCount() == 0) return;
 
-    myTabs.myActivePopup = myTabs.myActionManager.createActionPopupMenu(place, toShow).getComponent();
+    myTabs.myActivePopup = ActionManager.getInstance().createActionPopupMenu(place, toShow).getComponent();
     myTabs.myActivePopup.addPopupMenuListener(myTabs.myPopupListener);
 
     myTabs.myActivePopup.addPopupMenuListener(myTabs);
@@ -292,8 +295,7 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
       myLabel.setIcon(hasIcons() ? myIcon : null);
 
       if (text != null) {
-        SimpleColoredText derive = myTabs.useBoldLabels() ? text.derive(SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES, true) : text;
-        derive.appendToComponent(myLabel);
+        text.appendToComponent(myLabel);
       }
     }, false);
 
@@ -529,24 +531,14 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
     }
   }
 
-  public void setActionPanelVisible(boolean visible) {
-    if (myActionPanel != null) {
-      if(visible == myActionPanel.isVisible()) return;
-
-      myActionPanel.setVisible(visible);
-      if (visible) {
-        myActionPanel.update();
-      }
-
-      updateActionLabelPosition();
-    }
-  }
-
   void updateActionLabelPosition() {
-    if (!myActionPanel.isVisible()) {
-      remove(myActionPanel);
-    } else {
-      add(myActionPanel, UISettings.getShadowInstance().getCloseTabButtonOnTheRight() ? BorderLayout.EAST : BorderLayout.WEST);
+    if (myActionPanel != null) {
+      if (!myActionPanel.isVisible()) {
+        remove(myActionPanel);
+      }
+      else {
+        add(myActionPanel, UISettings.getShadowInstance().getCloseTabButtonOnTheRight() ? BorderLayout.EAST : BorderLayout.WEST);
+      }
     }
   }
 
@@ -563,6 +555,17 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
     return myLabel;
   }
 
+  @Override
+  public String getToolTipText(MouseEvent event) {
+    Point pointInLabel = new RelativePoint(event).getPoint(myLabel);
+    if (myLabel.findFragmentAt(pointInLabel.x) == SimpleColoredComponent.FRAGMENT_ICON && Registry.is("ide.icon.tooltips")) {
+      String toolTip = myIcon.getToolTip(false);
+      if (toolTip != null) {
+        return StringUtil.capitalize(toolTip);
+      }
+    }
+    return super.getToolTipText(event);
+  }
 
   @Override
   public AccessibleContext getAccessibleContext() {
@@ -594,6 +597,70 @@ public class TabLabel extends JPanel implements Accessible, Disposable {
     @Override
     public AccessibleRole getAccessibleRole() {
       return AccessibleRole.PAGE_TAB;
+    }
+  }
+
+
+  private class MyTabLabelLayout extends BorderLayout {
+
+    @Override
+    public void addLayoutComponent(Component comp, Object constraints) {
+      checkConstraints(constraints);
+      super.addLayoutComponent(comp, constraints);
+    }
+
+    private void checkConstraints(Object constraints) {
+      if (NORTH.equals(constraints) || SOUTH.equals(constraints)) {
+        LOG.warn(new IllegalArgumentException("constraints=" + constraints));
+      }
+    }
+
+    @Override
+    public void layoutContainer(Container parent) {
+      synchronized (parent.getTreeLock()) {
+        boolean success = doCustomLayout(parent);
+        if (!success) {
+          super.layoutContainer(parent);
+        }
+      }
+    }
+
+    private boolean doCustomLayout(Container parent) {
+      int tabPlacement = UISettings.getInstance().getEditorTabPlacement();
+      if (myTabs != null && myTabs.ignoreTabLabelLimitedWidthWhenPaint() &&
+          (tabPlacement == SwingConstants.TOP || tabPlacement == SwingConstants.BOTTOM) &&
+          parent.getWidth() < parent.getPreferredSize().width) {
+        int spaceTop = parent.getInsets().top;
+        int spaceLeft = parent.getInsets().left;
+        int spaceBottom = parent.getHeight() - parent.getInsets().bottom;
+        int spaceHeight = spaceBottom - spaceTop;
+
+        int xOffset = spaceLeft;
+
+        xOffset = layoutComponent(xOffset, getLayoutComponent(WEST), spaceTop, spaceHeight);
+        xOffset = layoutComponent(xOffset, getLayoutComponent(CENTER), spaceTop, spaceHeight);
+        layoutComponent(xOffset, getLayoutComponent(EAST), spaceTop, spaceHeight);
+
+        return true;
+      }
+      return false;
+    }
+
+    private int layoutComponent(int xOffset, Component component, int spaceTop, int spaceHeight) {
+      if (component != null) {
+        int prefWestWidth = component.getPreferredSize().width;
+        setBoundsWithVAlign(component, xOffset, prefWestWidth, spaceTop, spaceHeight);
+        xOffset += prefWestWidth + getHgap();
+      }
+      return xOffset;
+    }
+
+    private void setBoundsWithVAlign(Component component, int left, int width, int spaceTop, int spaceHeight) {
+      if (component == null) return;
+
+      int height = component.getPreferredSize().height;
+      int top = spaceTop + (spaceHeight - height) / 2;
+      component.setBounds(left, top, width, height);
     }
   }
 }

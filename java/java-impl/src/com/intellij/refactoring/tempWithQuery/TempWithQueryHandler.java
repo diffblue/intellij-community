@@ -17,6 +17,7 @@ package com.intellij.refactoring.tempWithQuery;
 
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.highlighting.HighlightManager;
+import com.intellij.java.refactoring.JavaRefactoringBundle;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.application.ApplicationManager;
@@ -25,8 +26,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.WindowManager;
 import com.intellij.psi.*;
@@ -48,9 +47,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 
 public class TempWithQueryHandler implements RefactoringActionHandler {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.refactoring.tempWithQuery.TempWithQueryHandler");
-
-  private static final String REFACTORING_NAME = RefactoringBundle.message("replace.temp.with.query.title");
+  private static final Logger LOG = Logger.getInstance(TempWithQueryHandler.class);
 
   @Override
   public void invoke(@NotNull final Project project, final Editor editor, PsiFile file, DataContext dataContext) {
@@ -61,8 +58,8 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
                                                                      TargetElementUtil.REFERENCED_ELEMENT_ACCEPTED);
     editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
     if (!(element instanceof PsiLocalVariable)) {
-      String message = RefactoringBundle.getCannotRefactorMessage(RefactoringBundle.message("error.wrong.caret.position.local.name"));
-      CommonRefactoringUtil.showErrorHint(project, editor, message, REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+      String message = RefactoringBundle.getCannotRefactorMessage(JavaRefactoringBundle.message("error.wrong.caret.position.local.name"));
+      CommonRefactoringUtil.showErrorHint(project, editor, message, getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
       return;
     }
 
@@ -76,7 +73,7 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
     final PsiExpression initializer = local.getInitializer();
     if (initializer == null) {
       String message = RefactoringBundle.getCannotRefactorMessage(RefactoringBundle.message("variable.has.no.initializer", localName));
-      CommonRefactoringUtil.showErrorHint(project, editor, message, REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+      CommonRefactoringUtil.showErrorHint(project, editor, message, getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
       return;
     }
 
@@ -85,14 +82,12 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
 
     if (refs.length == 0) {
       String message = RefactoringBundle.getCannotRefactorMessage(RefactoringBundle.message("variable.is.never.used", localName));
-      CommonRefactoringUtil.showErrorHint(project, editor, message, REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+      CommonRefactoringUtil.showErrorHint(project, editor, message, getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
       return;
     }
 
     final HighlightManager highlightManager = HighlightManager.getInstance(project);
     ArrayList<PsiReference> array = new ArrayList<>();
-    EditorColorsManager manager = EditorColorsManager.getInstance();
-    final TextAttributes attributes = manager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     for (PsiReference ref : refs) {
       PsiElement refElement = ref.getElement();
       if (PsiUtil.isAccessedForWriting((PsiExpression)refElement)) {
@@ -100,32 +95,32 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
       }
       if (!array.isEmpty()) {
         PsiReference[] refsForWriting = array.toArray(PsiReference.EMPTY_ARRAY);
-        highlightManager.addOccurrenceHighlights(editor, refsForWriting, attributes, true, null);
-        String message =  RefactoringBundle.getCannotRefactorMessage(RefactoringBundle.message("variable.is.accessed.for.writing", localName));
-        CommonRefactoringUtil.showErrorHint(project, editor, message, REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+        highlightManager.addOccurrenceHighlights(editor, refsForWriting, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
+        String message =  RefactoringBundle.getCannotRefactorMessage(JavaRefactoringBundle.message("variable.is.accessed.for.writing", localName));
+        CommonRefactoringUtil.showErrorHint(project, editor, message, getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
         WindowManager.getInstance().getStatusBar(project).setInfo(RefactoringBundle.message("press.escape.to.remove.the.highlighting"));
         return;
       }
     }
 
     final ExtractMethodProcessor processor = new ExtractMethodProcessor(
-            project, editor,
-            new PsiElement[]{initializer}, local.getType(),
-            REFACTORING_NAME, localName, HelpID.REPLACE_TEMP_WITH_QUERY
+      project, editor,
+      new PsiElement[]{initializer}, local.getType(),
+      getRefactoringName(), localName, HelpID.REPLACE_TEMP_WITH_QUERY
     );
 
     try {
       if (!processor.prepare()) return;
     }
     catch (PrepareFailedException e) {
-      CommonRefactoringUtil.showErrorHint(project, editor, e.getMessage(), REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+      CommonRefactoringUtil.showErrorHint(project, editor, e.getMessage(), getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
       ExtractMethodHandler.highlightPrepareError(e, file, editor, project);
       return;
     }
     final PsiClass targetClass = processor.getTargetClass();
     if (targetClass != null && targetClass.isInterface()) {
-      String message = RefactoringBundle.message("cannot.replace.temp.with.query.in.interface");
-      CommonRefactoringUtil.showErrorHint(project, editor, message, REFACTORING_NAME, HelpID.REPLACE_TEMP_WITH_QUERY);
+      String message = JavaRefactoringBundle.message("cannot.replace.temp.with.query.in.interface");
+      CommonRefactoringUtil.showErrorHint(project, editor, message, getRefactoringName(), HelpID.REPLACE_TEMP_WITH_QUERY);
       return;
     }
 
@@ -149,7 +144,7 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
               PsiDeclarationStatement declaration = (PsiDeclarationStatement) local.getParent();
               declaration.delete();
 
-              highlightManager.addOccurrenceHighlights(editor, exprs, attributes, true, null);
+              highlightManager.addOccurrenceHighlights(editor, exprs, EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
             } catch (IncorrectOperationException e) {
               LOG.error(e);
             }
@@ -160,7 +155,7 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
             DuplicatesImpl.processDuplicates(processor, project, editor);
           });
         },
-        REFACTORING_NAME,
+        getRefactoringName(),
         null
       );
     }
@@ -170,7 +165,7 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
   }
 
   @Override
-  public void invoke(@NotNull Project project, @NotNull PsiElement[] elements, DataContext dataContext) {
+  public void invoke(@NotNull Project project, PsiElement @NotNull [] elements, DataContext dataContext) {
     if (elements.length == 1 && elements[0] instanceof PsiLocalVariable) {
       if (dataContext != null) {
         final PsiFile file = CommonDataKeys.PSI_FILE.getData(dataContext);
@@ -180,5 +175,9 @@ public class TempWithQueryHandler implements RefactoringActionHandler {
         }
       }
     }
+  }
+
+  private static String getRefactoringName() {
+    return JavaRefactoringBundle.message("replace.temp.with.query.title");
   }
 }

@@ -21,6 +21,7 @@ import com.intellij.codeInspection.dataFlow.DfaUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -31,13 +32,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class ManualArrayCopyInspection extends BaseInspection {
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "manual.array.copy.display.name");
-  }
 
   @Override
   public boolean isEnabledByDefault() {
@@ -96,7 +90,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
     @Nullable
     private String buildSystemArrayCopyText(PsiForStatement forStatement, CommentTracker commentTracker) {
       final PsiExpression condition = forStatement.getCondition();
-      final PsiBinaryExpression binaryExpression = (PsiBinaryExpression)ParenthesesUtils.stripParentheses(condition);
+      final PsiBinaryExpression binaryExpression = (PsiBinaryExpression)PsiUtil.skipParenthesizedExprDown(condition);
       if (binaryExpression == null) {
         return null;
       }
@@ -152,7 +146,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
       final PsiExpression rArray = rhs.getArrayExpression();
       final String fromArrayText = commentTracker.text(rArray);
       final PsiExpression rhsIndexExpression = rhs.getIndexExpression();
-      final PsiExpression strippedRhsIndexExpression = ParenthesesUtils.stripParentheses(rhsIndexExpression);
+      final PsiExpression strippedRhsIndexExpression = PsiUtil.skipParenthesizedExprDown(rhsIndexExpression);
       final PsiExpression limitExpression;
       if (decrement) {
         limitExpression = limit;
@@ -163,7 +157,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
       final String fromOffsetText = buildOffsetText(strippedRhsIndexExpression, variable, limitExpression, decrement &&
                                          (JavaTokenType.LT.equals(tokenType) || JavaTokenType.GT.equals(tokenType)), commentTracker);
       final PsiExpression lhsIndexExpression = lhs.getIndexExpression();
-      final PsiExpression strippedLhsIndexExpression = ParenthesesUtils.stripParentheses(lhsIndexExpression);
+      final PsiExpression strippedLhsIndexExpression = PsiUtil.skipParenthesizedExprDown(lhsIndexExpression);
       final String toOffsetText = buildOffsetText(strippedLhsIndexExpression, variable,
                                                   limitExpression, decrement && (JavaTokenType.LT.equals(tokenType) || JavaTokenType.GT.equals(tokenType)),
                                                   commentTracker);
@@ -202,7 +196,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
       final PsiExpression lhs = assignmentExpression.getLExpression();
 
       final PsiExpression deparenthesizedExpression =
-        ParenthesesUtils.stripParentheses(lhs);
+        PsiUtil.skipParenthesizedExprDown(lhs);
       if (!(deparenthesizedExpression instanceof
               PsiArrayAccessExpression)) {
         return null;
@@ -258,7 +252,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
         return null;
       }
       final PsiExpression unparenthesizedExpression =
-        ParenthesesUtils.stripParentheses(arrayAccessExpression);
+        PsiUtil.skipParenthesizedExprDown(arrayAccessExpression);
       if (!(unparenthesizedExpression instanceof
               PsiArrayAccessExpression)) {
         return null;
@@ -272,11 +266,11 @@ public class ManualArrayCopyInspection extends BaseInspection {
                                           PsiExpression min,
                                           boolean plusOne,
                                           CommentTracker commentTracker) {
-      max = ParenthesesUtils.stripParentheses(max);
+      max = PsiUtil.skipParenthesizedExprDown(max);
       if (max == null) {
         return null;
       }
-      min = ParenthesesUtils.stripParentheses(min);
+      min = PsiUtil.skipParenthesizedExprDown(min);
       if (min == null) {
         return buildExpressionText(max, plusOne, commentTracker);
       }
@@ -334,7 +328,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
       final String variableName = variable.getName();
       if (expressionText.equals(variableName)) {
         final PsiExpression initialValue =
-          ParenthesesUtils.stripParentheses(limitExpression);
+          PsiUtil.skipParenthesizedExprDown(limitExpression);
         if (initialValue == null) {
           return null;
         }
@@ -496,7 +490,7 @@ public class ManualArrayCopyInspection extends BaseInspection {
       @NotNull PsiVariable variable,
       @Nullable PsiVariable variable2) {
       final PsiExpression strippedExpression =
-        ParenthesesUtils.stripParentheses(expression);
+        PsiUtil.skipParenthesizedExprDown(expression);
       if (strippedExpression == null) {
         return false;
       }
@@ -529,9 +523,9 @@ public class ManualArrayCopyInspection extends BaseInspection {
       final PsiType type = lhs.getType();
       if (type instanceof PsiPrimitiveType) {
         final PsiExpression strippedLhs =
-          ParenthesesUtils.stripParentheses(lhs);
+          PsiUtil.skipParenthesizedExprDown(lhs);
         final PsiExpression strippedRhs =
-          ParenthesesUtils.stripParentheses(rhs);
+          PsiUtil.skipParenthesizedExprDown(rhs);
         if (!areExpressionsCopyable(strippedLhs, strippedRhs)) {
           return false;
         }

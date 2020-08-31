@@ -15,8 +15,8 @@
  */
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
-import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.codeInsight.CodeInsightUtilCore;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -25,9 +25,6 @@ import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * @author cdr
- */
 public class CreateCastExpressionFromInstanceofAction extends CreateLocalVarFromInstanceofAction {
   @Override
   public boolean isAvailable(@NotNull Project project, Editor editor, PsiFile file) {
@@ -39,7 +36,7 @@ public class CreateCastExpressionFromInstanceofAction extends CreateLocalVarFrom
     if (checkType == null) return false;
     PsiType type = checkType.getType();
     String castTo = type.getPresentableText();
-    setText(CodeInsightBundle.message("cast.to.0", castTo));
+    setText(JavaBundle.message("cast.to.0", castTo));
     return true;
   }
 
@@ -78,6 +75,6 @@ public class CreateCastExpressionFromInstanceofAction extends CreateLocalVarFrom
   @Override
   @NotNull
   public String getFamilyName() {
-    return CodeInsightBundle.message("cast.expression");
+    return JavaBundle.message("cast.expression");
   }
 }

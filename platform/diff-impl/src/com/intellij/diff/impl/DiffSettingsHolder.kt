@@ -1,7 +1,8 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.impl
 
 import com.intellij.diff.tools.fragmented.UnifiedDiffTool
+import com.intellij.diff.tools.simple.SimpleDiffTool
 import com.intellij.diff.util.DiffPlaces
 import com.intellij.diff.util.DiffUtil
 import com.intellij.openapi.components.PersistentStateComponent
@@ -11,6 +12,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Key
 import com.intellij.util.xmlb.annotations.OptionTag
 import com.intellij.util.xmlb.annotations.XMap
+import org.jetbrains.annotations.NonNls
 import java.util.*
 
 @State(name = "DiffSettings", storages = [(Storage(value = DiffUtil.DIFF_CONFIG))])
@@ -50,7 +52,7 @@ class DiffSettingsHolder : PersistentStateComponent<DiffSettingsHolder.State> {
     }
   }
 
-  fun getSettings(place: String?): DiffSettings {
+  fun getSettings(@NonNls place: String?): DiffSettings {
     val placeKey = place ?: DiffPlaces.DEFAULT
     val placeSettings = myState.PLACES_MAP.getOrPut(placeKey) { defaultPlaceSettings(placeKey) }
     return DiffSettings(myState.SHARED_SETTINGS, placeSettings)
@@ -66,6 +68,12 @@ class DiffSettingsHolder : PersistentStateComponent<DiffSettingsHolder.State> {
   private fun defaultPlaceSettings(place: String): PlaceSettings {
     val settings = PlaceSettings()
     if (place == DiffPlaces.VCS_LOG_VIEW) {
+      settings.DIFF_TOOLS_ORDER = listOf(SimpleDiffTool::class.java.canonicalName, UnifiedDiffTool::class.java.canonicalName)
+    }
+    if (place == DiffPlaces.VCS_FILE_HISTORY_VIEW) {
+      settings.DIFF_TOOLS_ORDER = listOf(UnifiedDiffTool::class.java.canonicalName)
+    }
+    if (place == DiffPlaces.CHANGES_VIEW) {
       settings.DIFF_TOOLS_ORDER = listOf(UnifiedDiffTool::class.java.canonicalName)
     }
     return settings

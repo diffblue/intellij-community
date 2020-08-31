@@ -11,9 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
-/**
- * @author nik
- */
 public class ConversionRunner {
   private final ConverterProvider myProvider;
   private final ConversionContextImpl myContext;
@@ -54,9 +51,9 @@ public class ConversionRunner {
 
     myModulesFilesToProcess.clear();
     if (myModuleFileConverter != null) {
-      for (File moduleFile : myContext.getModuleFiles()) {
-        if (moduleFile.exists() && myModuleFileConverter.isConversionNeeded(myContext.getModuleSettings(moduleFile))) {
-          myModulesFilesToProcess.add(moduleFile.toPath());
+      for (Path moduleFile : myContext.getModulePaths()) {
+        if (Files.exists(moduleFile) && myModuleFileConverter.isConversionNeeded(myContext.getModuleSettings(moduleFile))) {
+          myModulesFilesToProcess.add(moduleFile);
         }
       }
     }

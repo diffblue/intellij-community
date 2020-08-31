@@ -15,17 +15,20 @@
  */
 package org.jetbrains.idea.maven.project;
 
-import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationType;
-import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.internal.statistic.IdeActivity;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.ControlFlowException;
+import com.intellij.openapi.externalSystem.statistics.ExternalSystemStatUtilKt;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.concurrency.Semaphore;
 import org.jetbrains.idea.maven.execution.SoutMavenConsole;
-import org.jetbrains.idea.maven.utils.*;
+import org.jetbrains.idea.maven.utils.MavenProcessCanceledException;
+import org.jetbrains.idea.maven.utils.MavenProgressIndicator;
+import org.jetbrains.idea.maven.utils.MavenTask;
+import org.jetbrains.idea.maven.utils.MavenUtil;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -41,7 +44,10 @@ public class MavenProjectsProcessor {
 
   private volatile boolean isStopped;
 
-  public MavenProjectsProcessor(Project project, String title, boolean cancellable, MavenEmbeddersManager embeddersManager) {
+  public MavenProjectsProcessor(Project project,
+                                String title,
+                                boolean cancellable,
+                                MavenEmbeddersManager embeddersManager) {
     myProject = project;
     myTitle = title;
     myCancellable = cancellable;
@@ -84,13 +90,7 @@ public class MavenProjectsProcessor {
 
     final Semaphore semaphore = new Semaphore();
     semaphore.down();
-    scheduleTask(new MavenProjectsProcessorTask() {
-      @Override
-      public void perform(Project project, MavenEmbeddersManager embeddersManager, MavenConsole console, MavenProgressIndicator indicator)
-        throws MavenProcessCanceledException {
-        semaphore.up();
-      }
-    });
+    scheduleTask(new MavenProjectsProcessorWaitForCompletionTask(semaphore));
 
     while (true) {
       if (isStopped || semaphore.waitFor(1000)) return;
@@ -135,6 +135,11 @@ public class MavenProjectsProcessor {
         }
         indicator.setFraction(counter / (double)(counter + remained));
 
+        MavenProjectsProcessorTask finalTask = task;
+        IdeActivity activity = ExternalSystemStatUtilKt.importActivityStarted(myProject, MavenUtil.SYSTEM_ID, data -> {
+          data.addData("task_class", finalTask.getClass().getName());
+        });
+
         try {
           final MavenGeneralSettings mavenGeneralSettings = MavenProjectsManager.getInstance(myProject).getGeneralSettings();
           task.perform(myProject, myEmbeddersManager,
@@ -146,6 +151,9 @@ public class MavenProjectsProcessor {
         }
         catch (Throwable e) {
           logImportErrorIfNotControlFlow(e);
+        }
+        finally {
+          activity.finished();
         }
 
         synchronized (myQueue) {
@@ -159,7 +167,13 @@ public class MavenProjectsProcessor {
     }
     catch (MavenProcessCanceledException e) {
       synchronized (myQueue) {
-        myQueue.clear();
+
+        while (!myQueue.isEmpty()) {
+          MavenProjectsProcessorTask removedTask = myQueue.remove();
+          if (removedTask instanceof MavenProjectsProcessorWaitForCompletionTask) {
+            ((MavenProjectsProcessorWaitForCompletionTask)removedTask).mySemaphore.up();
+          }
+        }
         isProcessing = false;
       }
       throw e;
@@ -170,11 +184,21 @@ public class MavenProjectsProcessor {
     if (e instanceof ControlFlowException) {
       ExceptionUtil.rethrowAllAsUnchecked(e);
     }
-    MavenLog.LOG.error(e);
-    new Notification(MavenUtil.MAVEN_NOTIFICATION_GROUP,
-                     "Unable to import Maven project",
-                     "See logs for details",
-                     NotificationType.ERROR
-    ).addAction(ActionManager.getInstance().getAction("ShowLog")).notify(myProject);
+    ReadAction.run(() -> {
+      if (myProject.isDisposed()) return;
+      MavenProjectsManager.getInstance(myProject).showServerException(e);
+    });
+  }
+
+  private static class MavenProjectsProcessorWaitForCompletionTask implements MavenProjectsProcessorTask {
+    private final Semaphore mySemaphore;
+
+    MavenProjectsProcessorWaitForCompletionTask(Semaphore semaphore) {mySemaphore = semaphore;}
+
+    @Override
+    public void perform(Project project, MavenEmbeddersManager embeddersManager, MavenConsole console, MavenProgressIndicator indicator)
+      throws MavenProcessCanceledException {
+      mySemaphore.up();
+    }
   }
 }

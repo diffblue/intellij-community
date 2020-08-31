@@ -3,6 +3,8 @@ package com.intellij.sh.psi;
 
 import org.jetbrains.annotations.*;
 import com.intellij.psi.PsiElementVisitor;
+import com.intellij.psi.PsiNameIdentifierOwner;
+import com.intellij.model.psi.UrlReferenceHost;
 
 public class ShVisitor extends PsiElementVisitor {
 
@@ -24,6 +26,7 @@ public class ShVisitor extends PsiElementVisitor {
 
   public void visitAssignmentCommand(@NotNull ShAssignmentCommand o) {
     visitCommand(o);
+    // visitPsiNameIdentifierOwner(o);
   }
 
   public void visitAssignmentCondition(@NotNull ShAssignmentCondition o) {
@@ -32,6 +35,7 @@ public class ShVisitor extends PsiElementVisitor {
 
   public void visitAssignmentExpression(@NotNull ShAssignmentExpression o) {
     visitBinaryExpression(o);
+    // visitPsiNameIdentifierOwner(o);
   }
 
   public void visitAssignmentList(@NotNull ShAssignmentList o) {
@@ -156,6 +160,7 @@ public class ShVisitor extends PsiElementVisitor {
 
   public void visitFunctionDefinition(@NotNull ShFunctionDefinition o) {
     visitCommand(o);
+    // visitPsiNameIdentifierOwner(o);
   }
 
   public void visitGenericCommandDirective(@NotNull ShGenericCommandDirective o) {
@@ -192,6 +197,8 @@ public class ShVisitor extends PsiElementVisitor {
 
   public void visitLiteral(@NotNull ShLiteral o) {
     visitSimpleCommandElement(o);
+    // visitUrlReferenceHost(o);
+    // visitPsiNameIdentifierOwner(o);
   }
 
   public void visitLiteralCondition(@NotNull ShLiteralCondition o) {
@@ -250,10 +257,6 @@ public class ShVisitor extends PsiElementVisitor {
     visitCompositeElement(o);
   }
 
-  public void visitPipeline(@NotNull ShPipeline o) {
-    visitCompositeElement(o);
-  }
-
   public void visitPipelineCommand(@NotNull ShPipelineCommand o) {
     visitCommand(o);
   }
@@ -271,6 +274,14 @@ public class ShVisitor extends PsiElementVisitor {
   }
 
   public void visitRedirection(@NotNull ShRedirection o) {
+    visitCompositeElement(o);
+  }
+
+  public void visitRegexCondition(@NotNull ShRegexCondition o) {
+    visitCondition(o);
+  }
+
+  public void visitRegexPattern(@NotNull ShRegexPattern o) {
     visitCompositeElement(o);
   }
 

@@ -8,10 +8,14 @@ import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.RunConfigurationBase;
 import com.intellij.execution.configurations.RunnerSettings;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.ui.SettingsEditorFragment;
 import com.intellij.openapi.options.SettingsEditor;
 import org.jdom.Element;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * Allows a plugin to extend a run configuration created by another plugin.
@@ -60,12 +64,17 @@ public abstract class RunConfigurationExtensionBase<T extends RunConfigurationBa
     return null;
   }
 
+  protected <P extends T> List<SettingsEditorFragment<P, ?>> createFragments(@NotNull P configuration) {
+    return null;
+  }
+
   /**
    * Returns the title of the tab in which the settings editor is displayed.
    *
    * @return the editor tab title, or null if this extension doesn't provide any UI for editing the settings.
    */
   @Nullable
+  @Nls(capitalization = Nls.Capitalization.Title)
   protected String getEditorTitle() {
     return null;
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.application.ex;
 
 import com.intellij.openapi.application.PathManager;
@@ -10,7 +10,6 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.testFramework.Parameterized;
 import com.intellij.testFramework.TestFrameworkUtil;
-import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
 import junit.framework.TestCase;
 import org.jdom.Element;
@@ -18,19 +17,21 @@ import org.jdom.JDOMException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.model.serialization.JDomSerializationUtil;
+import org.jetbrains.jps.model.serialization.JpsProjectLoader;
 
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import static com.intellij.openapi.util.Pair.pair;
 import static com.intellij.openapi.util.io.FileUtil.toSystemDependentName;
 import static java.util.Arrays.asList;
 
-public class PathManagerEx {
+public final class PathManagerEx {
   /**
    * All IDEA project files may be logically divided by the following criteria:
    * <ul>
@@ -47,8 +48,8 @@ public class PathManagerEx {
   /**
    * Caches test data lookup strategy by class.
    */
-  private static final ConcurrentMap<Class, TestDataLookupStrategy> CLASS_STRATEGY_CACHE = ContainerUtil.newConcurrentMap();
-  private static final ConcurrentMap<String, Class> CLASS_CACHE = ContainerUtil.newConcurrentMap();
+  private static final ConcurrentMap<Class, TestDataLookupStrategy> CLASS_STRATEGY_CACHE = new ConcurrentHashMap<>();
+  private static final ConcurrentMap<String, Class> CLASS_CACHE = new ConcurrentHashMap<>();
   private static Set<String> ourCommunityModules;
 
   private PathManagerEx() { }
@@ -141,8 +142,7 @@ public class PathManagerEx {
   /**
    * @return path to 'community' project home irrespective of current project
    */
-  @NotNull
-  public static String getCommunityHomePath() {
+  public static @NotNull String getCommunityHomePath() {
     return PathManager.getCommunityHomePath();
   }
 
@@ -220,8 +220,7 @@ public class PathManagerEx {
     return result;
   }
 
-  @Nullable
-  private static TestDataLookupStrategy guessTestDataLookupStrategyOnClassLocation() {
+  private static @Nullable TestDataLookupStrategy guessTestDataLookupStrategyOnClassLocation() {
     if (isLocatedInCommunity()) {
       return TestDataLookupStrategy.COMMUNITY;
     }
@@ -259,8 +258,7 @@ public class PathManagerEx {
     return classToUse == null ? null : determineLookupStrategy(classToUse);
   }
 
-  @Nullable
-  private static Class<?> loadClass(String className) {
+  private static @Nullable Class<?> loadClass(String className) {
     ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
 
     Class<?> clazz = CLASS_CACHE.get(className);
@@ -283,8 +281,7 @@ public class PathManagerEx {
     return null;
   }
 
-  @Nullable
-  private static Class<?> loadClass(String className, ClassLoader classLoader) {
+  private static @Nullable Class<?> loadClass(String className, ClassLoader classLoader) {
     try {
       return Class.forName(className, true, classLoader);
     }
@@ -340,7 +337,7 @@ public class PathManagerEx {
     return getCommunityModules().contains(moduleName) ? FileSystemLocation.COMMUNITY : FileSystemLocation.ULTIMATE;
   }
 
-  private synchronized static Set<String> getCommunityModules() {
+  private static synchronized Set<String> getCommunityModules() {
     if (ourCommunityModules != null) {
       return ourCommunityModules;
     }
@@ -352,7 +349,7 @@ public class PathManagerEx {
     }
 
     try {
-      Element element = JDomSerializationUtil.findComponent(JDOMUtil.load(modulesXml), ModuleManagerImpl.COMPONENT_NAME);
+      Element element = JDomSerializationUtil.findComponent(JDOMUtil.load(modulesXml), JpsProjectLoader.MODULE_MANAGER_COMPONENT);
       assert element != null;
       for (ModulePath file : ModuleManagerImpl.getPathsToModuleFiles(element)) {
         ourCommunityModules.add(file.getModuleName());

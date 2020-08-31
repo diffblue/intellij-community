@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.manage;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -17,17 +17,16 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
-import com.intellij.openapi.util.NotNullLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 
 import java.util.*;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 /**
  * Aggregates all {@link ProjectDataService#EP_NAME registered data services} and provides entry points for project data management.
@@ -35,51 +34,21 @@ import java.util.function.Supplier;
  * @author Denis Zhdanov
  */
 public class ProjectDataManagerImpl implements ProjectDataManager {
-
   private static final Logger LOG = Logger.getInstance(ProjectDataManagerImpl.class);
-
-  @NotNull private final NotNullLazyValue<Map<Key<?>, List<ProjectDataService<?, ?>>>> myServices;
+  private static final Function<ProjectDataService<?, ?>, Key<?>> KEY_MAPPER = ProjectDataService::getTargetDataKey;
 
   public static ProjectDataManagerImpl getInstance() {
     ProjectDataManager service = ServiceManager.getService(ProjectDataManager.class);
     return (ProjectDataManagerImpl)service;
   }
 
-  public ProjectDataManagerImpl() {
-    this(() -> ProjectDataService.EP_NAME.getExtensions());
-  }
-
   @Override
-  @Nullable
+  @NotNull
   public List<ProjectDataService<?, ?>> findService(@NotNull Key<?> key) {
-    return myServices.getValue().get(key);
-  }
-
-  @TestOnly
-  ProjectDataManagerImpl(ProjectDataService... dataServices) {
-    this(() -> dataServices);
-  }
-
-  private ProjectDataManagerImpl(Supplier<ProjectDataService[]> supplier) {
-    myServices = new NotNullLazyValue<Map<Key<?>, List<ProjectDataService<?, ?>>>>() {
-      @NotNull
-      @Override
-      protected Map<Key<?>, List<ProjectDataService<?, ?>>> compute() {
-        Map<Key<?>, List<ProjectDataService<?, ?>>> result = new HashMap<>();
-        for (ProjectDataService<?, ?> service : supplier.get()) {
-          List<ProjectDataService<?, ?>> services = result.get(service.getTargetDataKey());
-          if (services == null) {
-            result.put(service.getTargetDataKey(), services = new ArrayList<>());
-          }
-          services.add(service);
-        }
-
-        for (List<ProjectDataService<?, ?>> services : result.values()) {
-          ExternalSystemApiUtil.orderAwareSort(services);
-        }
-        return result;
-      }
-    };
+    List<ProjectDataService<?, ?>> result =
+      new ArrayList<>(ProjectDataService.EP_NAME.getByGroupingKey(key, ProjectDataManagerImpl.class, KEY_MAPPER));
+    ExternalSystemApiUtil.orderAwareSort(result);
+    return result;
   }
 
   @SuppressWarnings("unchecked")
@@ -114,8 +83,8 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       ExternalSystemUtil.scheduleExternalViewStructureUpdate(project, projectSystemId);
     }
 
-    List<Runnable> onSuccessImportTasks = ContainerUtil.newSmartList();
-    List<Runnable> onFailureImportTasks = ContainerUtil.newSmartList();
+    List<Runnable> onSuccessImportTasks = new SmartList<>();
+    List<Runnable> onFailureImportTasks = new SmartList<>();
     final Collection<DataNode<?>> traceNodes = grouped.get(PerformanceTrace.TRACE_NODE_KEY);
 
     final PerformanceTrace trace;
@@ -130,8 +99,8 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
     long allStartTime = System.currentTimeMillis();
     try {
       // keep order of services execution
-      final Set<Key<?>> allKeys = new TreeSet(grouped.keySet());
-      allKeys.addAll(myServices.getValue().keySet());
+      final Set<Key<?>> allKeys = new TreeSet<>(grouped.keySet());
+      ProjectDataService.EP_NAME.forEachExtensionSafe(dataService -> allKeys.add(dataService.getTargetDataKey()));
 
       final ProgressIndicator indicator = ProgressManager.getInstance().getProgressIndicator();
       if (indicator != null) {
@@ -139,7 +108,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       }
       final int size = allKeys.size();
       int count = 0;
-      List<Runnable> postImportTasks = ContainerUtil.newSmartList();
+      List<Runnable> postImportTasks = new SmartList<>();
       for (Key<?> key : allKeys) {
         if (indicator != null) {
           String message = ExternalSystemBundle.message(
@@ -203,7 +172,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
   }
 
   @NotNull
-  private static String getReadableText(@NotNull Key key) {
+  private static String getReadableText(@NotNull Key<?> key) {
     StringBuilder buffer = new StringBuilder();
     String s = key.toString();
     for (int i = 0; i < s.length(); i++) {
@@ -223,7 +192,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
 
   @Override
   public <T> void importData(@NotNull Collection<DataNode<T>> nodes, @NotNull Project project, boolean synchronous) {
-    Collection<DataNode<?>> dummy = ContainerUtil.newSmartList();
+    Collection<DataNode<?>> dummy = new SmartList<>();
     dummy.addAll(nodes);
     importData(dummy, project, new IdeModifiableModelsProviderImpl(project), synchronous);
   }
@@ -233,7 +202,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
                              @NotNull Project project,
                              @NotNull IdeModifiableModelsProvider modelsProvider,
                              boolean synchronous) {
-    Collection<DataNode<?>> dummy = ContainerUtil.newSmartList();
+    Collection<DataNode<?>> dummy = new SmartList<>();
     dummy.add(node);
     importData(dummy, project, modelsProvider, synchronous);
   }
@@ -245,7 +214,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
     importData(node, project, new IdeModifiableModelsProviderImpl(project), synchronous);
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked", "rawtypes"})
   private <T> void doImportData(@NotNull Key<T> key,
                                 @NotNull Collection<DataNode<?>> nodes,
                                 @Nullable final ProjectData projectData,
@@ -258,10 +227,10 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       return;
     }
 
-    final List<DataNode<T>> toImport = ContainerUtil.newSmartList();
-    final List<DataNode<T>> toIgnore = ContainerUtil.newSmartList();
+    final Collection<DataNode<?>> toImport = new SmartList<>();
+    final Collection<DataNode<?>> toIgnore = new SmartList<>();
 
-    for (DataNode node : nodes) {
+    for (DataNode<?> node : nodes) {
       if (!key.equals(node.getKey())) continue;
 
       if (node.isIgnored()) {
@@ -272,10 +241,10 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       }
     }
 
-    ensureTheDataIsReadyToUse((Collection)toImport);
+    ensureTheDataIsReadyToUse(toImport);
 
-    final List<ProjectDataService<?, ?>> services = myServices.getValue().get(key);
-    if (services == null) {
+    @NotNull List<ProjectDataService<?, ?>> services = findService(key);
+    if (services.isEmpty()) {
       LOG.debug(String.format("No data service is registered for %s", key));
     }
     else {
@@ -288,7 +257,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
         }
 
         if (projectData != null) {
-          ensureTheDataIsReadyToUse((Collection)toIgnore);
+          ensureTheDataIsReadyToUse(toIgnore);
           final long removeStartTime = System.currentTimeMillis();
           final Computable<Collection<?>> orphanIdeDataComputable =
             ((ProjectDataService)service).computeOrphanData(toImport, projectData, project, modifiableModelsProvider);
@@ -301,41 +270,35 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
       }
     }
 
-    if (services != null && projectData != null) {
+    if (!services.isEmpty() && projectData != null) {
       postImportTasks.add(() -> {
         for (ProjectDataService<?, ?> service : services) {
-          if (service instanceof AbstractProjectDataService) {
-            final long taskStartTime = System.currentTimeMillis();
-            ((AbstractProjectDataService)service).postProcess(toImport, projectData, project, modifiableModelsProvider);
-            if (LOG.isDebugEnabled()) {
-              final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
-              LOG.debug(String.format("Service %s run post import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
-            }
+          final long taskStartTime = System.currentTimeMillis();
+          ((ProjectDataService)service).postProcess(toImport, projectData, project, modifiableModelsProvider);
+          if (LOG.isDebugEnabled()) {
+            final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
+            LOG.debug(String.format("Service %s run post import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
           }
         }
       });
       onFailureImportTasks.add(() -> {
         for (ProjectDataService<?, ?> service : services) {
-          if (service instanceof AbstractProjectDataService) {
-            final long taskStartTime = System.currentTimeMillis();
-            ((AbstractProjectDataService)service).onFailureImport(project);
-            if (LOG.isDebugEnabled()) {
-              final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
-              LOG.debug(String.format("Service %s run failure import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
-            }
+          final long taskStartTime = System.currentTimeMillis();
+          service.onFailureImport(project);
+          if (LOG.isDebugEnabled()) {
+            final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
+            LOG.debug(String.format("Service %s run failure import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
           }
         }
       });
       onSuccessImportTasks.add(() -> {
         IdeModelsProvider modelsProvider = new IdeModelsProviderImpl(project);
         for (ProjectDataService<?, ?> service : services) {
-          if (service instanceof AbstractProjectDataService) {
-            final long taskStartTime = System.currentTimeMillis();
-            ((AbstractProjectDataService)service).onSuccessImport(toImport, projectData, project, modelsProvider);
-            if (LOG.isDebugEnabled()) {
-              final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
-              LOG.debug(String.format("Service %s run success import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
-            }
+          final long taskStartTime = System.currentTimeMillis();
+          ((ProjectDataService)service).onSuccessImport(toImport, projectData, project, modelsProvider);
+          if (LOG.isDebugEnabled()) {
+            final long taskTimeInMs = (System.currentTimeMillis() - taskStartTime);
+            LOG.debug(String.format("Service %s run success import task in %d ms", service.getClass().getSimpleName(), taskTimeInMs));
           }
         }
       });
@@ -365,7 +328,7 @@ public class ProjectDataManagerImpl implements ProjectDataManager {
                                 @NotNull final IdeModifiableModelsProvider modelsProvider,
                                 boolean synchronous) {
     try {
-      List<ProjectDataService<?, ?>> services = myServices.getValue().get(key);
+      List<ProjectDataService<?, ?>> services = findService(key);
       for (ProjectDataService service : services) {
         final long removeStartTime = System.currentTimeMillis();
         service.removeData(new Computable.PredefinedValueComputable<Collection>(toRemove), toIgnore, projectData, project, modelsProvider);

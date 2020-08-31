@@ -9,21 +9,25 @@ import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.util.InvalidDataException;
+import com.intellij.openapi.util.JDOMExternalizable;
+import com.intellij.openapi.util.WriteExternalException;
 import org.jdom.Element;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.model.serialization.facet.JpsFacetSerializer;
 
 import java.util.Arrays;
 
-/**
- * @author nik
- */
 public class FacetUtil {
 
   public static <F extends Facet> F addFacet(Module module, FacetType<F, ?> type) {
+    return addFacet(module, type, type.getPresentableName());
+  }
+
+  public static <F extends Facet> F addFacet(@NotNull Module module, @NotNull FacetType<F, ?> type, @NotNull String facetName) {
     final ModifiableFacetModel model = FacetManager.getInstance(module).createModifiableModel();
-    final F facet = createFacet(module, type);
+    final F facet = createFacet(module, type, facetName);
     ApplicationManager.getApplication().runWriteAction(() -> {
       model.addFacet(facet);
       model.commit();
@@ -31,8 +35,9 @@ public class FacetUtil {
     return facet;
   }
 
-  private static <F extends Facet, C extends FacetConfiguration> F createFacet(final Module module, final FacetType<F, C> type) {
-    return FacetManager.getInstance(module).createFacet(type, type.getPresentableName(), type.createDefaultConfiguration(), null);
+  private static <F extends Facet, C extends FacetConfiguration> F createFacet(final Module module,
+                                                                               final FacetType<F, C> type, @NotNull String facetName) {
+    return FacetManager.getInstance(module).createFacet(type, facetName, type.createDefaultConfiguration(), null);
   }
 
   public static void deleteFacet(final Facet facet) {
@@ -80,5 +85,23 @@ public class FacetUtil {
       configuration.writeExternal(config);
       return config;
     }
+  }
+
+  @ApiStatus.Internal
+  @Nullable
+  public static Element saveFacetConfiguration(Facet<?> facet) {
+    final Element config;
+    try {
+      FacetConfiguration configuration = facet.getConfiguration();
+      config = saveFacetConfiguration(configuration);
+      if (facet instanceof JDOMExternalizable) {
+        //todo[nik] remove
+        ((JDOMExternalizable)facet).writeExternal(config);
+      }
+    }
+    catch (WriteExternalException e) {
+      return null;
+    }
+    return config;
   }
 }

@@ -6,25 +6,28 @@ import org.jetbrains.intellij.build.impl.PlatformLayout
 import java.util.function.Consumer
 
 /**
- * @author nik
+ * Base class for all editions of IntelliJ IDEA
  */
-abstract class BaseIdeaProperties extends ProductProperties {
+abstract class BaseIdeaProperties extends JetBrainsProductProperties {
   public static final List<String> JAVA_IDE_API_MODULES = [
     "intellij.xml.dom",
     "intellij.java.testFramework",
     "intellij.platform.testFramework.core",
-    "intellij.platform.uast.tests"
+    "intellij.platform.uast.tests",
+    "intellij.jsp.base"
   ]
   public static final List<String> JAVA_IDE_IMPLEMENTATION_MODULES = [
     "intellij.xml.dom.impl",
     "intellij.platform.testFramework",
     "intellij.tools.testsBootstrap"
   ]
+
   protected static final List<String> BUNDLED_PLUGIN_MODULES = [
     "intellij.java.plugin",
     "intellij.java.ide.customization",
     "intellij.copyright",
     "intellij.properties",
+    "intellij.properties.resource.bundle.editor",
     "intellij.terminal",
     "intellij.textmate",
     "intellij.editorconfig",
@@ -32,8 +35,11 @@ abstract class BaseIdeaProperties extends ProductProperties {
     "intellij.configurationScript",
     "intellij.yaml",
     "intellij.tasks.core",
+    "intellij.repository.search",
+    "intellij.maven.model",
     "intellij.maven",
     "intellij.gradle",
+    "intellij.gradle.java",
     "intellij.gradle.java.maven",
     "intellij.vcs.git",
     "intellij.vcs.svn",
@@ -60,38 +66,43 @@ abstract class BaseIdeaProperties extends ProductProperties {
     "intellij.statsCollector",
     "intellij.sh",
     "intellij.vcs.changeReminder",
-    "intellij.markdown"
+    "intellij.filePrediction",
+    "intellij.markdown",
+    "intellij.webp",
+    "intellij.grazie"
   ]
   protected static final Map<String, String> CE_CLASS_VERSIONS = [
-    "": "1.8",
-    "lib/idea_rt.jar": "1.3",
-    "lib/forms_rt.jar": "1.4",
-    "lib/annotations.jar": "1.5",
-    "lib/util.jar": "1.8",
-    "lib/external-system-rt.jar": "1.6",
-    "lib/jshell-frontend.jar": "1.9",
-    "lib/sa-jdwp": "",  // ignored
-    "plugins/java/lib/rt/debugger-agent.jar": "1.6",
-    "plugins/java/lib/rt/debugger-agent-storage.jar": "1.6",
-    "plugins/Groovy/lib/groovy_rt.jar": "1.5",
-    "plugins/Groovy/lib/groovy-rt-constants.jar": "1.5",
-    "plugins/coverage/lib/coverage_rt.jar": "1.5",
-    "plugins/junit/lib/junit-rt.jar": "1.3",
-    "plugins/gradle/lib/gradle-tooling-extension-api.jar": "1.6",
-    "plugins/gradle/lib/gradle-tooling-extension-impl.jar": "1.6",
-    "plugins/maven/lib/maven-server-api.jar": "1.6",
-    "plugins/maven/lib/maven2-server-impl.jar": "1.6",
-    "plugins/maven/lib/maven3-server-common.jar": "1.6",
-    "plugins/maven/lib/maven30-server-impl.jar": "1.6",
-    "plugins/maven/lib/maven3-server-impl.jar": "1.6",
-    "plugins/maven/lib/artifact-resolver-m2.jar": "1.6",
-    "plugins/maven/lib/artifact-resolver-m3.jar": "1.6",
-    "plugins/maven/lib/artifact-resolver-m31.jar": "1.6",
-    "plugins/xpath/lib/rt/xslt-rt.jar": "1.4",
-    "plugins/xslt-debugger/lib/xslt-debugger-engine.jar": "1.5",
-    "plugins/xslt-debugger/lib/rt/xslt-debugger-engine-impl.jar": "1.5",
-    "plugins/cucumber-java/lib/cucumber-jvmFormatter.jar": "1.6",
-    "plugins/android/lib/jdk11/layoutlib.jar": "1.9"
+    ""                                                          : "1.8",
+    "lib/idea_rt.jar"                                           : "1.6",
+    "lib/forms_rt.jar"                                          : "1.6",
+    "lib/annotations.jar"                                       : "1.6",
+    "lib/util.jar"                                              : "1.8",
+    "lib/external-system-rt.jar"                                : "1.6",
+    "lib/jshell-frontend.jar"                                   : "9",
+    "plugins/java/lib/sa-jdwp"                                  : "",  // ignored
+    "plugins/java/lib/rt/debugger-agent.jar"                    : "1.6",
+    "plugins/java/lib/rt/debugger-agent-storage.jar"            : "1.6",
+    "plugins/Groovy/lib/groovy_rt.jar"                          : "1.6",
+    "plugins/Groovy/lib/groovy-rt-constants.jar"                : "1.6",
+    "plugins/coverage/lib/coverage_rt.jar"                      : "1.6",
+    "plugins/javaFX/lib/rt/sceneBuilderBridge.jar"              : "11",
+    "plugins/junit/lib/junit-rt.jar"                            : "1.6",
+    "plugins/junit/lib/junit5-rt.jar"                           : "1.8",
+    "plugins/gradle/lib/gradle-tooling-extension-api.jar"       : "1.6",
+    "plugins/gradle/lib/gradle-tooling-extension-impl.jar"      : "1.6",
+    "plugins/maven/lib/maven-server-api.jar"                    : "1.6",
+    "plugins/maven/lib/maven2-server-impl.jar"                  : "1.6",
+    "plugins/maven/lib/maven3-server-common.jar"                : "1.6",
+    "plugins/maven/lib/maven30-server-impl.jar"                 : "1.6",
+    "plugins/maven/lib/maven3-server-impl.jar"                  : "1.6",
+    "plugins/maven/lib/artifact-resolver-m2.jar"                : "1.6",
+    "plugins/maven/lib/artifact-resolver-m3.jar"                : "1.6",
+    "plugins/maven/lib/artifact-resolver-m31.jar"               : "1.6",
+    "plugins/xpath/lib/rt/xslt-rt.jar"                          : "1.6",
+    "plugins/xslt-debugger/lib/xslt-debugger-rt.jar"            : "1.6",
+    "plugins/xslt-debugger/lib/rt/xslt-debugger-impl-rt.jar"    : "1.8",
+    "plugins/android/lib/layoutlib-jre11-27.0.0.0.jar"          : "9",
+    "plugins/android/lib/android-rt.jar"                        : "1.8",
   ]
 
   BaseIdeaProperties() {
@@ -108,6 +119,13 @@ abstract class BaseIdeaProperties extends ProductProperties {
 
     productLayout.platformLayoutCustomizer = { PlatformLayout layout ->
       layout.customize {
+        for (String name : JAVA_IDE_API_MODULES) {
+          withModule(name)
+        }
+        for (String name : JAVA_IDE_IMPLEMENTATION_MODULES) {
+          withModule(name)
+        }
+
         //todo currently intellij.platform.testFramework included into idea.jar depends on this jar so it cannot be moved to java plugin
         withModule("intellij.java.rt", "idea_rt.jar", null)
 

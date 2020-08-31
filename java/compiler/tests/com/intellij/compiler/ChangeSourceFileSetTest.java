@@ -1,3 +1,4 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.compiler;
 
 import com.intellij.openapi.application.WriteAction;
@@ -9,9 +10,6 @@ import com.intellij.util.io.TestFileSystemBuilder;
 
 import static com.intellij.util.io.TestFileSystemBuilder.fs;
 
-/**
- * @author nik
- */
 public class ChangeSourceFileSetTest extends BaseCompilerTestCase {
 
   public void testAddRemoveSourceRoot() {

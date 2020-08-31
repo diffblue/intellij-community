@@ -39,7 +39,7 @@ public class PsiPrimitiveType extends PsiType.Stub implements JvmPrimitiveType {
     myName = getName(kind);
   }
 
-  public PsiPrimitiveType(@Nullable("for NULL type") JvmPrimitiveTypeKind kind, @NotNull PsiAnnotation[] annotations) {
+  public PsiPrimitiveType(@Nullable("for NULL type") JvmPrimitiveTypeKind kind, PsiAnnotation @NotNull [] annotations) {
     super(annotations);
     myKind = kind;
     myName = getName(kind);
@@ -66,7 +66,7 @@ public class PsiPrimitiveType extends PsiType.Stub implements JvmPrimitiveType {
    * @deprecated please don't use {@link PsiPrimitiveType} to represent fake types
    */
   @Deprecated
-  public PsiPrimitiveType(@NotNull String name, @NotNull PsiAnnotation[] annotations) {
+  public PsiPrimitiveType(@NotNull String name, PsiAnnotation @NotNull [] annotations) {
     super(annotations);
     myKind = null;
     myName = name;
@@ -158,8 +158,7 @@ public class PsiPrimitiveType extends PsiType.Stub implements JvmPrimitiveType {
   }
 
   @Override
-  @NotNull
-  public PsiType[] getSuperTypes() {
+  public PsiType @NotNull [] getSuperTypes() {
     return EMPTY_ARRAY;
   }
 
@@ -189,6 +188,34 @@ public class PsiPrimitiveType extends PsiType.Stub implements JvmPrimitiveType {
   @Nullable
   public static PsiPrimitiveType getOptionallyUnboxedType(PsiType type) {
     return type instanceof PsiPrimitiveType ? (PsiPrimitiveType)type : getUnboxedType(type);
+  }
+
+  /**
+   * @param descriptor one letter JVM type descriptor ('B' for byte, 'J' for long, etc.)
+   * @return corresponding primitive type, null if the supplied character is not a valid JVM type descriptor
+   */
+  @Contract(pure = true)
+  public static @Nullable PsiPrimitiveType fromJvmTypeDescriptor(char descriptor) {
+    switch (descriptor) {
+      case 'B':
+        return PsiType.BYTE;
+      case 'C':
+        return PsiType.CHAR;
+      case 'D':
+        return PsiType.DOUBLE;
+      case 'F':
+        return PsiType.FLOAT;
+      case 'Z':
+        return PsiType.BOOLEAN;
+      case 'I':
+        return PsiType.INT;
+      case 'J':
+        return PsiType.LONG;
+      case 'S':
+        return PsiType.SHORT;
+      default:
+        return null;
+    }
   }
 
   /**

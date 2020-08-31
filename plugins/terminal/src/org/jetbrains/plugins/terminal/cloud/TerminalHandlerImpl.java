@@ -4,7 +4,7 @@ package org.jetbrains.plugins.terminal.cloud;
 import com.intellij.openapi.project.Project;
 import com.intellij.remoteServer.agent.util.log.TerminalListener.TtyResizeHandler;
 import com.intellij.remoteServer.impl.runtime.log.TerminalHandlerBase;
-import com.jediterm.terminal.ui.TerminalWidget;
+import com.intellij.terminal.JBTerminalWidget;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -13,18 +13,20 @@ import java.io.OutputStream;
 
 public class TerminalHandlerImpl extends TerminalHandlerBase {
 
-  private final TerminalWidget myTerminalWidget;
+  private final JBTerminalWidget myTerminalWidget;
 
   public TerminalHandlerImpl(@NotNull String presentableName,
                              @NotNull Project project,
                              @NotNull InputStream terminalOutput,
-                             @NotNull OutputStream terminalInput) {
+                             @NotNull OutputStream terminalInput,
+                             boolean deferTerminalSessionUntilFirstShown) {
     super(presentableName);
 
     final CloudTerminalProcess process = new CloudTerminalProcess(terminalInput, terminalOutput);
 
     TtyResizeHandler handlerBoundLater = (w, h) -> getResizeHandler().onTtyResizeRequest(w, h); //right now handler is null
-    CloudTerminalRunner terminalRunner = new CloudTerminalRunner(project, presentableName, process, handlerBoundLater);
+    CloudTerminalRunner terminalRunner =
+      new CloudTerminalRunner(project, presentableName, process, handlerBoundLater, deferTerminalSessionUntilFirstShown);
 
     myTerminalWidget = terminalRunner.createTerminalWidget(project, null);
   }
@@ -37,5 +39,12 @@ public class TerminalHandlerImpl extends TerminalHandlerBase {
   @Override
   public JComponent getPreferredFocusableComponent() {
     return myTerminalWidget.getPreferredFocusableComponent();
+  }
+
+  @Override
+  public void close() {
+    myTerminalWidget.getTerminalDisplay().setCursorVisible(false);
+    myTerminalWidget.stop();
+    super.close();
   }
 }

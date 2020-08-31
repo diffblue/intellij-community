@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.ui
 
 import com.intellij.openapi.components.BaseState
@@ -56,8 +56,6 @@ class UISettingsState : BaseState() {
 
   @get:OptionTag("REUSE_NOT_MODIFIED_TABS")
   var reuseNotModifiedTabs by property(false)
-  @get:OptionTag("ANIMATE_WINDOWS")
-  var animateWindows by property(true)
   @get:OptionTag("SHOW_TOOL_WINDOW_NUMBERS")
   var showToolWindowsNumbers by property(true)
 
@@ -74,6 +72,8 @@ class UISettingsState : BaseState() {
   var showEditorToolTip by property(true)
   @get:OptionTag("SHOW_MEMORY_INDICATOR")
   var showMemoryIndicator by property(false)
+  @get:OptionTag("SHOW_WRITE_THREAD_INDICATOR")
+  var showWriteThreadIndicator by property(false)
   @get:OptionTag("ALLOW_MERGE_BUTTONS")
   var allowMergeButtons by property(true)
   @get:OptionTag("SHOW_MAIN_TOOLBAR")
@@ -84,10 +84,10 @@ class UISettingsState : BaseState() {
   var showMainMenu by property(true)
   @get:OptionTag("SHOW_NAVIGATION_BAR")
   var showNavigationBar by property(true)
-  @get:OptionTag("ALWAYS_SHOW_WINDOW_BUTTONS")
-  var alwaysShowWindowsButton by property(false)
-  @get:OptionTag("CYCLE_SCROLLING")
-  var cycleScrolling by property(true)
+  @get:OptionTag("SHOW_NAVIGATION_BAR_MEMBERS")
+  var showMembersInNavigationBar by property(true)
+  @get:OptionTag("SELECTED_TABS_LAYOUT_INFO_ID")
+  var selectedTabsLayoutInfoId by string(null)
   @get:OptionTag("SCROLL_TAB_LAYOUT_IN_EDITOR")
   var scrollTabLayoutInEditor by property(true)
   @get:OptionTag("HIDE_TABS_IF_NEED")
@@ -98,11 +98,12 @@ class UISettingsState : BaseState() {
   var closeTabButtonOnTheRight by property(true)
   @get:OptionTag("EDITOR_TAB_PLACEMENT")
   var editorTabPlacement: Int by property(SwingConstants.TOP)
+  @get:OptionTag("SHOW_FILE_ICONS_IN_TABS")
+  var showFileIconInTabs by property(true)
   @get:OptionTag("HIDE_KNOWN_EXTENSION_IN_TABS")
   var hideKnownExtensionInTabs by property(false)
-  @get:OptionTag("SHOW_ICONS_IN_QUICK_NAVIGATION")
-  var showIconInQuickNavigation by property(true)
   var showTreeIndentGuides by property(false)
+  var compactTreeIndents by property(false)
 
   @get:OptionTag("SORT_TABS_ALPHABETICALLY")
   var sortTabsAlphabetically by property(false)
@@ -127,6 +128,9 @@ class UISettingsState : BaseState() {
 
   @get:OptionTag("COLOR_BLINDNESS")
   var colorBlindness by enum<ColorBlindness>()
+  @get:OptionTag("CONTRAST_SCROLLBARS")
+  var useContrastScrollBars by property(false)
+
   @get:OptionTag("MOVE_MOUSE_ON_DEFAULT_BUTTON")
   var moveMouseOnDefaultButton by property(false)
   @get:OptionTag("ENABLE_ALPHA_MODE")
@@ -150,8 +154,6 @@ class UISettingsState : BaseState() {
   var maxLookupWidth by property(500)
   @get:OptionTag("MAX_LOOKUP_LIST_HEIGHT")
   var maxLookupListHeight by property(11)
-  @get:OptionTag("HIDE_NAVIGATION_ON_FOCUS_LOSS")
-  var hideNavigationOnFocusLoss by property(true)
   @get:OptionTag("DND_WITH_PRESSED_ALT_ONLY")
   var dndWithPressedAltOnly by property(false)
   @get:OptionTag("DEFAULT_AUTOSCROLL_TO_SOURCE")
@@ -169,6 +171,24 @@ class UISettingsState : BaseState() {
   var smoothScrolling by property(true)
   @get:OptionTag("NAVIGATE_TO_PREVIEW")
   var navigateToPreview by property(false)
+  @get:OptionTag("FULL_PATHS_IN_TITLE_BAR")
+  var fullPathsInWindowHeader by property(false)
+
+  var animatedScrolling by property(!SystemInfo.isMac || !SystemInfo.isJetBrainsJvm)
+  var animatedScrollingDuration by property(
+    when {
+      SystemInfo.isWindows -> 200
+      SystemInfo.isMac -> 50
+      else -> 150
+    }
+  )
+  var animatedScrollingCurvePoints by property(
+    when {
+      SystemInfo.isWindows -> 1684366536
+      SystemInfo.isMac -> 845374563
+      else -> 729434056
+    }
+  )
 
   @get:OptionTag("SORT_LOOKUP_ELEMENTS_LEXICOGRAPHICALLY")
   var sortLookupElementsLexicographically by property(false)

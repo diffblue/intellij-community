@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.navigation;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -26,7 +25,6 @@ import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.HighlighterTargetArea;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
@@ -45,10 +43,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-public class IncrementalSearchHandler {
+public final class IncrementalSearchHandler {
   private static final Key<PerEditorSearchData> SEARCH_DATA_IN_EDITOR_VIEW_KEY = Key.create("IncrementalSearchHandler.SEARCH_DATA_IN_EDITOR_VIEW_KEY");
   private static final Key<PerHintSearchData> SEARCH_DATA_IN_HINT_KEY = Key.create("IncrementalSearchHandler.SEARCH_DATA_IN_HINT_KEY");
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.navigation.IncrementalSearchHandler");
+  private static final Logger LOG = Logger.getInstance(IncrementalSearchHandler.class);
 
   private static boolean ourActionsRegistered = false;
 
@@ -289,9 +287,9 @@ public class IncrementalSearchHandler {
     else {
       data.label.setForeground(JBColor.foreground());
       if (matchLength > 0) {
-        TextAttributes attributes = editor.getColorsScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
         data.segmentHighlighter = editor.getMarkupModel()
-          .addRangeHighlighter(index, index + matchLength, HighlighterLayer.LAST + 1, attributes, HighlighterTargetArea.EXACT_RANGE);
+          .addRangeHighlighter(EditorColors.SEARCH_RESULT_ATTRIBUTES, index, index + matchLength, HighlighterLayer.LAST + 1,
+                               HighlighterTargetArea.EXACT_RANGE);
       }
       data.ignoreCaretMove = true;
       editor.getCaretModel().moveToOffset(index);
@@ -424,13 +422,13 @@ public class IncrementalSearchHandler {
     }
 
     @Override
-    public boolean isEnabled(Editor editor, DataContext dataContext) {
+    public boolean isEnabledForCaret(@NotNull Editor editor, @NotNull Caret caret, DataContext dataContext) {
       PerEditorSearchData data = editor.getUserData(SEARCH_DATA_IN_EDITOR_VIEW_KEY);
-      return data != null && data.hint != null || myOriginalHandler.isEnabled(editor, dataContext);
+      return data != null && data.hint != null || myOriginalHandler.isEnabled(editor, caret, dataContext);
     }
   }
 
-  public static class DownHandler extends EditorActionHandler {
+  public static final class DownHandler extends EditorActionHandler {
     private final EditorActionHandler myOriginalHandler;
 
     public DownHandler(EditorActionHandler originalHandler) {
@@ -457,9 +455,9 @@ public class IncrementalSearchHandler {
     }
 
     @Override
-    public boolean isEnabled(Editor editor, DataContext dataContext) {
+    public boolean isEnabledForCaret(@NotNull Editor editor, @NotNull Caret caret, DataContext dataContext) {
       PerEditorSearchData data = editor.getUserData(SEARCH_DATA_IN_EDITOR_VIEW_KEY);
-      return data != null && data.hint != null || myOriginalHandler.isEnabled(editor, dataContext);
+      return data != null && data.hint != null || myOriginalHandler.isEnabled(editor, caret, dataContext);
     }
   }
 }

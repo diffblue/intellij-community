@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 @file:JvmName("ProjectUtil")
 package com.intellij.openapi.project
 
@@ -21,10 +21,12 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFilePathWrapper
 import com.intellij.openapi.wm.WindowManager
+import com.intellij.util.PathUtil
 import com.intellij.util.PathUtilRt
 import com.intellij.util.io.exists
 import com.intellij.util.io.sanitizeFileName
 import com.intellij.util.text.trimMiddle
+import org.jetbrains.annotations.TestOnly
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -121,17 +123,42 @@ fun Project.guessProjectDir() : VirtualFile? {
 
   val modules = ModuleManager.getInstance(this).modules
   val module = if (modules.size == 1) modules.first() else modules.firstOrNull { it.name == this.name }
-  module?.rootManager?.contentRoots?.firstOrNull { it.isDirectory }?.let {
-    return it
-  }
+  module?.guessModuleDir()?.let { return it }
   return LocalFileSystem.getInstance().findFileByPath(basePath!!)
+}
+
+/**
+ * Tries to guess the main module directory
+ *
+ * Please use this method only in case if no any additional information about module location
+ *  eg. some contained files or etc.
+ */
+fun Module.guessModuleDir(): VirtualFile? {
+  val contentRoots = rootManager.contentRoots.filter { it.isDirectory }
+  return contentRoots.find { it.name == name } ?: contentRoots.firstOrNull()
 }
 
 @JvmOverloads
 fun Project.getProjectCacheFileName(isForceNameUse: Boolean = false, hashSeparator: String = ".", extensionWithDot: String = ""): String {
-  val presentableUrl = presentableUrl
+  return getProjectCacheFileName(presentableUrl, name, isForceNameUse, hashSeparator, extensionWithDot)
+}
+
+/**
+ * This is a variant of [getProjectCacheFileName] which can be used in tests before [Project] instance is created
+ * @param projectPath value of [Project.getPresentableUrl]
+ */
+@TestOnly
+fun getProjectCacheFileName(projectPath: String): String {
+  return getProjectCacheFileName(projectPath, PathUtil.getFileName(projectPath), false, ".", "")
+}
+
+private fun getProjectCacheFileName(presentableUrl: String?,
+                                    projectName: String,
+                                    isForceNameUse: Boolean,
+                                    hashSeparator: String,
+                                    extensionWithDot: String): String {
   var name = when {
-    isForceNameUse || presentableUrl == null -> name
+    isForceNameUse || presentableUrl == null -> projectName
     else -> {
       // lower case here is used for cosmetic reasons (develar - discussed with jeka - leave it as it was, user projects will not have long names as in our tests
       PathUtilRt.getFileName(presentableUrl).toLowerCase(Locale.US).removeSuffix(ProjectFileType.DOT_DEFAULT_EXTENSION)
@@ -144,7 +171,7 @@ fun Project.getProjectCacheFileName(isForceNameUse: Boolean = false, hashSeparat
   val locationHash = Integer.toHexString((presentableUrl ?: name).hashCode())
 
   // trim to avoid "File name too long"
-  name = name.trimMiddle(Math.min(name.length, 255 - hashSeparator.length - locationHash.length), useEllipsisSymbol = false)
+  name = name.trimMiddle(name.length.coerceAtMost(255 - hashSeparator.length - locationHash.length), useEllipsisSymbol = false)
   return "$name$hashSeparator${locationHash}$extensionWithDot"
 }
 
@@ -168,19 +195,27 @@ fun Project.getProjectCachePath(baseDir: Path, forceNameUse: Boolean = false, ha
 /**
  * Add one-time projectOpened listener.
  */
-fun Project.runWhenProjectOpened(handler: Runnable): Unit = runWhenProjectOpened(this) { handler.run() }
+fun runWhenProjectOpened(project : Project, handler: Runnable) {
+  runWhenProjectOpened(project) {
+    handler.run()
+  }
+}
 
 /**
  * Add one-time first projectOpened listener.
  */
 @JvmOverloads
-fun runWhenProjectOpened(project: Project? = null, handler: Consumer<Project>): Unit = runWhenProjectOpened(project) { handler.accept(it) }
+fun runWhenProjectOpened(project: Project? = null, handler: Consumer<Project>) {
+  runWhenProjectOpened(project) {
+    handler.accept(it)
+  }
+}
 
 /**
  * Add one-time projectOpened listener.
  */
 inline fun runWhenProjectOpened(project: Project? = null, crossinline handler: (project: Project) -> Unit) {
-  val connection = (project ?: ApplicationManager.getApplication()).messageBus.connect()
+  val connection = (project ?: ApplicationManager.getApplication()).messageBus.simpleConnect()
   connection.subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
     override fun projectOpened(eventProject: Project) {
       if (project == null || project === eventProject) {
@@ -192,8 +227,8 @@ inline fun runWhenProjectOpened(project: Project? = null, crossinline handler: (
 }
 
 inline fun processOpenedProjects(processor: (Project) -> Unit) {
-  for (project in ProjectManager.getInstance().openProjects) {
-    if (!project.isInitialized || project.isDisposed) {
+  for (project in (ProjectManager.getInstanceIfCreated()?.openProjects ?: return)) {
+    if (project.isDisposed || !project.isInitialized) {
       continue
     }
 

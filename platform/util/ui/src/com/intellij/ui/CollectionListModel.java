@@ -1,7 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui;
 
-import com.intellij.util.containers.ContainerUtilRt;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.EditableModel;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -27,8 +27,8 @@ public class CollectionListModel<T> extends AbstractListModel<T> implements Edit
   }
 
   @SafeVarargs
-  public CollectionListModel(@NotNull T... items) {
-    myItems = ContainerUtilRt.newArrayList(items);
+  public CollectionListModel(T @NotNull ... items) {
+    myItems = ContainerUtil.newArrayList(items);
   }
 
   @NotNull
@@ -110,7 +110,7 @@ public class CollectionListModel<T> extends AbstractListModel<T> implements Edit
   }
 
   public void sort(final Comparator<? super T> comparator) {
-    Collections.sort(myItems, comparator);
+    myItems.sort(comparator);
   }
 
   @NotNull

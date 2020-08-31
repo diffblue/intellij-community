@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.rebase;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -6,23 +6,39 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.vcs.log.VcsCommitMetadata;
 import git4idea.DialogManager;
+import git4idea.GitVcs;
 import git4idea.commands.GitImplBase;
+import git4idea.config.GitConfigUtil;
+import git4idea.history.GitLogUtil;
+import git4idea.i18n.GitBundle;
+import git4idea.rebase.interactive.GitRebaseTodoModel;
+import git4idea.rebase.interactive.GitRewordedCommitMessageProvider;
+import git4idea.rebase.interactive.RewordedCommitMessageMapping;
+import git4idea.rebase.interactive.dialog.GitInteractiveRebaseDialog;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 import static com.intellij.CommonBundle.getCancelButtonText;
 import static com.intellij.CommonBundle.getOkButtonText;
 import static com.intellij.openapi.ui.Messages.getQuestionIcon;
 import static git4idea.DialogManager.showOkCancelDialog;
-import static git4idea.rebase.GitRebaseEditorMain.ERROR_EXIT_CODE;
+import static git4idea.rebase.interactive.GitRebaseTodoModelConverterKt.convertToEntries;
 
 /**
- * The handler for rebase editor request. The handler shows the {@link GitRebaseEditor}
+ * The handler for rebase editor request. The handler shows the {@link GitInteractiveRebaseDialog}
  * dialog with the specified file. If user accepts the changes, it saves file and returns 0,
  * otherwise it just returns error code.
  */
@@ -39,22 +55,31 @@ public class GitInteractiveRebaseEditorHandler implements GitRebaseEditorHandler
 
   private boolean myCommitListCancelled;
   private boolean myUnstructuredEditorCancelled;
+  private final @NotNull GitRewordedCommitMessageProvider myRewordedCommitMessageProvider;
 
   public GitInteractiveRebaseEditorHandler(@NotNull Project project, @NotNull VirtualFile root) {
     myProject = project;
     myRoot = root;
+    myRewordedCommitMessageProvider = GitRewordedCommitMessageProvider.getInstance(project);
   }
 
   @Override
-  public int editCommits(@NotNull String path) {
+  public int editCommits(@NotNull File file) {
     try {
       if (myRebaseEditorShown) {
-        myUnstructuredEditorCancelled = !handleUnstructuredEditor(path);
-        return myUnstructuredEditorCancelled ? ERROR_EXIT_CODE : 0;
+        String encoding = GitConfigUtil.getCommitEncoding(myProject, myRoot);
+        String originalMessage = FileUtil.loadFile(file, encoding);
+        String newMessage = myRewordedCommitMessageProvider.getRewordedCommitMessage(myProject, myRoot, originalMessage);
+        if (newMessage == null) {
+          myUnstructuredEditorCancelled = !handleUnstructuredEditor(file);
+          return myUnstructuredEditorCancelled ? ERROR_EXIT_CODE : 0;
+        }
+        FileUtil.writeToFile(file, newMessage.getBytes(Charset.forName(encoding)));
+        return 0;
       }
       else {
         setRebaseEditorShown();
-        boolean success = handleInteractiveEditor(path);
+        boolean success = handleInteractiveEditor(file);
         if (success) {
           return 0;
         }
@@ -64,21 +89,34 @@ public class GitInteractiveRebaseEditorHandler implements GitRebaseEditorHandler
         }
       }
     }
+    catch (VcsException e) {
+      LOG.error("Failed to load commit details for commits from git rebase file: " + file, e);
+      return ERROR_EXIT_CODE;
+    }
     catch (Exception e) {
-      LOG.error("Failed to edit git rebase file: " + path, e);
+      LOG.error("Failed to edit git rebase file: " + file, e);
       return ERROR_EXIT_CODE;
     }
   }
 
-  protected boolean handleUnstructuredEditor(@NotNull String path) throws IOException {
-    return GitImplBase.loadFileAndShowInSimpleEditor(myProject, myRoot, path, "Git Commit Message", "Continue Rebasing");
+  protected boolean handleUnstructuredEditor(@NotNull File file) throws IOException {
+    return GitImplBase.loadFileAndShowInSimpleEditor(
+      myProject,
+      myRoot,
+      file,
+      GitBundle.getString("rebase.interactive.edit.commit.message.dialog.title"),
+      GitBundle.getString("rebase.interactive.edit.commit.message.ok.action.title")
+    );
   }
 
-  protected boolean handleInteractiveEditor(@NotNull String path) throws IOException {
-    GitInteractiveRebaseFile rebaseFile = new GitInteractiveRebaseFile(myProject, myRoot, path);
+  protected boolean handleInteractiveEditor(@NotNull File file) throws IOException, VcsException {
+    GitInteractiveRebaseFile rebaseFile = new GitInteractiveRebaseFile(myProject, myRoot, file);
     try {
       List<GitRebaseEntry> entries = rebaseFile.load();
-      List<GitRebaseEntry> newEntries = showInteractiveRebaseEditor(entries);
+      if (ContainerUtil.findInstance(ContainerUtil.map(entries, it -> it.getAction()), GitRebaseEntry.Action.Other.class) != null) {
+        return handleUnstructuredEditor(file);
+      }
+      List<? extends GitRebaseEntry> newEntries = collectNewEntries(entries);
       if (newEntries != null) {
         rebaseFile.save(newEntries);
         return true;
@@ -94,26 +132,77 @@ public class GitInteractiveRebaseEditorHandler implements GitRebaseEditorHandler
   }
 
   @Nullable
-  private List<GitRebaseEntry> showInteractiveRebaseEditor(@NotNull List<GitRebaseEntry> entries) {
-    Ref<List<GitRebaseEntry>> newText = Ref.create();
+  protected List<? extends GitRebaseEntry> collectNewEntries(@NotNull List<GitRebaseEntry> entries) throws VcsException {
+    Ref<List<? extends GitRebaseEntry>> newText = Ref.create();
+    List<GitRebaseEntryWithDetails> entriesWithDetails = loadDetailsForEntries(entries);
+
     ApplicationManager.getApplication().invokeAndWait(() -> {
-      GitRebaseEditor editor = new GitRebaseEditor(myProject, myRoot, entries);
-      DialogManager.show(editor);
-      if (editor.isOK()) {
-        newText.set(editor.getEntries());
-      }
+      newText.set(showInteractiveRebaseDialog(entriesWithDetails));
     });
     return newText.get();
   }
 
+  @Nullable
+  private List<? extends GitRebaseEntry> showInteractiveRebaseDialog(List<GitRebaseEntryWithDetails> entriesWithDetails) {
+    GitInteractiveRebaseDialog<GitRebaseEntryWithDetails> editor = new GitInteractiveRebaseDialog<>(myProject, myRoot, entriesWithDetails);
+    DialogManager.show(editor);
+    if (editor.isOK()) {
+      GitRebaseTodoModel<GitRebaseEntryWithDetails> rebaseTodoModel = editor.getModel();
+      processModel(rebaseTodoModel);
+      return convertToEntries(rebaseTodoModel);
+    }
+    return null;
+  }
+
+  protected void processModel(@NotNull GitRebaseTodoModel<? extends GitRebaseEntryWithDetails> rebaseTodoModel) {
+    processModel(rebaseTodoModel, (entry) -> entry.getCommitDetails().getFullMessage());
+  }
+
+  protected <T extends GitRebaseEntry> void processModel(
+    @NotNull GitRebaseTodoModel<T> rebaseTodoModel,
+    @NotNull Function<T, String> fullMessageGetter
+  ) {
+    List<RewordedCommitMessageMapping> messages = new ArrayList<>();
+    for (GitRebaseTodoModel.Element<T> element : rebaseTodoModel.getElements()) {
+      if (element.getType() instanceof GitRebaseTodoModel.Type.NonUnite.KeepCommit.Reword) {
+        GitRebaseTodoModel.Type.NonUnite.KeepCommit.Reword type = (GitRebaseTodoModel.Type.NonUnite.KeepCommit.Reword)element.getType();
+        messages.add(RewordedCommitMessageMapping.fromMapping(
+          fullMessageGetter.apply(element.getEntry()),
+          type.getNewMessage()
+        ));
+      }
+    }
+    myRewordedCommitMessageProvider.save(myProject, myRoot, messages);
+  }
+
+  @NotNull
+  private List<GitRebaseEntryWithDetails> loadDetailsForEntries(@NotNull List<GitRebaseEntry> entries) throws VcsException {
+    List<? extends VcsCommitMetadata> details = GitLogUtil.collectMetadata(
+      myProject,
+      GitVcs.getInstance(myProject),
+      myRoot,
+      ContainerUtil.map(entries, entry -> entry.getCommit())
+    );
+    List<GitRebaseEntryWithDetails> entriesWithDetails = new ArrayList<>();
+    for (int i = 0; i < entries.size(); i++) {
+      entriesWithDetails.add(new GitRebaseEntryWithDetails(entries.get(i), details.get(i)));
+    }
+    return entriesWithDetails;
+  }
+
   private boolean confirmNoopRebase() {
     LOG.info("Noop situation while rebasing " + myRoot);
-    String message = "There are no commits to rebase because the current branch is directly below the base branch, " +
-                     "or they point to the same commit (the 'noop' situation).\n" +
-                     "Do you want to continue (this will reset the current branch to the base branch)?";
     Ref<Boolean> result = Ref.create(false);
     ApplicationManager.getApplication().invokeAndWait(() -> result.set(
-      Messages.OK == showOkCancelDialog(myProject, message, "Git Rebase", getOkButtonText(), getCancelButtonText(), getQuestionIcon())));
+      Messages.OK == showOkCancelDialog(
+        myProject,
+        GitBundle.message("rebase.interactive.noop.dialog.text"),
+        GitBundle.getString("rebase.interactive.noop.dialog.title"),
+        getOkButtonText(),
+        getCancelButtonText(),
+        getQuestionIcon()
+      )
+    ));
     return result.get();
   }
 

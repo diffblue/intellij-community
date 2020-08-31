@@ -20,6 +20,8 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcsUtil.VcsFileUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.zmlx.hg4idea.HgBundle;
+import org.zmlx.hg4idea.HgDisposable;
 import org.zmlx.hg4idea.execution.HgCommandExecutor;
 import org.zmlx.hg4idea.util.HgUtil;
 
@@ -48,7 +50,7 @@ public class HgAddCommand {
 
   public void addWithProgress(final Collection<VirtualFile> files) {
     if (files.size() >= HgUtil.MANY_FILES) {
-      new Task.Backgroundable(myProject, "Adding Files to Mercurial", true) {
+      new Task.Backgroundable(myProject, HgBundle.message("hg4idea.add.progress"), true) {
         @Override
         public void run(@NotNull ProgressIndicator indicator) {
           indicator.setIndeterminate(false);
@@ -57,7 +59,7 @@ public class HgAddCommand {
       }.queue();
     }
     else {
-      BackgroundTaskUtil.executeOnPooledThread(myProject, () -> executeInCurrentThread(files));
+      BackgroundTaskUtil.executeOnPooledThread(HgDisposable.getInstance(myProject), () -> executeInCurrentThread(files));
     }
   }
 
@@ -67,7 +69,7 @@ public class HgAddCommand {
       if (indicator != null) {
         if (indicator.isCanceled()) return;
         indicator.setFraction(0);
-        indicator.setText2("Adding files to " + entry.getKey().getPresentableUrl());
+        indicator.setText2(HgBundle.message("hg4idea.add.files.progress", entry.getKey().getPresentableUrl()));
       }
       addFilesSynchronously(entry.getKey(), entry.getValue(), indicator);
     }

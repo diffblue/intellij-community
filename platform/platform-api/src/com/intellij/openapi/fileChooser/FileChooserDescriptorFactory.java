@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileChooser;
 
 import com.intellij.openapi.fileTypes.FileType;
@@ -6,9 +6,11 @@ import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vfs.VirtualFile;
-import org.jetbrains.annotations.ApiStatus;
 
-public class FileChooserDescriptorFactory {
+/**
+ * Common variants of {@link FileChooserDescriptor}.
+ */
+public final class FileChooserDescriptorFactory {
   private FileChooserDescriptorFactory() { }
 
   public static FileChooserDescriptor createAllButJarContentsDescriptor() {
@@ -45,7 +47,8 @@ public class FileChooserDescriptorFactory {
   }
 
   public static FileChooserDescriptor createSingleFileDescriptor(final FileType fileType) {
-    return new FileChooserDescriptor(true, false, false, false, false, false).withFileFilter(file -> FileTypeRegistry.getInstance().isFileOfType(file, fileType));
+    return new FileChooserDescriptor(true, false, false, false, false, false)
+      .withFileFilter(file -> FileTypeRegistry.getInstance().isFileOfType(file, fileType));
   }
 
   public static FileChooserDescriptor createSingleFileDescriptor(final String extension) {
@@ -66,16 +69,7 @@ public class FileChooserDescriptorFactory {
   }
 
   public static FileChooserDescriptor createSingleFileOrFolderDescriptor(final FileType fileType) {
-    return new FileChooserDescriptor(true, true, false, false, false, false).withFileFilter(file -> FileTypeRegistry.getInstance().isFileOfType(file, fileType));
-  }
-
-  /**
-   * @deprecated not very useful (to be removed in IDEA 15)
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2015")
-  @SuppressWarnings("UnusedDeclaration")
-  public static FileChooserDescriptor getDirectoryChooserDescriptor(String objectName) {
-    return createSingleFolderDescriptor().withTitle("Select " + objectName);
+    return new FileChooserDescriptor(true, true, false, false, false, false)
+      .withFileFilter(file -> FileTypeRegistry.getInstance().isFileOfType(file, fileType));
   }
 }

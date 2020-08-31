@@ -16,7 +16,6 @@
 package com.intellij.usageView;
 
 import com.intellij.injected.editor.VirtualFileWindow;
-import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
@@ -28,9 +27,10 @@ import org.jetbrains.annotations.Nullable;
 
 public class UsageInfo {
   public static final UsageInfo[] EMPTY_ARRAY = new UsageInfo[0];
-  private static final Logger LOG = Logger.getInstance("#com.intellij.usageView.UsageInfo");
+  private static final Logger LOG = Logger.getInstance(UsageInfo.class);
   private final SmartPsiElementPointer<?> mySmartPointer;
   private final SmartPsiFileRange myPsiFileRange;
+  @Nullable private Class<? extends PsiReference> myReferenceClass = null;
 
   public final boolean isNonCodeUsage;
   protected boolean myDynamicUsage;
@@ -89,9 +89,7 @@ public class UsageInfo {
     if (file != null &&
         !isNullOrBinary &&
         (effectiveStart != element.getTextOffset() - elementRange.getStartOffset() || effectiveEnd != elementRange.getLength())) {
-      TextRange rangeToStore = InjectedLanguageManager.getInstance(project).isInjectedFragment(file)
-                               ? elementRange
-                               : TextRange.create(effectiveStart, effectiveEnd).shiftRight(elementRange.getStartOffset());
+      TextRange rangeToStore = TextRange.create(effectiveStart, effectiveEnd).shiftRight(elementRange.getStartOffset());
       myPsiFileRange = smartPointerManager.createSmartPsiFileRangePointer(file, rangeToStore);
     }
     else {
@@ -104,10 +102,19 @@ public class UsageInfo {
                    @Nullable SmartPsiFileRange psiFileRange,
                    boolean dynamicUsage,
                    boolean nonCodeUsage) {
+    this(smartPointer, psiFileRange, dynamicUsage, nonCodeUsage, null);
+  }
+
+  public UsageInfo(@NotNull SmartPsiElementPointer<?> smartPointer,
+                   @Nullable SmartPsiFileRange psiFileRange,
+                   boolean dynamicUsage,
+                   boolean nonCodeUsage,
+                   @Nullable Class<? extends PsiReference> referenceClass) {
     myDynamicUsage = dynamicUsage;
     isNonCodeUsage = nonCodeUsage;
     myPsiFileRange = psiFileRange;
     mySmartPointer = smartPointer;
+    myReferenceClass = referenceClass;
   }
 
   // in case of find file by name, not by text inside. Since it can be a binary file, do not query for text offsets.
@@ -129,6 +136,7 @@ public class UsageInfo {
 
   public UsageInfo(@NotNull PsiReference reference) {
     this(reference.getElement(), reference.getRangeInElement().getStartOffset(), reference.getRangeInElement().getEndOffset());
+    myReferenceClass = reference.getClass();
     if (reference instanceof PsiPolyVariantReference) {
       myDynamicUsage = ((PsiPolyVariantReference)reference).multiResolve(false).length == 0;
     }
@@ -139,6 +147,7 @@ public class UsageInfo {
 
   public UsageInfo(@NotNull PsiQualifiedReferenceElement reference) {
     this((PsiElement)reference);
+    myReferenceClass = reference.getClass();
   }
 
   public UsageInfo(@NotNull PsiElement element) {
@@ -160,6 +169,10 @@ public class UsageInfo {
 
   public void setDynamicUsage(boolean dynamicUsage) {
     myDynamicUsage = dynamicUsage;
+  }
+
+  public @Nullable Class<? extends PsiReference> getReferenceClass() {
+    return myReferenceClass;
   }
 
   @Nullable
@@ -319,7 +332,7 @@ public class UsageInfo {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!getClass().equals(o.getClass())) return false;
+    if (o == null || !getClass().equals(o.getClass())) return false;
 
     final UsageInfo usageInfo = (UsageInfo)o;
 
@@ -371,6 +384,6 @@ public class UsageInfo {
     TextRange range = segment == null ? null : TextRange.create(segment);
     SmartPsiFileRange psiFileRange = range == null ? null : smartPointerManager.createSmartPsiFileRangePointer(containingFile, range);
     SmartPsiElementPointer<PsiElement> pointer = element == null || !isValid() ? null : smartPointerManager.createSmartPsiElementPointer(element);
-    return pointer == null ? null : new UsageInfo(pointer, psiFileRange, isDynamicUsage(), isNonCodeUsage());
+    return pointer == null ? null : new UsageInfo(pointer, psiFileRange, isDynamicUsage(), isNonCodeUsage(), getReferenceClass());
   }
 }

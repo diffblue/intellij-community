@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.lang.jvm.JvmClass;
@@ -24,7 +24,6 @@ import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.util.ConcurrencyUtil;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.messages.MessageBus;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -32,9 +31,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * @author max
- */
 public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
   private static final Logger LOG = Logger.getInstance(JavaPsiFacadeImpl.class);
 
@@ -47,34 +43,18 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
   private final AtomicNotNullLazyValue<JvmFacadeImpl> myJvmFacade;
   private final JvmPsiConversionHelper myConversionHelper;
 
-  public JavaPsiFacadeImpl(Project project,
-                           PsiManager psiManager,
-                           JavaFileManager javaFileManager,
-                           MessageBus bus) {
+  public JavaPsiFacadeImpl(Project project) {
     myProject = project;
-    myFileManager = javaFileManager;
+    myFileManager = JavaFileManager.getInstance(myProject);
     myConstantEvaluationHelper = new PsiConstantEvaluationHelperImpl();
     myJvmFacade = AtomicNotNullLazyValue.createValue(() -> (JvmFacadeImpl)JvmFacade.getInstance(project));
     myConversionHelper = JvmPsiConversionHelper.getInstance(myProject);
 
-    final PsiModificationTracker modificationTracker = psiManager.getModificationTracker();
-
-    if (bus != null) {
-      bus.connect().subscribe(PsiModificationTracker.TOPIC, new PsiModificationTracker.Listener() {
-        private long lastTimeSeen = -1L;
-
-        @Override
-        public void modificationCountChanged() {
-          myClassCache.clear();
-          final long now = modificationTracker.getJavaStructureModificationCount();
-          if (lastTimeSeen != now) {
-            lastTimeSeen = now;
-            myPackageCache.clear();
-            myModuleCache.clear();
-          }
-        }
-      });
-    }
+    project.getMessageBus().connect().subscribe(PsiModificationTracker.TOPIC, () -> {
+      myClassCache.clear();
+      myPackageCache.clear();
+      myModuleCache.clear();
+    });
 
     DummyHolderFactory.setFactory(new JavaDummyHolderFactory());
   }
@@ -109,7 +89,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
       return null;
     }
 
-    List<PsiElementFinder> finders = finders();
+    List<PsiElementFinder> finders = filteredFinders();
     Condition<PsiClass> classesFilter = getFilterFromFinders(scope, finders);
 
     for (PsiElementFinder finder : finders) {
@@ -122,8 +102,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     return null;
   }
 
-  @NotNull
-  private PsiClass[] findClassesInDumbMode(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+  private PsiClass @NotNull [] findClassesInDumbMode(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
     final String packageName = StringUtil.getPackageName(qualifiedName);
     final PsiPackage pkg = findPackage(packageName);
     final String className = StringUtil.getShortName(qualifiedName);
@@ -144,8 +123,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
   }
 
   @Override
-  @NotNull
-  public PsiClass[] findClasses(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+  public PsiClass @NotNull [] findClasses(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
     List<PsiClass> allClasses = findClassesWithJvmFacade(qualifiedName, scope);
     return allClasses.isEmpty() ? PsiClass.EMPTY_ARRAY : allClasses.toArray(PsiClass.EMPTY_ARRAY);
   }
@@ -178,7 +156,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     if (shouldUseSlowResolve()) {
       return Arrays.asList(findClassesInDumbMode(qualifiedName, scope));
     }
-    List<PsiElementFinder> finders = finders();
+    List<PsiElementFinder> finders = filteredFinders();
     Condition<PsiClass> classesFilter = getFilterFromFinders(scope, finders);
 
     List<PsiClass> result = null;
@@ -207,11 +185,6 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
   private boolean shouldUseSlowResolve() {
     DumbService dumbService = DumbService.getInstance(getProject());
     return dumbService.isDumb() && dumbService.isAlternativeResolveEnabled();
-  }
-
-  @NotNull
-  private List<PsiElementFinder> finders() {
-    return PsiElementFinder.EP.getPoint(myProject).getExtensionList();
   }
 
   @Override
@@ -253,7 +226,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
 
   @NotNull
   private List<PsiElementFinder> filteredFinders() {
-    return DumbService.getInstance(getProject()).filterByDumbAwareness(finders());
+    return DumbService.getInstance(getProject()).filterByDumbAwareness(PsiElementFinder.EP.getPoint(myProject).getExtensionList());
   }
 
   @Override
@@ -283,8 +256,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     return result;
   }
 
-  @NotNull
-  public PsiClass[] getClasses(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
+  public PsiClass @NotNull [] getClasses(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
     List<PsiElementFinder> finders = filteredFinders();
     Condition<PsiClass> classesFilter = getFilterFromFinders(scope, finders);
 
@@ -301,7 +273,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
 
   private static void filterClassesAndAppend(PsiElementFinder finder,
                                              @Nullable Condition<? super PsiClass> classesFilter,
-                                             @NotNull PsiClass[] classes,
+                                             PsiClass @NotNull [] classes,
                                              @NotNull List<? super PsiClass> result) {
     for (PsiClass psiClass : classes) {
       if (psiClass == null) {
@@ -314,8 +286,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     }
   }
 
-  @NotNull
-  public PsiFile[] getPackageFiles(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
+  public PsiFile @NotNull [] getPackageFiles(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
     Condition<PsiFile> filter = null;
 
     for (PsiElementFinder finder : filteredFinders()) {
@@ -348,7 +319,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
 
   public boolean processPackageDirectories(@NotNull PsiPackage psiPackage,
                                            @NotNull GlobalSearchScope scope,
-                                           @NotNull Processor<PsiDirectory> consumer,
+                                           @NotNull Processor<? super PsiDirectory> consumer,
                                            boolean includeLibrarySources) {
     for (PsiElementFinder finder : filteredFinders()) {
       if (!finder.processPackageDirectories(psiPackage, scope, consumer, includeLibrarySources)) {
@@ -358,8 +329,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     return true;
   }
 
-  @NotNull
-  public PsiPackage[] getSubPackages(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
+  public PsiPackage @NotNull [] getSubPackages(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
     LinkedHashMap<String, PsiPackage> result = new LinkedHashMap<>();
     for (PsiElementFinder finder : filteredFinders()) {
       // Ensure uniqueness of names in the returned list of subpackages. If a plugin PsiElementFinder
@@ -410,7 +380,7 @@ public class JavaPsiFacadeImpl extends JavaPsiFacadeEx {
     if (!(file2 instanceof PsiClassOwner)) return false;
     String package1 = ((PsiClassOwner) file1).getPackageName();
     String package2 = ((PsiClassOwner) file2).getPackageName();
-    return Comparing.equal(package1, package2);
+    return Objects.equals(package1, package2);
   }
 
   @Override

@@ -18,18 +18,18 @@ import com.intellij.vcs.log.Hash;
 import git4idea.GitUtil;
 import git4idea.branch.GitBranchUiHandlerImpl;
 import git4idea.branch.GitSmartOperationDialog;
-import git4idea.changes.GitChangeUtils;
 import git4idea.commands.Git;
 import git4idea.commands.GitCommandResult;
 import git4idea.commands.GitLocalChangesWouldBeOverwrittenDetector;
 import git4idea.config.GitVcsSettings;
+import git4idea.config.GitSaveChangesPolicy;
 import git4idea.repo.GitRepository;
 import git4idea.util.GitPreservingProcess;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static git4idea.GitUtil.updateAndRefreshVfs;
+import static git4idea.GitUtil.*;
 import static git4idea.commands.GitLocalChangesWouldBeOverwrittenDetector.Operation.RESET;
 
 public class GitResetOperation {
@@ -66,7 +66,7 @@ public class GitResetOperation {
         String target = entry.getValue().asString();
         GitLocalChangesWouldBeOverwrittenDetector detector = new GitLocalChangesWouldBeOverwrittenDetector(root, RESET);
 
-        Collection<Change> changes = GitChangeUtils.getDiffWithWorkingTree(repository, target, false);
+        Hash startHash = getHead(repository);
 
         GitCommandResult result = myGit.reset(repository, myMode, target, detector);
         if (!result.success() && detector.wasMessageDetected()) {
@@ -77,7 +77,7 @@ public class GitResetOperation {
         }
         results.put(repository, result);
 
-        updateAndRefreshVfs(repository, changes);
+        updateAndRefreshChangedVfs(repository, startHash);
         VcsDirtyScopeManager.getInstance(myProject).dirDirtyRecursively(root);
       }
     }
@@ -92,7 +92,7 @@ public class GitResetOperation {
                                                                                  "reset", "&Hard Reset");
     if (choice == GitSmartOperationDialog.Choice.SMART) {
       final Ref<GitCommandResult> result = Ref.create();
-      GitVcsSettings.UpdateChangesPolicy saveMethod = GitVcsSettings.getInstance(myProject).updateChangesPolicy();
+      GitSaveChangesPolicy saveMethod = GitVcsSettings.getInstance(myProject).getSaveChangesPolicy();
       new GitPreservingProcess(myProject, myGit, Collections.singleton(repository.getRoot()), "reset", target,
                                saveMethod, myIndicator,
                                () -> result.set(myGit.reset(repository, myMode, target))).execute();
@@ -127,7 +127,7 @@ public class GitResetOperation {
                                         + "<br/>but failed for " + joinRepos(errors.keySet()) + ": <br/>" + formErrorReport(errors));
     }
     else {
-      myNotifier.notifyError("Reset Failed", formErrorReport(errors));
+      myNotifier.notifyError("Reset Failed", formErrorReport(errors), true);
     }
   }
 

@@ -1,25 +1,11 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.changeSignature;
 
 import com.intellij.codeInsight.completion.JavaCompletionUtil;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupManager;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.VariableKind;
@@ -57,7 +43,7 @@ public class JavaParameterTableModel extends ParameterTableModelBase<ParameterIn
     this(typeContext, defaultValueContext,
          new JavaTypeColumn(typeContext.getProject()),
          new JavaNameColumn(typeContext.getProject()),
-         new DefaultValueColumn<ParameterInfoImpl, ParameterTableModelItemBase<ParameterInfoImpl>>(typeContext.getProject(), StdFileTypes.JAVA) {
+         new DefaultValueColumn<ParameterInfoImpl, ParameterTableModelItemBase<ParameterInfoImpl>>(typeContext.getProject(), JavaFileType.INSTANCE) {
            @Override
            public TableCellEditor doCreateEditor(ParameterTableModelItemBase<ParameterInfoImpl> item) {
              return new EditorWithExpectedType(typeContext);
@@ -80,7 +66,7 @@ public class JavaParameterTableModel extends ParameterTableModelBase<ParameterIn
   @Override
   protected ParameterTableModelItemBase<ParameterInfoImpl> createRowItem(@Nullable ParameterInfoImpl parameterInfo) {
     if (parameterInfo == null) {
-      parameterInfo = new ParameterInfoImpl(-1);
+      parameterInfo = ParameterInfoImpl.createNew();
     }
     JavaCodeFragmentFactory f = JavaCodeFragmentFactory.getInstance(myProject);
     final PsiTypeCodeFragment paramTypeCodeFragment =
@@ -194,7 +180,7 @@ public class JavaParameterTableModel extends ParameterTableModelBase<ParameterIn
 
   public static class JavaTypeColumn extends TypeColumn<ParameterInfoImpl, ParameterTableModelItemBase<ParameterInfoImpl>> {
     public JavaTypeColumn(Project project) {
-      super(project, StdFileTypes.JAVA);
+      super(project, JavaFileType.INSTANCE);
     }
 
     @Override

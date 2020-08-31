@@ -3,6 +3,7 @@ package org.editorconfig.configmanagement.extended;
 
 import com.intellij.application.options.CodeStyle;
 import com.intellij.application.options.codeStyle.properties.AbstractCodeStylePropertyMapper;
+import com.intellij.application.options.codeStyle.properties.CodeStyleFieldAccessor;
 import com.intellij.application.options.codeStyle.properties.CodeStylePropertyAccessor;
 import com.intellij.application.options.codeStyle.properties.GeneralCodeStylePropertyMapper;
 import com.intellij.lang.Language;
@@ -30,10 +31,12 @@ import org.editorconfig.configmanagement.EditorConfigNavigationActionsFactory;
 import org.editorconfig.core.EditorConfig;
 import org.editorconfig.core.EditorConfigException;
 import org.editorconfig.core.ParsingException;
+import org.editorconfig.language.messages.EditorConfigBundle;
 import org.editorconfig.plugincomponents.SettingsProviderComponent;
 import org.editorconfig.settings.EditorConfigSettings;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -47,7 +50,9 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
   private final static Map<String,List<String>> DEPENDENCIES = new HashMap<>();
 
   private final static Logger LOG = Logger.getInstance(EditorConfigCodeStyleSettingsModifier.class);
-  public static final EmptyProgressIndicator EMPTY_PROGRESS_INDICATOR = new EmptyProgressIndicator();
+  public static final ProgressIndicator EMPTY_PROGRESS_INDICATOR = new EmptyProgressIndicator();
+
+  private static boolean ourEnabledInTests;
 
   static {
     addDependency("indent_size", "continuation_indent_size");
@@ -60,7 +65,8 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
   @Override
   public boolean modifySettings(@NotNull TransientCodeStyleSettings settings, @NotNull PsiFile psiFile) {
     final VirtualFile file = psiFile.getVirtualFile();
-    if (Utils.isFullIntellijSettingsSupport() && file != null) {
+    if (Utils.isFullIntellijSettingsSupport() && file != null &&
+        (!ApplicationManager.getApplication().isUnitTestMode() || isEnabledInTests())) {
       final Project project = psiFile.getProject();
       if (!project.isDisposed() && Utils.isEnabled(settings)) {
         // Get editorconfig settings
@@ -71,7 +77,10 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
               // Apply editorconfig settings for the current editor
               if (applyCodeStyleSettings(context)) {
                 settings.addDependencies(context.getEditorConfigFiles());
-                EditorConfigNavigationActionsFactory.getInstance(psiFile.getVirtualFile()).updateEditorConfigFilePaths(context.getFilePaths());
+                ObjectUtils.consumeIfNotNull(
+                  EditorConfigNavigationActionsFactory.getInstance(psiFile),
+                  navigationFactory -> navigationFactory.updateEditorConfigFilePaths(context.getFilePaths())
+                );
                 return true;
               }
               return false;
@@ -138,7 +147,7 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
 
   @Override
   public String getName() {
-    return "EditorConfig";
+    return EditorConfigBundle.message("editorconfig");
   }
 
   private static boolean processOptions(@NotNull MyContext context,
@@ -164,6 +173,12 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
           }
         }
         isModified |= accessor.setFromString(val);
+        if (accessor instanceof CodeStyleFieldAccessor) {
+          Object dataObject = ((CodeStyleFieldAccessor<?,?>)accessor).getDataObject();
+          if (dataObject instanceof CommonCodeStyleSettings.IndentOptions) {
+            ((CommonCodeStyleSettings.IndentOptions)dataObject).setOverrideLanguageOptions(true);
+          }
+        }
         processed.add(intellijName);
       }
     }
@@ -200,8 +215,13 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
     throws EditorConfigException {
     try {
       String filePath = Utils.getFilePath(project, psiFile.getVirtualFile());
-      final Set<String> rootDirs = SettingsProviderComponent.getInstance().getRootDirs(project);
-      context.setOptions(new EditorConfig().getProperties(filePath, rootDirs, context));
+      if (filePath != null) {
+        final Set<String> rootDirs = SettingsProviderComponent.getInstance().getRootDirs(project);
+        context.setOptions(new EditorConfig().getProperties(filePath, rootDirs, context));
+      }
+      else {
+        LOG.error("No file path for " + psiFile.getName());
+      }
     }
     catch (ParsingException pe) {
       // Parsing exceptions may occur with incomplete files which is a normal case when .editorconfig is being edited.
@@ -257,5 +277,14 @@ public class EditorConfigCodeStyleSettingsModifier implements CodeStyleSettingsM
       EditorConfigSettings editorConfigSettings = settings.getCustomSettings(EditorConfigSettings.class);
       editorConfigSettings.ENABLED = false;
     };
+  }
+
+  private static boolean isEnabledInTests() {
+    return ourEnabledInTests;
+  }
+
+  @TestOnly
+  public static void setEnabledInTests(boolean isEnabledInTests) {
+    ourEnabledInTests = isEnabledInTests;
   }
 }

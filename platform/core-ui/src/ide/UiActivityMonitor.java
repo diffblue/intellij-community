@@ -8,11 +8,15 @@ import com.intellij.openapi.util.BusyObject;
 import org.jetbrains.annotations.NotNull;
 
 public abstract class UiActivityMonitor {
-  @NotNull
-  public abstract BusyObject getBusy(@NotNull Project project, @NotNull UiActivity ... toWatch);
+  public static UiActivityMonitor getInstance() {
+    return ServiceManager.getService(UiActivityMonitor.class);
+  }
 
   @NotNull
-  public abstract BusyObject getBusy(@NotNull UiActivity ... toWatch);
+  public abstract BusyObject getBusy(@NotNull Project project, UiActivity @NotNull ... toWatch);
+
+  @NotNull
+  public abstract BusyObject getBusy(UiActivity @NotNull ... toWatch);
 
   public abstract void addActivity(@NotNull Project project, @NotNull UiActivity activity);
 
@@ -29,9 +33,4 @@ public abstract class UiActivityMonitor {
   public abstract void clear();
 
   public abstract void setActive(boolean active);
-
-  public static UiActivityMonitor getInstance() {
-    return ServiceManager.getService(UiActivityMonitor.class);
-  }
-
 }

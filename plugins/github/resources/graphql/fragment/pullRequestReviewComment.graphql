@@ -1,6 +1,8 @@
 fragment pullRequestReviewComment on PullRequestReviewComment {
     ...comment
+    databaseId
     url
+    state
     path
     commit {
         ...commitHash
@@ -17,4 +19,6 @@ fragment pullRequestReviewComment on PullRequestReviewComment {
     pullRequestReview {
         ...nodeInfo
     }
+    viewerCanDelete
+    viewerCanUpdate
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.util;
 
 import com.intellij.openapi.util.text.StringUtil;
@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
  * @deprecated Credentials MUST BE stored in ({@link com.intellij.ide.passwordSafe.PasswordSafe})
  */
 @Deprecated
-public class PasswordUtil {
+public final class PasswordUtil {
   private PasswordUtil() { }
 
   // weak encryption just to avoid plain text passwords in text files
@@ -27,7 +27,7 @@ public class PasswordUtil {
   }
 
   @NotNull
-  public static String encodePassword(@Nullable char[] password) {
+  public static String encodePassword(char @Nullable [] password) {
     if (password == null) {
       return "";
     }
@@ -43,8 +43,7 @@ public class PasswordUtil {
     return password == null ? "" : new String(decodePasswordAsCharArray(password));
   }
 
-  @NotNull
-  public static char[] decodePasswordAsCharArray(@Nullable String password) throws NumberFormatException {
+  public static char @NotNull [] decodePasswordAsCharArray(@Nullable String password) throws NumberFormatException {
     if (StringUtil.isEmpty(password)) {
       return ArrayUtilRt.EMPTY_CHAR_ARRAY;
     }

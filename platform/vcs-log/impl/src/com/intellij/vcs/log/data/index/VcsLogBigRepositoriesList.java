@@ -1,11 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.data.index;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.*;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.EventDispatcher;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.XCollection;
 import org.jetbrains.annotations.NotNull;
@@ -13,8 +12,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.EventListener;
 import java.util.SortedSet;
+import java.util.TreeSet;
 
-@State(name = "Vcs.Log.Big.Repositories", storages = {@Storage(value = "vcs.log.big.repos.xml", roamingType = RoamingType.DISABLED)})
+@State(name = "Vcs.Log.Big.Repositories", storages = {@Storage(value = "vcs.log.big.repos.xml", roamingType = RoamingType.DISABLED)},
+  reportStatistic = false)
 public class VcsLogBigRepositoriesList implements PersistentStateComponent<VcsLogBigRepositoriesList.State> {
   @NotNull private final Object myLock = new Object();
   @NotNull private final EventDispatcher<Listener> myDispatcher = EventDispatcher.create(Listener.class);
@@ -39,7 +40,8 @@ public class VcsLogBigRepositoriesList implements PersistentStateComponent<VcsLo
     synchronized (myLock) {
       if (state.DIFF_RENAME_LIMIT_ONE) {
         myState = new State(state);
-      } else {
+      }
+      else {
         myState = new State();
         myState.DIFF_RENAME_LIMIT_ONE = true;
       }
@@ -86,7 +88,7 @@ public class VcsLogBigRepositoriesList implements PersistentStateComponent<VcsLo
 
   public static class State {
     @XCollection(elementName = "repository", valueAttributeName = "path")
-    public SortedSet<String> REPOSITORIES = ContainerUtil.newTreeSet();
+    public SortedSet<String> REPOSITORIES = new TreeSet<>();
     @Attribute("diff-rename-limit-one")
     public boolean DIFF_RENAME_LIMIT_ONE = false;
 
@@ -94,7 +96,8 @@ public class VcsLogBigRepositoriesList implements PersistentStateComponent<VcsLo
     }
 
     public State(@NotNull State state) {
-      REPOSITORIES = ContainerUtil.newTreeSet(state.REPOSITORIES);
+      REPOSITORIES = new TreeSet<>(state.REPOSITORIES);
+      DIFF_RENAME_LIMIT_ONE = state.DIFF_RENAME_LIMIT_ONE;
     }
   }
 

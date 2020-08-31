@@ -4,6 +4,7 @@ package com.intellij.openapi.diff.impl.dir.actions;
 import com.intellij.ide.diff.DirDiffSettings;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
+import com.intellij.openapi.diff.DiffBundle;
 import com.intellij.openapi.diff.impl.dir.DirDiffTableModel;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.util.ui.JBUI;
@@ -45,12 +46,13 @@ public class ChangeCompareModeGroup extends ComboBoxAction implements ShortcutPr
     super.update(e);
     getTemplatePresentation().setText(mySettings.compareMode.getPresentableName());
     e.getPresentation().setText(mySettings.compareMode.getPresentableName());
+    e.getPresentation().setEnabledAndVisible(mySettings.showCompareModes);
   }
 
   @NotNull
   @Override
   public JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
-    final JLabel label = new JLabel("Compare by:");
+    final JLabel label = new JLabel(DiffBundle.message("compare.by"));
     label.setDisplayedMnemonicIndex(0);
     myButton = (JButton)super.createCustomComponent(presentation, place).getComponent(0);
     return JBUI.Panels.simplePanel(myButton)

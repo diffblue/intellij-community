@@ -6,6 +6,7 @@ import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -17,18 +18,10 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-public class UnpredictableBigDecimalConstructorCallInspection
-  extends BaseInspection {
+public class UnpredictableBigDecimalConstructorCallInspection extends BaseInspection {
 
   @SuppressWarnings("PublicField") public boolean ignoreReferences = true;
   @SuppressWarnings("PublicField") public boolean ignoreComplexLiterals = false;
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "unpredictable.big.decimal.constructor.call.display.name");
-  }
 
   @Override
   @NotNull
@@ -39,8 +32,7 @@ public class UnpredictableBigDecimalConstructorCallInspection
 
   @Override
   public JComponent createOptionsPanel() {
-    final MultipleCheckboxOptionsPanel optionsPanel =
-      new MultipleCheckboxOptionsPanel(this);
+    final MultipleCheckboxOptionsPanel optionsPanel = new MultipleCheckboxOptionsPanel(this);
     optionsPanel.addCheckbox(InspectionGadgetsBundle.message(
       "unpredictable.big.decimal.constructor.call.ignore.references.option"),
                              "ignoreReferences");
@@ -61,18 +53,22 @@ public class UnpredictableBigDecimalConstructorCallInspection
     if (arguments.length == 0) {
       return null;
     }
-    final PsiExpression firstArgument = arguments[0];
+    final PsiExpression firstArgument = PsiUtil.skipParenthesizedExprDown(arguments[0]);
     if (firstArgument instanceof PsiLiteralExpression) {
-      final String text = firstArgument.getText();
-      final char c = text.charAt(text.length() - 1);
-      if (c != 'd' && c != 'D' && c != 'f' && c != 'F') {
-        return new ReplaceDoubleArgumentWithStringFix("new BigDecimal(\"" + firstArgument.getText() + "\")");
-      }
+      return new ReplaceDoubleArgumentWithStringFix("new BigDecimal(\"" + getLiteralText((PsiLiteralExpression)firstArgument) + "\")");
     }
-    if (arguments.length == 1) {
+    if (arguments.length == 1 && firstArgument != null) {
       return new ReplaceDoubleArgumentWithStringFix("BigDecimal.valueOf(" + firstArgument.getText() + ')');
     }
     return null;
+  }
+
+  static String getLiteralText(PsiLiteralExpression firstArgument) {
+    final String text = firstArgument.getText();
+    final char c = text.charAt(text.length() - 1);
+    return c == 'd' || c == 'D' || c == 'f' || c == 'F'
+           ? text.substring(0, text.length() - 1)
+           : text;
   }
 
   private static class ReplaceDoubleArgumentWithStringFix extends InspectionGadgetsFix {
@@ -92,30 +88,37 @@ public class UnpredictableBigDecimalConstructorCallInspection
     @NotNull
     @Override
     public String getFamilyName() {
-      return "Replace with 'BigDecimal.valueOf()'";
+      return CommonQuickFixBundle.message("fix.replace.with.x", "BigDecimal.valueOf()");
     }
 
     @Override
     protected void doFix(Project project, ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiNewExpression newExpression = (PsiNewExpression)element.getParent();
+      if (!isStillValid(newExpression)) {
+        return;
+      }
       final PsiExpressionList argumentList = newExpression.getArgumentList();
       if (argumentList == null) {
         return;
       }
       final PsiExpression[] arguments = argumentList.getExpressions();
-      final PsiExpression firstArgument = arguments[0];
+      final PsiExpression firstArgument = PsiUtil.skipParenthesizedExprDown(arguments[0]);
       if (firstArgument instanceof PsiLiteralExpression) {
-        final String text = firstArgument.getText();
-        final char c = text.charAt(text.length() - 1);
-        if (c != 'd' && c != 'D' && c != 'f' && c != 'F') {
-          PsiReplacementUtil.replaceExpression(firstArgument, '"' + firstArgument.getText() + '"');
-          return;
-        }
+          PsiReplacementUtil.replaceExpression(firstArgument, '"' + getLiteralText((PsiLiteralExpression)firstArgument) + '"');
       }
-      if (arguments.length == 1) {
+      else if (arguments.length == 1 && firstArgument != null) {
         PsiReplacementUtil.replaceExpression(newExpression, "java.math.BigDecimal.valueOf(" + firstArgument.getText() + ')');
       }
+    }
+
+    private static boolean isStillValid(PsiNewExpression newExpression) {
+      final PsiMethod constructor = newExpression.resolveConstructor();
+      if (constructor == null) return false;
+      final PsiParameter[] parameters = constructor.getParameterList().getParameters();
+      if (parameters.length == 0) return false;
+      if (!PsiType.DOUBLE.equals(parameters[0].getType())) return false;
+      return true;
     }
   }
 
@@ -124,8 +127,7 @@ public class UnpredictableBigDecimalConstructorCallInspection
     return new UnpredictableBigDecimalConstructorCallVisitor();
   }
 
-  private class UnpredictableBigDecimalConstructorCallVisitor
-    extends BaseInspectionVisitor {
+  private class UnpredictableBigDecimalConstructorCallVisitor extends BaseInspectionVisitor {
 
     @Override
     public void visitNewExpression(PsiNewExpression expression) {

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.compiler.CompilerManagerImpl;
@@ -15,6 +15,7 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.impl.stores.IComponentStore;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl;
 import com.intellij.openapi.roots.CompilerModuleExtension;
@@ -23,10 +24,8 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.openapi.vfs.VfsUtil;
-import com.intellij.openapi.vfs.VfsUtilCore;
-import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.*;
+import com.intellij.openapi.vfs.newvfs.NewVirtualFile;
 import com.intellij.project.ProjectKt;
 import com.intellij.psi.JavaPsiFacade;
 import com.intellij.psi.PsiFile;
@@ -36,7 +35,6 @@ import com.intellij.testFramework.fixtures.TempDirTestFixture;
 import com.intellij.testFramework.fixtures.impl.TempDirTestFixtureImpl;
 import com.intellij.util.Consumer;
 import com.intellij.util.ExceptionUtil;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
@@ -123,12 +121,11 @@ public class CompilerTester {
   }
 
   @Nullable
-  public VirtualFile findClassFile(String className, Module module) {
-    VirtualFile path = ModuleRootManager.getInstance(module).getModuleExtension(CompilerModuleExtension.class).getCompilerOutputPath();
-    assert path != null;
-    path.getChildren();
-    path.refresh(false, true);
-    return path.findFileByRelativePath(className.replace('.', '/') + ".class");
+  public File findClassFile(String className, Module module) {
+    VirtualFile out = ModuleRootManager.getInstance(module).getModuleExtension(CompilerModuleExtension.class).getCompilerOutputPath();
+    assert out != null;
+    File cls = new File(out.getPath(), className.replace('.', '/') + ".class");
+    return cls.exists() ? cls : null;
   }
 
   public void touch(final VirtualFile file) throws IOException {
@@ -143,7 +140,7 @@ public class CompilerTester {
   public void setFileText(final PsiFile file, final String text) throws IOException {
     WriteAction.runAndWait(() -> {
       final VirtualFile virtualFile = file.getVirtualFile();
-      VfsUtil.saveText(ObjectUtils.assertNotNull(virtualFile), text);
+      VfsUtil.saveText(Objects.requireNonNull(virtualFile), text);
     });
     touch(file.getVirtualFile());
   }
@@ -201,7 +198,7 @@ public class CompilerTester {
       Map<String, String> userMacros = pathMacroManager.getUserMacros();
       if (!userMacros.isEmpty()) {
         // require to be presented on disk
-        Path configDir = Paths.get(PathManager.getConfigPath());
+        Path configDir = PathManager.getConfigDir();
         Path macroFilePath = configDir.resolve("options").resolve(JpsGlobalLoader.PathVariablesSerializer.STORAGE_FILE_NAME);
         if (!Files.exists(macroFilePath)) {
           String message = "File " + macroFilePath + " doesn't exist, but user macros defined: " + userMacros;
@@ -212,7 +209,7 @@ public class CompilerTester {
           IComponentStore applicationStore = CompilerTestUtil.getApplicationStore();
           pathMacroManager.setMacro(fakeMacroName, fakeMacroName);
           applicationStore.saveComponent((PersistentStateComponent<?>)pathMacroManager);
-          pathMacroManager.removeMacro(fakeMacroName);
+          pathMacroManager.setMacro(fakeMacroName, null);
           applicationStore.saveComponent((PersistentStateComponent<?>)pathMacroManager);
           if (!Files.exists(macroFilePath)) {
             throw new AssertionError(message);
@@ -238,7 +235,25 @@ public class CompilerTester {
       throw new RuntimeException("External javac thread is still running. Thread dump:" + ThreadDumper.dumpThreadsToString());
     }
 
+    checkVfsNotLoadedForOutput();
+
     return callback.getMessages();
+  }
+
+  private void checkVfsNotLoadedForOutput() {
+    for (Module module : ModuleManager.getInstance(myProject).getModules()) {
+      CompilerModuleExtension extension = CompilerModuleExtension.getInstance(module);
+      if (extension != null) {
+        for (String url : extension.getOutputRootUrls(true)) {
+          VirtualFile root = VirtualFileManager.getInstance().refreshAndFindFileByUrl(url);
+          if (root != null) {
+            UsefulTestCase.assertEmpty(
+              "VFS should not be loaded for output: that increases the number of VFS events and reindexing costs",
+              ((NewVirtualFile)root).getCachedChildren());
+          }
+        }
+      }
+    }
   }
 
   public static void printBuildLog() {
@@ -319,7 +334,7 @@ public class CompilerTester {
     }
 
     private static boolean isSpamMessage(String text) {
-      return text.contains(CompilerBundle.message("status.compilation.completed.successfully")) ||
+      return text.contains(JavaCompilerBundle.message("status.compilation.completed.successfully")) ||
              text.contains("used to compile") ||
              text.contains("illegal reflective") ||
              text.contains("Picked up") ||

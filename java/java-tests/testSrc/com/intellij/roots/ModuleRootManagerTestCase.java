@@ -34,13 +34,9 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.util.JpsPathUtil;
-import org.junit.Assume;
 
 import java.io.IOException;
 
-/**
- * @author nik
- */
 public abstract class ModuleRootManagerTestCase extends JavaModuleTestCase {
   protected static void assertRoots(PathsList pathsList, VirtualFile... files) {
     assertOrderedEquals(pathsList.getRootDirs(), files);
@@ -142,13 +138,5 @@ public abstract class ModuleRootManagerTestCase extends JavaModuleTestCase {
 
   protected VirtualFile getAsmJar() {
     return IntelliJProjectConfiguration.getJarFromSingleJarProjectLibrary("ASM");
-  }
-
-  protected boolean underTreeProjectModel() {
-    return myProject.getClass().getName() == "com.intellij.openapi.project.impl.LegacyBridgeProjectImpl";
-  }
-
-  protected void ignoreTestUnderTreeProjectModel() {
-    Assume.assumeFalse("Not applicable to treeProjectModel", underTreeProjectModel());
   }
 }

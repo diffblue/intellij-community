@@ -1,9 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.projectRoots;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
@@ -16,31 +16,27 @@ import org.jetbrains.annotations.TestOnly;
 import java.util.EventListener;
 import java.util.List;
 
+@ApiStatus.NonExtendable
 public abstract class ProjectJdkTable {
   public static ProjectJdkTable getInstance() {
-    return ServiceManager.getService(ProjectJdkTable.class);
+    return ApplicationManager.getApplication().getService(ProjectJdkTable.class);
   }
 
-  @Nullable
-  public abstract Sdk findJdk(@NotNull String name);
+  public abstract @Nullable Sdk findJdk(@NotNull String name);
 
-  @Nullable
-  public abstract Sdk findJdk(@NotNull String name, @NotNull String type);
+  public abstract @Nullable Sdk findJdk(@NotNull String name, @NotNull String type);
 
-  @NotNull
-  public abstract Sdk[] getAllJdks();
+  public abstract Sdk @NotNull [] getAllJdks();
 
-  @NotNull
-  public abstract List<Sdk> getSdksOfType(@NotNull SdkTypeId type);
+  public abstract @NotNull List<Sdk> getSdksOfType(@NotNull SdkTypeId type);
 
-  @Nullable
-  public Sdk findMostRecentSdkOfType(@NotNull SdkTypeId type) {
+  public @Nullable Sdk findMostRecentSdkOfType(@NotNull SdkTypeId type) {
     return getSdksOfType(type).stream().max(type.versionComparator()).orElse(null);
   }
 
-  /** @deprecated comparing version strings across SDK types makes no sense; use {@link #findMostRecentSdkOfType} (to be removed in IDEA 2019) */
+  /** @deprecated comparing version strings across SDK types makes no sense; use {@link #findMostRecentSdkOfType} */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019")
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
   public Sdk findMostRecentSdk(@NotNull Condition<? super Sdk> condition) {
     Sdk found = null;
     for (Sdk each : getAllJdks()) {
@@ -65,25 +61,34 @@ public abstract class ProjectJdkTable {
   public abstract void updateJdk(@NotNull Sdk originalJdk, @NotNull Sdk modifiedJdk);
 
   public interface Listener extends EventListener {
-    void jdkAdded(@NotNull Sdk jdk);
-    void jdkRemoved(@NotNull Sdk jdk);
-    void jdkNameChanged(@NotNull Sdk jdk, @NotNull String previousName);
+    default void jdkAdded(@NotNull Sdk jdk) {
+    }
+
+    default void jdkRemoved(@NotNull Sdk jdk) {
+    }
+
+    default void jdkNameChanged(@NotNull Sdk jdk, @NotNull String previousName) {
+    }
   }
 
+  /**
+   * @deprecated Use {@link Listener} directly.
+   */
+  @Deprecated
   public static class Adapter implements Listener {
-    @Override public void jdkAdded(@NotNull Sdk jdk) { }
-    @Override public void jdkRemoved(@NotNull Sdk jdk) { }
-    @Override public void jdkNameChanged(@NotNull Sdk jdk, @NotNull String previousName) { }
   }
 
-  @NotNull
-  public abstract SdkTypeId getDefaultSdkType();
+  public abstract @NotNull SdkTypeId getDefaultSdkType();
 
-  @NotNull
-  public abstract SdkTypeId getSdkTypeByName(@NotNull String name);
+  public abstract @NotNull SdkTypeId getSdkTypeByName(@NotNull String name);
 
-  @NotNull
-  public abstract Sdk createSdk(@NotNull String name, @NotNull SdkTypeId sdkType);
+  public abstract @NotNull Sdk createSdk(@NotNull String name, @NotNull SdkTypeId sdkType);
 
-  public static final Topic<Listener> JDK_TABLE_TOPIC = Topic.create("Project JDK table", Listener.class);
+  /**
+   * This method may automatically detect Sdk if none are configured.
+   */
+  public void preconfigure() {
+  }
+
+  public static final Topic<Listener> JDK_TABLE_TOPIC = new Topic<>(Listener.class, Topic.BroadcastDirection.TO_DIRECT_CHILDREN);
 }

@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInspection.ui;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
 import com.intellij.codeInspection.CommonProblemDescriptor;
+import com.intellij.codeInspection.InspectionToolResultExporter;
 import com.intellij.codeInspection.InspectionsBundle;
 import com.intellij.codeInspection.ex.BatchModeDescriptorsUtil;
 import com.intellij.codeInspection.ex.GlobalInspectionContextImpl;
@@ -36,6 +37,7 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.EditSourceOnDoubleClickHandler;
+import com.intellij.util.EditSourceOnEnterKeyHandler;
 import com.intellij.util.OpenSourceUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
@@ -50,8 +52,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.event.TreeModelEvent;
 import javax.swing.tree.TreePath;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.util.*;
 import java.util.stream.Stream;
@@ -87,17 +87,7 @@ public class InspectionTree extends Tree {
       });
 
       EditSourceOnDoubleClickHandler.install(this);
-
-      addKeyListener(new KeyAdapter() {
-        @Override
-        public void keyPressed(KeyEvent e) {
-          if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-            if (!myView.isDisposed()) {
-              OpenSourceUtil.openSourcesFrom(DataManager.getInstance().getDataContext(myView), false);
-            }
-          }
-        }
-      });
+      EditSourceOnEnterKeyHandler.install(this);
       TreeUtil.installActions(this);
       PopupHandler.installPopupHandler(this, IdeActions.INSPECTION_TOOL_WINDOW_TREE_POPUP, ActionPlaces.CODE_INSPECTION);
       new TreeSpeedSearch(this, o -> InspectionsConfigTreeComparator.getDisplayTextToSort(o.getLastPathComponent().toString()));
@@ -142,8 +132,7 @@ public class InspectionTree extends Tree {
     myModel.clearTree();
   }
 
-  @Nullable
-  public String[] getSelectedGroupPath() {
+  public String @Nullable [] getSelectedGroupPath() {
     TreePath commonPath = TreePathUtil.findCommonAncestor(getSelectionPaths());
     if (commonPath == null) return null;
     for (Object n : commonPath.getPath()) {
@@ -242,8 +231,7 @@ public class InspectionTree extends Tree {
     return currentCommonNode;
   }
 
-  @NotNull
-  public RefEntity[] getSelectedElements() {
+  public RefEntity @NotNull [] getSelectedElements() {
     TreePath[] selectionPaths = getSelectionPaths();
     if (selectionPaths != null) {
       InspectionToolWrapper toolWrapper = getSelectedToolWrapper(true);
@@ -284,13 +272,11 @@ public class InspectionTree extends Tree {
     }
   }
 
-  @NotNull
-  public CommonProblemDescriptor[] getAllValidSelectedDescriptors() {
+  public CommonProblemDescriptor @NotNull [] getAllValidSelectedDescriptors() {
     return BatchModeDescriptorsUtil.flattenDescriptors(getSelectedDescriptorPacks(false, null, true, null));
   }
 
-  @NotNull
-  public CommonProblemDescriptor[] getSelectedDescriptors() {
+  public CommonProblemDescriptor @NotNull [] getSelectedDescriptors() {
     return BatchModeDescriptorsUtil.flattenDescriptors(getSelectedDescriptorPacks(false, null, false, null));
   }
 
@@ -332,9 +318,8 @@ public class InspectionTree extends Tree {
     return descriptors;
   }
 
-  @Nullable
   @Override
-  public TreePath[] getSelectionPaths() {
+  public TreePath @Nullable [] getSelectionPaths() {
     ApplicationManager.getApplication().assertIsDispatchThread();
     return super.getSelectionPaths();
   }
@@ -497,7 +482,7 @@ public class InspectionTree extends Tree {
       return node.getChildren().stream().allMatch(this::shouldDelete);
     }
     else if (node instanceof InspectionNode) {
-      InspectionToolPresentation presentation = myView.getGlobalInspectionContext().getPresentation(((InspectionNode)node).getToolWrapper());
+      InspectionToolResultExporter presentation = myView.getGlobalInspectionContext().getPresentation(((InspectionNode)node).getToolWrapper());
       SynchronizedBidiMultiMap<RefEntity, CommonProblemDescriptor> problemElements = presentation.getProblemElements();
       if (problemElements.isEmpty()) {
         return true;
@@ -512,8 +497,7 @@ public class InspectionTree extends Tree {
     return myView.getGlobalInspectionContext();
   }
 
-  @NotNull
-  private static String[] getGroupPath(@NotNull InspectionGroupNode node) {
+  private static String @NotNull [] getGroupPath(@NotNull InspectionGroupNode node) {
     List<String> path = new ArrayList<>(2);
     while (true) {
       InspectionTreeNode parent = node.getParent();

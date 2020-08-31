@@ -37,7 +37,7 @@ public interface XmlElementType extends XmlTokenType {
   IElementType XML_DOCTYPE = new IXmlElementType("XML_DOCTYPE");
   IElementType XML_ATTRIBUTE = new XmlAttributeElementType();
   IElementType XML_COMMENT = new IXmlElementType("XML_COMMENT");
-  IElementType XML_TAG = new IXmlElementType("XML_TAG");
+  IElementType XML_TAG = new XmlTagElementType("XML_TAG");
   IElementType XML_ELEMENT_DECL = new IXmlElementType("XML_ELEMENT_DECL");
   IElementType XML_CONDITIONAL_SECTION = new IXmlElementType("XML_CONDITIONAL_SECTION");
 
@@ -55,13 +55,8 @@ public interface XmlElementType extends XmlTokenType {
 
   //todo: move to html
   IElementType HTML_DOCUMENT = new IXmlElementType("HTML_DOCUMENT");
-  IElementType HTML_TAG = new IXmlElementType("HTML_TAG");
-  IFileElementType HTML_FILE = new IStubFileElementType(HTMLLanguage.INSTANCE) {
-    @Override
-    public int getStubVersion() {
-      return super.getStubVersion() + 1;
-    }
-  };
+  IElementType HTML_TAG = new XmlTagElementType("HTML_TAG");
+  IFileElementType HTML_FILE = new HtmlFileElementType();
   IElementType HTML_EMBEDDED_CONTENT = new EmbeddedHtmlContentElementType();
 
   IElementType XML_TEXT = new XmlTextElementType();
@@ -72,7 +67,7 @@ public interface XmlElementType extends XmlTokenType {
 
   IFileElementType DTD_FILE = new IFileElementType("DTD_FILE", DTDLanguage.INSTANCE);
 
-  IElementType XML_MARKUP_DECL = new CustomParsingType("XML_MARKUP_DECL", XMLLanguage.INSTANCE){
+  IElementType XML_MARKUP_DECL = new CustomParsingType("XML_MARKUP_DECL", XMLLanguage.INSTANCE) {
     @NotNull
     @Override
     public ASTNode parse(@NotNull CharSequence text, @NotNull CharTable table) {
@@ -91,9 +86,13 @@ public interface XmlElementType extends XmlTokenType {
       assert file != null : chameleon;
 
       final PsiBuilder builder = PsiBuilderFactory.getInstance().createBuilder(file.getProject(), chameleon);
-      HTMLParser.parseWithoutBuildingTree(HTML_FILE, builder);
+      new HTMLParser().parseWithoutBuildingTree(HTML_FILE, builder);
       return builder.getLightTree();
     }
+  }
+
+  final class XmlTagElementType extends IXmlElementType implements IXmlTagElementType {
+    public XmlTagElementType(String debugName) {super(debugName);}
   }
 
   final class XmlAttributeElementType extends IXmlElementType implements IXmlAttributeElementType {

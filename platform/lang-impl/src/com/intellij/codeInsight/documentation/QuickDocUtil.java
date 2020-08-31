@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.documentation;
 
 import com.intellij.codeInsight.hint.HintUtil;
@@ -14,7 +14,6 @@ import com.intellij.openapi.progress.ProgressIndicatorProvider;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
@@ -29,10 +28,12 @@ import com.intellij.util.Consumer;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SingleAlarm;
 import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,7 +43,7 @@ import static com.intellij.openapi.progress.util.ProgressIndicatorUtils.runInRea
 /**
  * @author gregsh
  */
-public class QuickDocUtil {
+public final class QuickDocUtil {
 
   public static void updateQuickDoc(@NotNull final Project project, @NotNull final PsiElement element, @Nullable final String documentation) {
     if (StringUtil.isEmpty(documentation)) return;
@@ -76,23 +77,26 @@ public class QuickDocUtil {
 
 
   /**
-   * Repeatedly tries to run given task in read action without blocking write actions (for this to work effectively the action should invoke 
+   * Repeatedly tries to run given task in read action without blocking write actions (for this to work effectively the action should invoke
    * {@link ProgressManager#checkCanceled()} or {@link ProgressIndicator#checkCanceled()} often enough).
    *
    * @param action task to run
-   * @param timeout timeout in milliseconds 
-   * @param pauseBetweenRetries pause between retries in milliseconds 
+   * @param timeout timeout in milliseconds
+   * @param pauseBetweenRetries pause between retries in milliseconds
    * @param progressIndicator optional progress indicator, which can be used to cancel the action externally
    * @return {@code true} if the action succeeded to run without interruptions, {@code false} otherwise
+   * @deprecated use {@link com.intellij.openapi.application.ReadAction#nonBlocking}
    */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
   public static boolean runInReadActionWithWriteActionPriorityWithRetries(@NotNull final Runnable action,
                                                                           long timeout, long pauseBetweenRetries,
                                                                           @Nullable ProgressIndicator progressIndicator) {
     boolean result;
     long deadline = System.currentTimeMillis() + timeout;
-    while (!(result = runInReadActionWithWriteActionPriority(action, progressIndicator == null ? null : 
+    while (!(result = runInReadActionWithWriteActionPriority(action, progressIndicator == null ? null :
                                                                      new SensitiveProgressWrapper(progressIndicator))) &&
-           (progressIndicator == null || !progressIndicator.isCanceled()) && 
+           (progressIndicator == null || !progressIndicator.isCanceled()) &&
             System.currentTimeMillis() < deadline) {
       try {
         TimeUnit.MILLISECONDS.sleep(pauseBetweenRetries);
@@ -108,7 +112,10 @@ public class QuickDocUtil {
   /**
    * Same as {@link #runInReadActionWithWriteActionPriorityWithRetries(Runnable, long, long, ProgressIndicator)} using current thread's
    * progress indicator ({@link ProgressManager#getProgressIndicator()}).
+   * @deprecated use {@link com.intellij.openapi.application.ReadAction#nonBlocking}
    */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.2")
   public static boolean runInReadActionWithWriteActionPriorityWithRetries(@NotNull final Runnable action,
                                                                           long timeout, long pauseBetweenRetries) {
     return runInReadActionWithWriteActionPriorityWithRetries(action, timeout, pauseBetweenRetries,
@@ -164,9 +171,9 @@ public class QuickDocUtil {
       if (stop.get()) {
         Disposer.dispose(alarmDisposable);
       }
-      String newText = sb.toString() + "<br><br><br>";
+      String newText = sb + "<br><br><br>";
       String prevText = component.getText();
-      if (!Comparing.equal(newText, prevText)) {
+      if (!Objects.equals(newText, prevText)) {
         component.replaceText(newText, element);
       }
     }, 100, alarmDisposable);

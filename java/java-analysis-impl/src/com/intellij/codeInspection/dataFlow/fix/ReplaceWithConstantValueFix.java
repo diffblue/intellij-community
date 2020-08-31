@@ -15,11 +15,17 @@
  */
 package com.intellij.codeInspection.dataFlow.fix;
 
+import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.LocalQuickFix;
 import com.intellij.codeInspection.ProblemDescriptor;
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiExpressionList;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.refactoring.extractMethod.ExtractMethodUtil;
+import com.siyeh.ig.psiutils.CommentTracker;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -37,13 +43,13 @@ public class ReplaceWithConstantValueFix implements LocalQuickFix {
   @NotNull
   @Override
   public String getName() {
-    return "Replace with '" + myPresentableName + "'";
+    return CommonQuickFixBundle.message("fix.replace.with.x", myPresentableName);
   }
 
   @NotNull
   @Override
   public String getFamilyName() {
-    return "Replace with constant value";
+    return JavaAnalysisBundle.message("replace.with.constant.value");
   }
 
   @Override
@@ -57,8 +63,7 @@ public class ReplaceWithConstantValueFix implements LocalQuickFix {
                                    null;
     PsiMethod targetMethod = call == null ? null : call.resolveMethod();
 
-    JavaPsiFacade facade = JavaPsiFacade.getInstance(project);
-    problemElement.replace(facade.getElementFactory().createExpressionFromText(myReplacementText, null));
+    new CommentTracker().replaceAndRestoreComments(problemElement, myReplacementText);
 
     if (targetMethod != null) {
       ExtractMethodUtil.addCastsToEnsureResolveTarget(targetMethod, call);

@@ -4,6 +4,9 @@ package com.intellij.sh.run;
 import com.intellij.execution.Executor;
 import com.intellij.execution.configurations.*;
 import com.intellij.execution.runners.ExecutionEnvironment;
+import com.intellij.execution.wsl.WSLDistribution;
+import com.intellij.execution.wsl.WSLUtil;
+import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.InvalidDataException;
@@ -15,21 +18,27 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.refactoring.listeners.RefactoringElementAdapter;
 import com.intellij.refactoring.listeners.RefactoringElementListener;
+import com.intellij.sh.ShSupport;
 import com.intellij.sh.psi.ShFile;
+import com.intellij.util.EnvironmentUtil;
+import com.intellij.util.containers.ContainerUtil;
 import org.jdom.Element;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 
+import static com.intellij.openapi.util.io.FileUtil.toSystemDependentName;
 import static com.intellij.openapi.util.text.StringUtilRt.notNullize;
 
 public class ShRunConfiguration extends LocatableConfigurationBase implements RefactoringListenerProvider {
-  private static final String SCRIPT_PATH_TAG = "SCRIPT_PATH";
-  private static final String SCRIPT_OPTIONS_TAG = "SCRIPT_OPTIONS";
-  private static final String SCRIPT_WORKING_DIRECTORY = "SCRIPT_WORKING_DIRECTORY";
-  private static final String INTERPRETER_PATH_TAG = "INTERPRETER_PATH";
-  private static final String INTERPRETER_OPTIONS_TAG = "INTERPRETER_OPTIONS";
+  @NonNls private static final String TAG_PREFIX = "INDEPENDENT_";
+  @NonNls private static final String SCRIPT_PATH_TAG = "SCRIPT_PATH";
+  @NonNls private static final String SCRIPT_OPTIONS_TAG = "SCRIPT_OPTIONS";
+  @NonNls private static final String SCRIPT_WORKING_DIRECTORY_TAG = "SCRIPT_WORKING_DIRECTORY";
+  @NonNls private static final String INTERPRETER_PATH_TAG = "INTERPRETER_PATH";
+  @NonNls private static final String INTERPRETER_OPTIONS_TAG = "INTERPRETER_OPTIONS";
 
   private String myScriptPath = "";
   private String myScriptOptions = "";
@@ -56,6 +65,8 @@ public class ShRunConfiguration extends LocatableConfigurationBase implements Re
       throw new RuntimeConfigurationError("Working directory not found");
     }
     if (StringUtil.isNotEmpty(myInterpreterPath) || !new File(myScriptPath).canExecute()) {
+      // WSL can be used as an interpreter
+      if (myInterpreterPath.endsWith("sh") && getWSLDistributionIfNeeded() != null) return;
       if (!FileUtil.exists(myInterpreterPath)) throw new RuntimeConfigurationError("Interpreter not found");
       if (!new File(myInterpreterPath).canExecute()) throw new RuntimeConfigurationError("Interpreter should be executable file");
     }
@@ -64,17 +75,17 @@ public class ShRunConfiguration extends LocatableConfigurationBase implements Re
   @Nullable
   @Override
   public RunProfileState getState(@NotNull Executor executor, @NotNull ExecutionEnvironment environment) {
-    return new ShRunConfigurationProfileState(getProject(), this);
+    return ShSupport.getInstance().createRunProfileState(executor, environment, this);
   }
 
   @Override
   public void writeExternal(@NotNull Element element) {
     super.writeExternal(element);
 
-    JDOMExternalizerUtil.writeField(element, SCRIPT_PATH_TAG, FileUtil.toSystemIndependentName(myScriptPath));
+    writePathWithMetadata(element, myScriptPath, SCRIPT_PATH_TAG);
     JDOMExternalizerUtil.writeField(element, SCRIPT_OPTIONS_TAG, myScriptOptions);
-    JDOMExternalizerUtil.writeField(element, SCRIPT_WORKING_DIRECTORY, FileUtil.toSystemIndependentName(myScriptWorkingDirectory));
-    JDOMExternalizerUtil.writeField(element, INTERPRETER_PATH_TAG, FileUtil.toSystemIndependentName(myInterpreterPath));
+    writePathWithMetadata(element, myScriptWorkingDirectory, SCRIPT_WORKING_DIRECTORY_TAG);
+    writePathWithMetadata(element, myInterpreterPath, INTERPRETER_PATH_TAG);
     JDOMExternalizerUtil.writeField(element, INTERPRETER_OPTIONS_TAG, myInterpreterOptions);
   }
 
@@ -82,11 +93,11 @@ public class ShRunConfiguration extends LocatableConfigurationBase implements Re
   public void readExternal(@NotNull Element element) throws InvalidDataException {
     super.readExternal(element);
 
-    myScriptPath = FileUtil.toSystemDependentName(notNullize(JDOMExternalizerUtil.readField(element, SCRIPT_PATH_TAG), ""));
-    myScriptOptions = notNullize(JDOMExternalizerUtil.readField(element, SCRIPT_OPTIONS_TAG), "");
-    myScriptWorkingDirectory = FileUtil.toSystemDependentName(notNullize(JDOMExternalizerUtil.readField(element, SCRIPT_WORKING_DIRECTORY), ""));
-    myInterpreterPath = FileUtil.toSystemDependentName(notNullize(JDOMExternalizerUtil.readField(element, INTERPRETER_PATH_TAG), ""));
-    myInterpreterOptions = notNullize(JDOMExternalizerUtil.readField(element, INTERPRETER_OPTIONS_TAG), "");
+    myScriptPath = readPathWithMetadata(element, SCRIPT_PATH_TAG);
+    myScriptOptions = readStringTagValue(element, SCRIPT_OPTIONS_TAG);
+    myScriptWorkingDirectory = readPathWithMetadata(element, SCRIPT_WORKING_DIRECTORY_TAG);
+    myInterpreterPath = readPathWithMetadata(element, INTERPRETER_PATH_TAG);
+    myInterpreterOptions = readStringTagValue(element, INTERPRETER_OPTIONS_TAG);
   }
 
   @Nullable
@@ -116,43 +127,80 @@ public class ShRunConfiguration extends LocatableConfigurationBase implements Re
     return vfile.getPath();
   }
 
-  String getScriptPath() {
+  private static void writePathWithMetadata(@NotNull Element element, @NotNull String path, @NotNull String pathTag) {
+    String systemIndependentPath = FileUtil.toSystemIndependentName(path);
+    JDOMExternalizerUtil.writeField(element, TAG_PREFIX + pathTag, Boolean.toString(systemIndependentPath.equals(path)));
+    JDOMExternalizerUtil.writeField(element, pathTag, systemIndependentPath);
+  }
+
+  private static String readPathWithMetadata(@NotNull Element element, @NotNull String pathTag) {
+    return Boolean.parseBoolean(JDOMExternalizerUtil.readField(element, TAG_PREFIX + pathTag))
+           ? readStringTagValue(element, pathTag)
+           : toSystemDependentName(readStringTagValue(element, pathTag));
+  }
+
+  @NotNull
+  private static String readStringTagValue(@NotNull Element element, @NotNull String tagName) {
+    return notNullize(JDOMExternalizerUtil.readField(element, tagName), "");
+  }
+
+  public String getScriptPath() {
     return myScriptPath;
   }
 
-  void setScriptPath(@NotNull String scriptPath) {
+  public void setScriptPath(@NotNull String scriptPath) {
     myScriptPath = scriptPath.trim();
   }
 
-  String getScriptOptions() {
+  public String getScriptOptions() {
     return myScriptOptions;
   }
 
-  void setScriptOptions(@NotNull String scriptOptions) {
+  public void setScriptOptions(@NotNull String scriptOptions) {
     myScriptOptions = scriptOptions.trim();
   }
 
-  String getScriptWorkingDirectory() {
+  public String getScriptWorkingDirectory() {
     return myScriptWorkingDirectory;
   }
 
-  void setScriptWorkingDirectory(String scriptWorkingDirectory) {
+  public void setScriptWorkingDirectory(String scriptWorkingDirectory) {
     myScriptWorkingDirectory = scriptWorkingDirectory.trim();
   }
 
-  String getInterpreterPath() {
+  public String getInterpreterPath() {
     return myInterpreterPath;
   }
 
-  void setInterpreterPath(@NotNull String interpreterPath) {
+  public void setInterpreterPath(@NotNull String interpreterPath) {
     myInterpreterPath = interpreterPath.trim();
   }
 
-  String getInterpreterOptions() {
+  public String getInterpreterOptions() {
     return myInterpreterOptions;
   }
 
-  void setInterpreterOptions(@NotNull String interpreterOptions) {
+  public void setInterpreterOptions(@NotNull String interpreterOptions) {
     myInterpreterOptions = interpreterOptions.trim();
+  }
+
+  private static WSLDistribution getWSLDistributionIfNeeded() {
+    return getWSLDistributionIfNeeded(null, null);
+  }
+
+  public static WSLDistribution getWSLDistributionIfNeeded(@Nullable String interpreterPath, @Nullable String scriptPath) {
+    if (!Experiments.getInstance().isFeatureEnabled("com.intellij.sh.run.with.wsl")) {
+      return null;
+    }
+
+    if (interpreterPath != null && new File(interpreterPath).canExecute()
+        || scriptPath != null && (scriptPath.endsWith("cmd") || scriptPath.endsWith("bat"))) {
+      return null;
+    }
+    if (EnvironmentUtil.getValue("SHELL") != null) {
+      return null;
+    }
+
+    return ContainerUtil.getFirstItem(WSLUtil.getAvailableDistributions());
   }
 }

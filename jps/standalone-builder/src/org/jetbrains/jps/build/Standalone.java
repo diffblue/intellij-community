@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.build;
 
 import com.intellij.openapi.util.Disposer;
@@ -6,6 +6,7 @@ import com.intellij.openapi.util.LowMemoryWatcherManager;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.ArrayUtilRt;
 import com.intellij.util.ParameterizedRunnable;
+import com.intellij.util.containers.ContainerUtil;
 import com.sampullara.cli.Args;
 import com.sampullara.cli.Argument;
 import org.jetbrains.jps.api.BuildType;
@@ -22,13 +23,14 @@ import org.jetbrains.jps.model.JpsModel;
 import org.jetbrains.jps.service.SharedThreadPool;
 
 import java.io.File;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.jetbrains.jps.api.CmdlineRemoteProto.Message.ControllerMessage.ParametersMessage.TargetTypeBuildScope;
 
-/**
- * @author nik
- */
 @SuppressWarnings({"UseOfSystemOutOrSystemErr", "CallToPrintStackTrace"})
 public class Standalone {
   @Argument(value = "config", prefix = "--", description = "Path to directory containing global options (idea.config.path)")
@@ -117,7 +119,7 @@ public class Standalone {
     }
 
     JpsModelLoaderImpl loader = new JpsModelLoaderImpl(projectPath, globalOptionsPath, false, initializer);
-    Set<String> modulesSet = new HashSet<>(Arrays.asList(modules));
+    Set<String> modulesSet = ContainerUtil.set(modules);
     List<String> artifactsList = Arrays.asList(artifacts);
     File dataStorageRoot;
     if (cacheDirPath != null) {
@@ -132,7 +134,7 @@ public class Standalone {
     }
 
     ConsoleMessageHandler consoleMessageHandler = new ConsoleMessageHandler();
-    long start = System.currentTimeMillis();
+    long start = System.nanoTime();
     try {
       runBuild(loader, dataStorageRoot, !incremental, modulesSet, allModules, artifactsList, allArtifacts, true,
                consoleMessageHandler);
@@ -141,7 +143,7 @@ public class Standalone {
       System.err.println("Internal error: " + t.getMessage());
       t.printStackTrace();
     }
-    System.out.println("Build finished in " + Utils.formatDuration(System.currentTimeMillis() - start));
+    System.out.println("Build finished in " + Utils.formatDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)));
     return consoleMessageHandler.hasErrors() ? 1 : 0;
   }
 

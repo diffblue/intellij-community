@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.backwardRefs;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -17,7 +17,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-public class BackwardReferenceIndexUtil {
+public final class BackwardReferenceIndexUtil {
   private static final Logger LOG = Logger.getInstance(BackwardReferenceIndexUtil.class);
 
   static void registerFile(String filePath,
@@ -42,7 +42,9 @@ public class BackwardReferenceIndexUtil {
       for (JavacDef def : defs) {
         if (def instanceof JavacDef.JavacClassDef) {
           JavacRef.JavacClass sym = (JavacRef.JavacClass)def.getDefinedElement();
-
+          if (sym.isPackageInfo()) {
+            continue; // skip special 'package-info' class
+          }
           final CompilerRef.CompilerClassHierarchyElementDef aClass;
           if (sym.isAnonymous()) {
             final JavacRef[] classes = ((JavacDef.JavacClassDef)def).getSuperClasses();

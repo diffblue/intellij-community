@@ -69,6 +69,7 @@ public class MarkdownSettingsForm implements MarkdownCssSettings.Holder, Markdow
   private JBLabel myVerticalSplitLabel;
   private JBCheckBox myDisableInjections;
   private JBCheckBox myHideErrorsCheckbox;
+  private JBLabel myPlantUMLLocationHelp;
 
   private static final Color SUCCESS_COLOR = new JBColor(0x008000, 0x6A8759);
 
@@ -199,6 +200,13 @@ public class MarkdownSettingsForm implements MarkdownCssSettings.Holder, Markdow
 
     myCssTitledSeparator = new TitledSeparator(MarkdownBundle.message("markdown.settings.css.title.name"));
 
+    myPlantUMLLocationHelp = ContextHelpLabel.create(
+      MarkdownBundle.message(
+        "markdown.settings.preview.plantUML.jar.location.description",
+        MarkdownSettingsConfigurable.getExpectedJarPath().getAbsolutePath()
+      )
+    );
+
     createPreviewUIComponents();
   }
 
@@ -213,7 +221,8 @@ public class MarkdownSettingsForm implements MarkdownCssSettings.Holder, Markdow
       new URL(myCssURI.getText()).toURI();
     }
     catch (URISyntaxException | MalformedURLException e) {
-      throw new ConfigurationException("URI '" + myCssURI.getText() + "' parsing reports the error: " + e.getMessage());
+      throw new ConfigurationException(
+        MarkdownBundle.message("dialog.message.uri.parsing.reports.error", myCssURI.getText(), e.getMessage()));
     }
   }
 

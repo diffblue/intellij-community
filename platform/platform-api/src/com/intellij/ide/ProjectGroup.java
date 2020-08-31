@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide;
 
+import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.SystemIndependent;
@@ -17,7 +18,8 @@ public final class ProjectGroup {
   private @NotNull String myName = "";
   private String myProjectPaths = "";
   private boolean myExpanded = false;
-  private boolean myTutorials = false; //used in different places, i.e. closing tutorials group should hide all nested items too
+  //used in different places, i.e. closing tutorials group should hide all nested items too
+  private boolean myTutorials = false;
 
   public ProjectGroup(@NotNull String name) {
     myName = name;
@@ -46,7 +48,7 @@ public final class ProjectGroup {
 
   public void addProject(@SystemIndependent String path) {
     List<String> projects = new ArrayList<>(StringUtil.split(myProjectPaths, File.pathSeparator));
-    projects.add(path);
+    projects.add(FileUtilRt.toSystemIndependentName(path));
     save(projects);
   }
 
@@ -69,10 +71,11 @@ public final class ProjectGroup {
     return true;
   }
 
-  private void save(List<String> projects) {
-    myProjectPaths = StringUtil.join(projects, File.pathSeparator);
+  private void save(@NotNull List<String> projects) {
+    myProjectPaths = String.join(File.pathSeparator, projects);
   }
 
+  @NotNull
   public List<String> getProjects() {
     return new ArrayList<>(new HashSet<>(StringUtil.split(myProjectPaths, File.pathSeparator)));
   }

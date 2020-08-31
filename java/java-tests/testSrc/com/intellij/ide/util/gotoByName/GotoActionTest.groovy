@@ -1,28 +1,32 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.gotoByName
 
-
-import com.intellij.ide.ui.OptionsTopHitProvider
+import com.intellij.ide.actions.searcheverywhere.ActionSearchEverywhereContributor
+import com.intellij.ide.actions.searcheverywhere.SearchEverywhereContributor
+import com.intellij.ide.ui.OptionsSearchTopHitProvider
 import com.intellij.ide.ui.search.BooleanOptionDescription
 import com.intellij.ide.ui.search.OptionDescription
 import com.intellij.ide.util.gotoByName.GotoActionModel.ActionWrapper
 import com.intellij.ide.util.gotoByName.GotoActionModel.MatchMode
 import com.intellij.ide.util.gotoByName.GotoActionModel.MatchedValue
-import com.intellij.idea.IdeaTestApplication
 import com.intellij.java.navigation.ChooseByNameTest
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Computable
 import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.TestApplicationManager
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 import com.intellij.util.CollectConsumer
 import gnu.trove.Equality
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.NotNull
-import org.jetbrains.annotations.Nullable
 
+import java.awt.*
+import java.util.List
 import java.util.concurrent.TimeUnit
 
 /**
@@ -86,35 +90,47 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
     assert actionMatches('invalidate caches', action) == MatchMode.NAME
     assert actionMatches('cache invalid', action) == MatchMode.NAME
     assert actionMatches('rebuild of all caches', action) == MatchMode.DESCRIPTION
-    assert actionMatches('restart', action) == ApplicationManager.application.isRestartCapable() ? MatchMode.NAME : MatchMode.NONE
+    assert actionMatches('restart', action) == (ApplicationManager.application.isRestartCapable() ? MatchMode.NAME : MatchMode.NONE)
     assert actionMatches('invcach', action) == MatchMode.NAME
+  }
+
+  void "test fixing layout match"() {
+    def action = ActionManager.instance.getAction("InvalidateCaches")
+    assert actionMatches('штм', action) == MatchMode.NAME
+    assert actionMatches('штм сфср', action) == MatchMode.NAME
+    assert actionMatches('привет мир', new DumbAwareAction("привет, мир") {
+      @Override
+      void actionPerformed(@NotNull AnActionEvent e) {
+      }
+    }) == MatchMode.NAME
   }
 
   void "test CamelCase text in action names"() {
     def options = [
-      new OptionDescription("CamelCase option 1", "CamelCase option 1", null),
-      new OptionDescription("CamelCase option 1", "non camel case option 1", null),
-      new TestBooleanOption("Boolean CamelCase option 1"),
-      new TestBooleanOption("Boolean non camel case option 2"),
+      new OptionDescription("CamelCase option", null, null),
+      new OptionDescription("non camel case option", null, null),
+      new OptionDescription("just another option", null, null),
+      new TestBooleanOption("Boolean CamelCase option"),
+      new TestBooleanOption("Boolean non camel case option"),
+      new TestBooleanOption("Just another boolean option"),
     ]
 
-    OptionsTopHitProvider provider = new OptionsTopHitProvider() {
-      @NotNull
-      @Override
-      Collection<OptionDescription> getOptions(@Nullable Project project) {
-        return options
-      }
-
+    OptionsSearchTopHitProvider.ApplicationLevelProvider provider = new OptionsSearchTopHitProvider.ApplicationLevelProvider() {
       @NotNull
       @Override
       String getId() {
         return "testprovider"
       }
+
+      @Override
+      Collection<OptionDescription> getOptions() {
+        return options
+      }
     }
 
     def consumer = new CollectConsumer<Object>()
     provider.consumeTopHits("/testprovider CamelCase", consumer, project)
-    assert consumer.getResult() == options
+    assert consumer.getResult() == [options[0], options[1], options[3], options[4]]
   }
 
   private static class TestBooleanOption extends BooleanOptionDescription {
@@ -159,30 +175,22 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
   void "test same action is not reported twice"() {
     def patterns = ["Patch", "Add", "Delete", "Show", "Toggle", "New", "New Class"]
 
-    def model = new GotoActionModel(project, null, null)
-    def provider = new GotoActionItemProvider(model)
-
-    def popup = ChooseByNamePopup.createPopup(project, model, provider)
-    try {
-      patterns.forEach { String pattern ->
-        def result = ChooseByNameTest.calcPopupElements(popup, pattern, true)
-        def actions = result.findResults {
-          if (it instanceof MatchedValue) {
-            def value = it.value
-            if (value instanceof ActionWrapper) {
-              return (value as ActionWrapper).action
-            }
-            if (value instanceof OptionDescription) {
-              return value
-            }
+    def contributor = createActionContributor(project)
+    patterns.forEach { String pattern ->
+      def result = ChooseByNameTest.calcContributorElements(contributor, pattern)
+      def actions = result.findResults {
+        if (it instanceof MatchedValue) {
+          def value = it.value
+          if (value instanceof ActionWrapper) {
+            return (value as ActionWrapper).action
           }
-          return null
+          if (value instanceof OptionDescription) {
+            return value
+          }
         }
-        assert actions.size() == actions.toSet().size()
+        return null
       }
-    }
-    finally {
-      popup.close(false)
+      assert actions.size() == actions.toSet().size()
     }
   }
 
@@ -264,6 +272,26 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
     }
   }
 
+  void "test navigable settings options appear in results"() {
+    def contributor = createActionContributor(project)
+    def patterns = [
+      "support screen readers",
+      "show line numbers",
+      "tab placement"
+    ]
+
+    patterns.forEach { String pattern ->
+      def elements = ChooseByNameTest.calcContributorElements(contributor, pattern)
+      assert elements.any { matchedValue -> isNavigableOption(((MatchedValue)matchedValue).value)
+      }
+    }
+  }
+
+  private static boolean isNavigableOption(Object o) {
+    return o instanceof OptionDescription && !(o instanceof BooleanOptionDescription)
+  }
+
+
   private static List<ActionWrapper> getSortedActionsFromPopup(Project project, String pattern) {
     def wrappers = getActionsFromPopup(project, pattern)
     wrappers.every { it.getPresentation() } // update best group name
@@ -313,7 +341,7 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
   }
 
   private static <T> T computeWithCustomDataProvider(passHiddenFlag, Computable<T> task) {
-    IdeaTestApplication.getInstance().setDataProvider(new DataProvider() {
+    TestApplicationManager.getInstance().setDataProvider(new DataProvider() {
       @Override
       Object getData(@NotNull @NonNls String dataId) {
         if (SHOW_HIDDEN_KEY.is(dataId) && passHiddenFlag) return Boolean.TRUE
@@ -325,25 +353,18 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
       return task.compute()
     }
     finally {
-      IdeaTestApplication.getInstance().setDataProvider(null)
+      TestApplicationManager.getInstance().setDataProvider(null)
     }
   }
 
   private static List<ActionWrapper> getActionsFromPopup(Project project, String pattern) {
-    def model = new GotoActionModel(project, null, null)
-    def provider = new GotoActionItemProvider(model)
-    def popup = ChooseByNamePopup.createPopup(project, model, provider)
-    try {
-      return ChooseByNameTest.calcPopupElements(popup, pattern, true).findResults {
-        if (it instanceof MatchedValue && it.value instanceof ActionWrapper) {
-          return it.value as ActionWrapper
-        }
-        return null
-      } as List<ActionWrapper>
-    }
-    finally {
-      popup.close(false)
-    }
+    def contributor = createActionContributor(project)
+    return ChooseByNameTest.calcContributorElements(contributor, pattern).findResults {
+      if (it instanceof MatchedValue && it.value instanceof ActionWrapper) {
+        return it.value as ActionWrapper
+      }
+      return null
+    } as List<ActionWrapper>
   }
 
   private def actionMatches(String pattern, AnAction action) {
@@ -351,10 +372,10 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
   }
 
   private MatchedValue matchedAction(String text, String pattern, MatchMode mode = MatchMode.NAME, boolean isAvailable = true) {
-    return matchedAction(createAction(text), pattern, mode, isAvailable)
+    return createMatchedAction(project, createAction(text), pattern, mode, isAvailable)
   }
 
-  private MatchedValue matchedAction(AnAction action, String pattern, MatchMode mode = MatchMode.NAME, boolean isAvailable = true) {
+  public static MatchedValue createMatchedAction(Project project, AnAction action, String pattern, MatchMode mode = MatchMode.NAME, boolean isAvailable = true) {
     def model = new GotoActionModel(project, null, null)
     def wrapper = new ActionWrapper(action, null, mode, DataContext.EMPTY_CONTEXT, model) {
       @Override
@@ -399,5 +420,21 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
       }
     }
     return new MatchedValue(option, pattern)
+  }
+
+  public static SearchEverywhereContributor<?> createActionContributor(Project project) {
+    def res = new TestActionContributor(project, null, null)
+    res.setShowDisabled(true)
+    return res
+  }
+
+  private static class TestActionContributor extends ActionSearchEverywhereContributor {
+    TestActionContributor(Project project, Component contextComponent, Editor editor) {
+      super(project, contextComponent, editor)
+    }
+
+    void setShowDisabled(boolean val) {
+      myDisabledActions = val
+    }
   }
 }

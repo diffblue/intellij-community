@@ -36,16 +36,16 @@ public class TagComponent extends LinkComponent {
     String tooltip = null;
     myColor = BACKGROUND;
 
-    if ("EAP".equals(name)) {
+    if (Tags.EAP.name().equals(name)) {
       myColor = EAP_BACKGROUND;
       tooltip = "The EAP version does not guarantee the stability\nand availability of the plugin.";
     }
-    else if ("Trial".equals(name) || "Purchased".equals(name)) {
+    else if (Tags.Trial.name().equals(name) || Tags.Purchased.name().equals(name)) {
       myColor = TRIAL_BACKGROUND;
     }
-    else if ("Paid".equals(name)) {
+    else if (Tags.Paid.name().equals(name)) {
       myColor = PAID_BACKGROUND;
-      tooltip = "The plugin license should be activated after\nthe plugin installation. The 30-day trial is available.";
+      tooltip = "Activate the plugin license after installation or use the 30-day trial.";
     }
 
     super.setText(name);

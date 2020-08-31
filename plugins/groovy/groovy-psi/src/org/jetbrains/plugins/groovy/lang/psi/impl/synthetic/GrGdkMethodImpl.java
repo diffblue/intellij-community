@@ -70,8 +70,7 @@ public class GrGdkMethodImpl extends LightMethodBuilder implements GrGdkMethod {
   }
 
   @Override
-  @NotNull
-  public PsiTypeParameter[] getTypeParameters() {
+  public PsiTypeParameter @NotNull [] getTypeParameters() {
     return myMethod.getTypeParameters();
   }
 
@@ -107,7 +106,7 @@ public class GrGdkMethodImpl extends LightMethodBuilder implements GrGdkMethod {
     if (cachedValue == null) {
       cachedValue = CachedValuesManager.getManager(original.getProject()).createCachedValue(
         () -> CachedValueProvider.Result.create(new GrGdkMethodImpl(original, isStatic, originInfo),
-                                                PsiModificationTracker.OUT_OF_CODE_BLOCK_MODIFICATION_COUNT), false);
+                                                PsiModificationTracker.MODIFICATION_COUNT), false);
       original.putUserData(cachedValueKey, cachedValue);
     }
 

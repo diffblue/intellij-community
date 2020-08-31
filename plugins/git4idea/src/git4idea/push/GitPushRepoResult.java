@@ -32,7 +32,7 @@ import java.util.List;
  * Includes information about the number of pushed commits (or -1 if undefined),
  * and tells whether the repository was updated after the push was rejected.
  *
- * @see git4idea.push.GitPushNativeResult
+ * @see GitPushNativeResult
  */
 public class GitPushRepoResult {
 
@@ -48,7 +48,7 @@ public class GitPushRepoResult {
     NOT_PUSHED
   }
 
-  static Comparator<Type> TYPE_COMPARATOR = (o1, o2) -> o1.ordinal() - o2.ordinal();
+  static Comparator<Type> TYPE_COMPARATOR = Comparator.naturalOrder();
 
   @NotNull private final Type myType;
   private final int myCommits;

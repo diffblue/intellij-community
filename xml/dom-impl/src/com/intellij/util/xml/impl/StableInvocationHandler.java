@@ -35,7 +35,7 @@ import java.util.Set;
 class StableInvocationHandler<T> implements InvocationHandler, StableElement {
   private T myOldValue;
   private T myCachedValue;
-  private final Set<Class> myClasses;
+  private final Set<Class<?>> myClasses;
   private final Factory<? extends T> myProvider;
   private final Condition<? super T> myValidator;
 
@@ -44,8 +44,8 @@ class StableInvocationHandler<T> implements InvocationHandler, StableElement {
     myCachedValue = initial;
     myOldValue = initial;
     myValidator = validator;
-    final Class superClass = initial.getClass().getSuperclass();
-    final Set<Class> classes = new HashSet<>();
+    final Class<?> superClass = initial.getClass().getSuperclass();
+    final Set<Class<?>> classes = new HashSet<>();
     ContainerUtil.addAll(classes, initial.getClass().getInterfaces());
     ContainerUtil.addIfNotNull(classes, superClass);
     classes.remove(MergedObject.class);
@@ -77,7 +77,7 @@ class StableInvocationHandler<T> implements InvocationHandler, StableElement {
           final Object arg = args[0];
           if (!(arg instanceof StableElement)) return false;
 
-          final StableInvocationHandler handler = DomManagerImpl.getStableInvocationHandler(arg);
+          final StableInvocationHandler<?> handler = DomManagerImpl.getStableInvocationHandler(arg);
           if (handler == null || handler.getWrappedElement() != null) return false;
 
           return Comparing.equal(myOldValue, handler.myOldValue);
@@ -97,7 +97,7 @@ class StableInvocationHandler<T> implements InvocationHandler, StableElement {
     if (AdvancedProxy.EQUALS_METHOD.equals(method)) {
       final Object arg = args[0];
       if (arg instanceof StableElement) {
-        return myCachedValue.equals(((StableElement)arg).getWrappedElement());
+        return myCachedValue.equals(((StableElement<?>)arg).getWrappedElement());
       }
       return myCachedValue.equals(arg);
 
@@ -143,7 +143,7 @@ class StableInvocationHandler<T> implements InvocationHandler, StableElement {
 
   private boolean isNotValid(final T t) {
     if (t == null || !myValidator.value(t)) return true;
-    for (final Class aClass : myClasses) {
+    for (final Class<?> aClass : myClasses) {
       if (!aClass.isInstance(t)) return true;
     }
     return false;

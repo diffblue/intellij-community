@@ -239,7 +239,7 @@ public class PyTypingTest extends PyTestCase {
   }
 
   public void testAnyStrForUnknown() {
-    doTest("Union[str, bytes]",
+    doTest("Union[Union[str, bytes], Any]",
            "from typing import AnyStr\n" +
            "\n" +
            "def foo(x: AnyStr) -> AnyStr:\n" +
@@ -431,6 +431,12 @@ public class PyTypingTest extends PyTestCase {
                        "    def foo(self, expr: '<caret>Union[List[C], C]'):\n" +
                        "        pass\n",
                        "Union[List[C], C]");
+  }
+
+  // PY-37515
+  public void testNoStringLiteralInjectionUnderCall() {
+    doTestNoInjectedText("class Model:\n" +
+                         "    field: call('<caret>List[str]')");
   }
 
   // PY-15810
@@ -1472,6 +1478,52 @@ public class PyTypingTest extends PyTestCase {
            "    pass\n" +
            "\n" +
            "expr = Sub().m()\n");
+  }
+
+  // PY-35235
+  public void testNoStringLiteralInjectionForTypingLiteral() {
+    doTestNoInjectedText("from typing import Literal\n" +
+                         "a: Literal[\"f<caret>oo\"]\n");
+
+    doTestNoInjectedText("from typing import Literal\n" +
+                         "a: Literal[42, \"f<caret>oo\", True]\n");
+
+    doTestNoInjectedText("from typing import Literal\n" +
+                         "MyType = Literal[42, \"f<caret>oo\", True]\n" +
+                         "a: MyType\n");
+  }
+
+  // PY-41847
+  public void testNoStringLiteralInjectionForTypingAnnotated() {
+    doTestNoInjectedText("from typing import Annotated\n" +
+                         "MyType = Annotated[str, \"f<caret>oo\", True]\n" +
+                         "a: MyType\n");
+
+    doTestNoInjectedText("from typing import Annotated\n" +
+                         "a: Annotated[int, \"f<caret>oo\", True]\n");
+
+    doTestInjectedText("from typing import Annotated\n" +
+                       "a: Annotated['Forward<caret>Reference', 'foo']",
+                       "ForwardReference");
+  }
+
+  // PY-41847
+  public void testTypingAnnotated() {
+    runWithLanguageLevel(
+      LanguageLevel.getLatest(),
+      () -> {
+        doTest("int",
+               "from typing import Annotated\n" +
+               "A = Annotated[int, 'Some constraint']\n" +
+               "expr: A");
+        doTest("int",
+               "from typing_extensions import Annotated\n" +
+               "expr: Annotated[int, 'Some constraint'] = '5'");
+        doMultiFileStubAwareTest("int",
+                                 "from annotated import A\n" +
+                                 "expr: A = 'str'");
+      }
+    );
   }
 
   private void doTestNoInjectedText(@NotNull String text) {

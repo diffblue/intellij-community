@@ -3,6 +3,7 @@ package com.intellij.java.propertyBased;
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -48,6 +49,7 @@ class JavaIntentionPolicy extends IntentionPolicy {
            actionText.startsWith("Detail exceptions") || // can produce uncompilable code if 'catch' section contains 'instanceof's
            actionText.startsWith("Insert call to super method") || // super method can declare checked exceptions, unexpected at this point
            actionText.startsWith("Cast to ") || // produces uncompilable code by design
+           actionText.matches("Surround with 'if \\(.+\\)'") || // might produce uninitialized variable or missing return statement problem
            actionText.startsWith("Unwrap 'else' branch (changes semantics)") || // might produce code with final variables are initialized several times
            actionText.startsWith("Create missing branches: ") || // if all existing branches do 'return something', we don't automatically generate compilable code for new branches
            actionText.matches("Make .* default") || // can make interface non-functional and its lambdas incorrect
@@ -57,9 +59,18 @@ class JavaIntentionPolicy extends IntentionPolicy {
            actionText.equals("Split into declaration and initialization") || // TODO: remove when IDEA-179081 is fixed
            actionText.matches("Replace with throws .*") || //may break catches with explicit exceptions
            actionText.equals("Generate 'clone()' method which always throws exception") || // IDEA-207048
+           actionText.matches("Replace '.+' with '.+' in cast") || // can produce uncompilable code by design
            actionText.matches("Replace with '(new .+\\[]|.+\\[]::new)'"); // Suspicious toArray may introduce compilation error
   }
 
+  static boolean skipPreview(@NotNull IntentionAction action) {
+    String familyName = action.getFamilyName();
+    return familyName.matches("(?i)Create \\w+ from usage") ||
+           familyName.equals("Create Constructor") ||
+           // Does not change file content
+           familyName.equals("Rename File") ||
+           familyName.equals("Move file to a source root");
+  }
 }
 
 class JavaCommentingStrategy extends JavaIntentionPolicy {
@@ -74,35 +85,35 @@ class JavaCommentingStrategy extends JavaIntentionPolicy {
   public boolean checkComments(IntentionAction intention) {
     String intentionText = intention.getText();
     boolean isCommentChangingAction = intentionText.startsWith("Replace with end-of-line comment") ||
-                                     intentionText.startsWith("Replace with block comment") ||
-                                     intentionText.startsWith("Remove //noinspection") ||
-                                     intentionText.startsWith("Unwrap 'if' statement") || //remove ifs content
-                                     intentionText.startsWith("Remove 'if' statement") || //remove content of the if with everything inside
-                                     intentionText.startsWith("Unimplement Class") || intentionText.startsWith("Unimplement Interface") || //remove methods in batch
-                                     intentionText.startsWith("Suppress with 'NON-NLS' comment") ||
-                                     intentionText.startsWith("Move comment to separate line") || //merge comments on same line
-                                     intentionText.startsWith("Remove redundant arguments to call") || //removes arg with all comments inside
-                                     intentionText.startsWith("Convert to 'enum'") || //removes constructor with javadoc?
-                                     intentionText.startsWith("Remove redundant constructor") ||
-                                     intentionText.startsWith("Remove block marker comments") ||
-                                     intentionText.startsWith("Remove redundant method") ||
-                                     intentionText.startsWith("Delete unnecessary import") ||
-                                     intentionText.startsWith("Delete empty class initializer") ||
-                                     intentionText.startsWith("Replace with 'throws Exception'") ||
-                                     intentionText.startsWith("Replace unicode escape with character") ||
-                                     intentionText.startsWith("Remove 'serialVersionUID' field") ||
-                                     intentionText.startsWith("Remove unnecessary") ||
-                                     intentionText.startsWith("Remove 'try-finally' block") ||
-                                     intentionText.startsWith("Fix doc comment") ||
-                                     intentionText.startsWith("Add Javadoc") ||
-                                     intentionText.startsWith("Replace qualified name with import") || //may change references in javadoc, making refs always qualified in javadoc makes them expand on "reformat"
-                                     intentionText.startsWith("Qualify with outer class") || // may change links in javadoc
-                                     intentionText.contains("'ordering inconsistent with equals'") || //javadoc will be changed
-                                     intentionText.matches("Simplify '.*' to .*") ||
-                                     intentionText.matches("Move '.*' to Javadoc ''@throws'' tag") ||
-                                     intentionText.matches("Remove '.*' from '.*' throws list") ||
-                                     intentionText.matches("Remove type arguments") ||
-                                     intentionText.matches("Remove .+ suppression");
+                                      intentionText.startsWith("Replace with block comment") ||
+                                      intentionText.startsWith("Remove //noinspection") ||
+                                      intentionText.startsWith("Unwrap 'if' statement") ||//remove ifs content
+                                      intentionText.startsWith("Remove 'if' statement") ||//remove content of the if with everything inside
+                                      intentionText.startsWith("Unimplement Class") || intentionText.startsWith("Unimplement Interface") ||//remove methods in batch
+                                      intentionText.startsWith("Suppress with 'NON-NLS' comment") ||
+                                      intentionText.startsWith("Move comment to separate line") ||//merge comments on same line
+                                      intentionText.startsWith("Remove redundant arguments to call") ||//removes arg with all comments inside
+                                      intentionText.startsWith("Convert to 'enum'") ||//removes constructor with javadoc?
+                                      intentionText.startsWith("Remove redundant constructor") ||
+                                      intentionText.startsWith("Remove block marker comments") ||
+                                      intentionText.startsWith("Remove redundant method") ||
+                                      intentionText.startsWith("Delete unnecessary import") ||
+                                      intentionText.startsWith("Delete empty class initializer") ||
+                                      intentionText.startsWith("Replace with 'throws Exception'") ||
+                                      intentionText.startsWith("Replace unicode escape with character") ||
+                                      intentionText.startsWith("Remove 'serialVersionUID' field") ||
+                                      intentionText.startsWith("Remove unnecessary") ||
+                                      intentionText.startsWith("Remove 'try-finally' block") ||
+                                      intentionText.startsWith("Fix doc comment") ||
+                                      intentionText.startsWith("Add Javadoc") ||
+                                      intentionText.startsWith("Replace qualified name with import") ||//may change references in javadoc, making refs always qualified in javadoc makes them expand on "reformat"
+                                      intentionText.startsWith("Qualify with outer class") ||// may change links in javadoc
+                                      intentionText.contains("'ordering inconsistent with equals'") ||//javadoc will be changed
+                                      intentionText.matches("Simplify '.*' to .*") ||
+                                      intentionText.matches("Move '.*' to Javadoc ''@throws'' tag") ||
+                                      intentionText.matches("Remove '.*' from '.*' throws list") ||
+                                      intentionText.matches(JavaAnalysisBundle.message("inspection.redundant.type.remove.quickfix")) ||
+                                      intentionText.matches("Remove .+ suppression");
     return !isCommentChangingAction;
   }
 
@@ -125,6 +136,10 @@ class JavaCommentingStrategy extends JavaIntentionPolicy {
 }
 
 class JavaGreenIntentionPolicy extends JavaIntentionPolicy {
+  @Override
+  protected boolean shouldCheckPreview(@NotNull IntentionAction action) {
+    return !skipPreview(action);
+  }
 
   @Override
   protected boolean shouldSkipIntention(@NotNull String actionText) {
@@ -208,6 +223,14 @@ class JavaParenthesesPolicy extends JavaIntentionPolicy {
       if (target instanceof PsiPackage || target instanceof PsiClass) {
         return true;
       }
+      if (target == null) {
+        // unresolved qualifier: if it's just reference chain like a.b.c it could be inaccessible package, so let's avoid parenthesizing it
+        PsiExpression qualifier = expression;
+        while (qualifier instanceof PsiReferenceExpression) {
+          qualifier = ((PsiReferenceExpression)qualifier).getQualifierExpression();
+        }
+        return qualifier == null;
+      }
     }
     if (expression instanceof PsiArrayInitializerExpression && parent instanceof PsiArrayInitializerExpression) {
       return true;
@@ -216,5 +239,11 @@ class JavaParenthesesPolicy extends JavaIntentionPolicy {
       return true;
     }
     return false;
+  }
+}
+class JavaPreviewIntentionPolicy extends JavaIntentionPolicy {
+  @Override
+  protected boolean shouldCheckPreview(@NotNull IntentionAction action) {
+    return !skipPreview(action);
   }
 }

@@ -3,6 +3,7 @@ package com.intellij.psi.impl;
 
 import com.intellij.openapi.application.ReadActionProcessor;
 import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.DumbUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.FileIndexFacade;
 import com.intellij.openapi.roots.PackageIndex;
@@ -25,6 +26,7 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
   private final Project myProject;
   private final JavaFileManager myFileManager;
 
+  @SuppressWarnings("unused") //used for extension point instantiation
   public PsiElementFinderImpl(Project project) {
     myProject = project;
     myFileManager = JavaFileManager.getInstance(project);
@@ -41,12 +43,17 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
 
   @Override
   public PsiClass findClass(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+    if (!DumbUtil.getInstance(myProject).mayUseIndices()) {
+      return null;
+    }
     return myFileManager.findClass(qualifiedName, scope);
   }
 
   @Override
-  @NotNull
-  public PsiClass[] findClasses(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+  public PsiClass @NotNull [] findClasses(@NotNull String qualifiedName, @NotNull GlobalSearchScope scope) {
+    if (!DumbUtil.getInstance(myProject).mayUseIndices()) {
+      return PsiClass.EMPTY_ARRAY;
+    }
     return myFileManager.findClasses(qualifiedName, scope);
   }
 
@@ -56,8 +63,7 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
   }
 
   @Override
-  @NotNull
-  public PsiPackage[] getSubPackages(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
+  public PsiPackage @NotNull [] getSubPackages(@NotNull PsiPackage psiPackage, @NotNull GlobalSearchScope scope) {
     final Map<String, PsiPackage> packagesMap = new HashMap<>();
     final String qualifiedName = psiPackage.getQualifiedName();
     for (PsiDirectory dir : psiPackage.getDirectories(scope)) {
@@ -78,14 +84,12 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
   }
 
   @Override
-  @NotNull
-  public PsiClass[] getClasses(@NotNull PsiPackage psiPackage, @NotNull final GlobalSearchScope scope) {
+  public PsiClass @NotNull [] getClasses(@NotNull PsiPackage psiPackage, @NotNull final GlobalSearchScope scope) {
     return getClasses(null, psiPackage, scope);
   }
 
   @Override
-  @NotNull
-  public PsiClass[] getClasses(@Nullable String shortName, @NotNull PsiPackage psiPackage, @NotNull final GlobalSearchScope scope) {
+  public PsiClass @NotNull [] getClasses(@Nullable String shortName, @NotNull PsiPackage psiPackage, @NotNull final GlobalSearchScope scope) {
     List<PsiClass> list = null;
     String packageName = psiPackage.getQualifiedName();
     for (PsiDirectory dir : psiPackage.getDirectories(scope)) {
@@ -144,7 +148,7 @@ public final class PsiElementFinderImpl extends PsiElementFinder implements Dumb
   @Override
   public boolean processPackageDirectories(@NotNull PsiPackage psiPackage,
                                            @NotNull final GlobalSearchScope scope,
-                                           @NotNull final Processor<PsiDirectory> consumer,
+                                           @NotNull final Processor<? super PsiDirectory> consumer,
                                            boolean includeLibrarySources) {
     final PsiManager psiManager = PsiManager.getInstance(myProject);
     return PackageIndex.getInstance(myProject)

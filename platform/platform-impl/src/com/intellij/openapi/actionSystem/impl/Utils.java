@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem.impl;
 
+import com.intellij.CommonBundle;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
@@ -10,20 +11,18 @@ import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.concurrency.CancellablePromise;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * @author Anton Katilin
- * @author Vladimir Kondratyev
- */
-public class Utils{
+public final class Utils {
   private static final Logger LOG = Logger.getInstance(Utils.class);
-  @NonNls public static final String NOTHING_HERE = "Nothing here";
-  public static final AnAction EMPTY_MENU_FILLER = new AnAction(NOTHING_HERE) {
+  @NonNls public static final String NOTHING_HERE = CommonBundle.message("empty.menu.filler");
+  public static final AnAction EMPTY_MENU_FILLER = new AnAction(CommonBundle.messagePointer("empty.menu.filler")) {
 
     {
       getTemplatePresentation().setEnabled(false);
@@ -47,10 +46,40 @@ public class Utils{
                                                  PresentationFactory presentationFactory,
                                                  @NotNull DataContext context,
                                                  String place){
-    return new ActionUpdater(isInModalContext, presentationFactory, context, place, false, false, false)
+    return expandActionGroup(isInModalContext, group, presentationFactory, context, place, null);
+  }
+
+  public static List<AnAction> expandActionGroup(boolean isInModalContext,
+                                                 @NotNull ActionGroup group,
+                                                 PresentationFactory presentationFactory,
+                                                 @NotNull DataContext context,
+                                                 String place, ActionGroupVisitor visitor) {
+    return new ActionUpdater(isInModalContext, presentationFactory, context, place, false, false, false, visitor)
       .expandActionGroup(group, group instanceof CompactActionGroup);
   }
 
+  public static CancellablePromise<List<AnAction>> expandActionGroupAsync(boolean isInModalContext,
+                                                                          @NotNull ActionGroup group,
+                                                                          PresentationFactory presentationFactory,
+                                                                          @NotNull DataContext context,
+                                                                          String place, @Nullable Utils.ActionGroupVisitor visitor) {
+    if (!(context instanceof AsyncDataContext))
+      context = new AsyncDataContext(context);
+    return new ActionUpdater(isInModalContext, presentationFactory, context, place, false, false, false, visitor)
+      .expandActionGroupAsync(group, group instanceof CompactActionGroup);
+  }
+
+  public static List<AnAction> expandActionGroupWithTimeout(boolean isInModalContext,
+                                                 @NotNull ActionGroup group,
+                                                 PresentationFactory presentationFactory,
+                                                 @NotNull DataContext context,
+                                                 String place, ActionGroupVisitor visitor,
+                                                 int timeoutMs) {
+    return new ActionUpdater(isInModalContext, presentationFactory, context, place, false, false, false, visitor)
+      .expandActionGroupWithTimeout(group, group instanceof CompactActionGroup, timeoutMs);
+  }
+
+  private static final boolean DO_FULL_EXPAND = Boolean.getBoolean("actionSystem.use.full.group.expand"); // for tests and debug
 
   static void fillMenu(@NotNull ActionGroup group,
                        JComponent component,
@@ -64,7 +93,9 @@ public class Utils{
     final boolean checked = group instanceof CheckedActionGroup;
 
     ActionUpdater updater = new ActionUpdater(isInModalContext, presentationFactory, context, place, true, false, false);
-    List<AnAction> list = updater.expandActionGroupWithTimeout(group, group instanceof CompactActionGroup);
+    List<AnAction> list = DO_FULL_EXPAND ?
+                          updater.expandActionGroupFull(group, group instanceof CompactActionGroup) :
+                          updater.expandActionGroupWithTimeout(group, group instanceof CompactActionGroup);
 
     final boolean fixMacScreenMenu = SystemInfo.isMacSystemMenu && isWindowMenu && Registry.is("actionSystem.mac.screenMenuNotUpdatedFix");
     final ArrayList<Component> children = new ArrayList<>();
@@ -148,5 +179,17 @@ public class Utils{
         }
       });
     }
+  }
+
+  public interface ActionGroupVisitor {
+    void begin();
+
+    boolean enterNode(@NotNull ActionGroup groupNode);
+    void visitLeaf(@NotNull AnAction act);
+    void leaveNode();
+    @Nullable Component getCustomComponent(@NotNull AnAction action);
+
+    boolean beginUpdate(@NotNull AnAction action, AnActionEvent e);
+    void endUpdate(@NotNull AnAction action);
   }
 }

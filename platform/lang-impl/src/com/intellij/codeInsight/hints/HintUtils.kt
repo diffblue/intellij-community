@@ -21,7 +21,7 @@ fun getHintProviders(): List<Pair<Language, InlayParameterHintsProvider>> {
 }
 
 
-fun getBlackListInvalidLineNumbers(text: String): List<Int> {
+fun getExcludeListInvalidLineNumbers(text: String): List<Int> {
   val rules = StringUtil.split(text, "\n", true, false)
   return rules
     .asSequence()
@@ -53,9 +53,10 @@ fun getBaseLanguagesWithProviders(): List<Language> {
 
 fun isParameterHintsEnabledForLanguage(language: Language): Boolean {
   if (!EditorSettingsExternalizable.getInstance().isShowParameterNameHints) return false
-  return ParameterNameHintsSettings.getInstance().isEnabledForLanguage(language)
+  if (!InlayHintsSettings.instance().hintsShouldBeShown(language)) return false
+  return ParameterNameHintsSettings.getInstance().isEnabledForLanguage(getLanguageForSettingKey(language))
 }
 
 fun setShowParameterHintsForLanguage(value: Boolean, language: Language) {
-  ParameterNameHintsSettings.getInstance().setIsEnabledForLanguage(value, language)
+  ParameterNameHintsSettings.getInstance().setIsEnabledForLanguage(value, getLanguageForSettingKey(language))
 }

@@ -3,6 +3,7 @@
 package com.intellij.codeInspection.actions;
 
 import com.intellij.codeInsight.FileModificationService;
+import com.intellij.codeInsight.daemon.impl.DaemonProgressIndicator;
 import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.codeInsight.intention.EmptyIntentionAction;
 import com.intellij.codeInsight.intention.FileModifier;
@@ -11,8 +12,8 @@ import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInspection.*;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
 import com.intellij.codeInspection.ex.LocalInspectionToolWrapper;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
@@ -38,6 +39,10 @@ public class CleanupInspectionIntention implements IntentionAction, HighPriority
     myText = text;
   }
 
+  public InspectionToolWrapper getToolWrapper() {
+    return myToolWrapper;
+  }
+
   @Override
   @NotNull
   public String getText() {
@@ -57,14 +62,15 @@ public class CleanupInspectionIntention implements IntentionAction, HighPriority
       ProgressManager.getInstance().runProcess(() -> {
         InspectionManager inspectionManager = InspectionManager.getInstance(project);
         return InspectionEngine.runInspectionOnFile(targetFile, myToolWrapper, inspectionManager.createNewGlobalContext());
-      }, new EmptyProgressIndicator());
+      }, new DaemonProgressIndicator());
 
     if (descriptions.isEmpty() || !FileModificationService.getInstance().preparePsiElementForWrite(targetFile)) return;
 
     final AbstractPerformFixesTask fixesTask = CleanupInspectionUtil.getInstance().applyFixes(project, "Apply Fixes", descriptions, myQuickfix.getClass(), myQuickfix.startInWriteAction());
 
     if (!fixesTask.isApplicableFixFound()) {
-      HintManager.getInstance().showErrorHint(editor, "Unfortunately '" + myText + "' is currently not available for batch mode\n User interaction is required for each problem found");
+      HintManager.getInstance().showErrorHint(editor,
+                                              LangBundle.message("hint.text.unfortunately.currently.available.for.batch.mode", myText));
     }
   }
 

@@ -17,8 +17,11 @@ package com.intellij.codeInsight.editorActions;
 
 import com.intellij.codeInsight.AutoPopupController;
 import com.intellij.codeInsight.CodeInsightSettings;
+import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.completion.JavaClassReferenceCompletionContributor;
 import com.intellij.codeInsight.editorActions.smartEnter.JavaSmartEnterProcessor;
+import com.intellij.ide.highlighter.JavaFileType;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.editor.Document;
@@ -27,10 +30,10 @@ import com.intellij.openapi.editor.EditorModificationUtil;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.highlighter.HighlighterIterator;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.patterns.PsiJavaPatterns;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.javadoc.PsiDocComment;
@@ -83,6 +86,23 @@ public class JavaTypedHandler extends TypedHandlerDelegate {
     });
   }
 
+  @Override
+  public @NotNull Result checkAutoPopup(char charTyped, @NotNull Project project, @NotNull Editor editor, @NotNull PsiFile file) {
+    int offset = editor.getCaretModel().getOffset();
+    if (charTyped == ' ' &&
+        StringUtil.endsWith(editor.getDocument().getImmutableCharSequence(), 0, offset, PsiKeyword.NEW)) {
+      AutoPopupController.getInstance(project).scheduleAutoPopup(editor, CompletionType.BASIC, f -> {
+        PsiElement leaf = f.findElementAt(offset - PsiKeyword.NEW.length());
+        return leaf instanceof PsiKeyword &&
+               leaf.textMatches(PsiKeyword.NEW) &&
+               !PsiJavaPatterns.psiElement().insideStarting(PsiJavaPatterns.psiExpressionStatement()).accepts(leaf);
+      });
+      return Result.STOP;
+    }
+
+    return super.checkAutoPopup(charTyped, project, editor, file);
+  }
+
   @NotNull
   @Override
   public Result beforeCharTyped(final char c, @NotNull final Project project, @NotNull final Editor editor, @NotNull final PsiFile file, @NotNull final FileType fileType) {
@@ -113,7 +133,7 @@ public class JavaTypedHandler extends TypedHandlerDelegate {
     if (c == ';') {
       if (handleSemicolon(project, editor, file, fileType)) return Result.STOP;
     }
-    if (fileType == StdFileTypes.JAVA && c == '{') {
+    if (fileType == JavaFileType.INSTANCE && c == '{') {
       int offset = editor.getCaretModel().getOffset();
       if (offset == 0) {
         return Result.CONTINUE;
@@ -136,17 +156,12 @@ public class JavaTypedHandler extends TypedHandlerDelegate {
       PsiElement prev = offset > 1 ? file.findElementAt(offset - 1) : null;
       if (CodeInsightSettings.getInstance().AUTOINSERT_PAIR_BRACKET && isRparenth(leaf) &&
           (st instanceof PsiWhileStatement || st instanceof PsiIfStatement) && shouldInsertStatementBody(st, doc, prev)) {
-        CommandProcessor.getInstance().executeCommand(project, () -> new JavaSmartEnterProcessor().process(project, editor, file), "Insert block statement", null);
+        CommandProcessor.getInstance().executeCommand(project, () -> new JavaSmartEnterProcessor().process(project, editor, file),
+                                                      JavaBundle.message("command.name.insert.block.statement"), null);
         return Result.STOP;
       }
 
-      PsiElement prevLeaf = leaf == null ? null : PsiTreeUtil.prevVisibleLeaf(leaf);
-      if (PsiUtil.isJavaToken(prevLeaf, JavaTokenType.ARROW) || 
-          PsiTreeUtil.getParentOfType(prevLeaf, PsiNewExpression.class, true, PsiCodeBlock.class, PsiMember.class) != null) {
-        return Result.CONTINUE;
-      }
-
-      if (PsiTreeUtil.getParentOfType(leaf, PsiCodeBlock.class, false, PsiMember.class) != null) {
+      if (PsiTreeUtil.getParentOfType(leaf, PsiCodeBlock.class, false, PsiMember.class) != null && !shouldInsertPairedBrace(leaf)) {
         EditorModificationUtil.insertStringAtCaret(editor, "{");
         TypedHandler.indentOpenedBrace(project, editor);
         return Result.STOP; // use case: manually wrapping part of method's code in 'if', 'while', etc
@@ -154,6 +169,19 @@ public class JavaTypedHandler extends TypedHandlerDelegate {
     }
 
     return Result.CONTINUE;
+  }
+
+  private static boolean shouldInsertPairedBrace(@NotNull PsiElement leaf) {
+    PsiElement prevLeaf = PsiTreeUtil.prevVisibleLeaf(leaf);
+    // lambda
+    if (PsiUtil.isJavaToken(prevLeaf, JavaTokenType.ARROW)) return true;
+    // anonymous class
+    if (PsiTreeUtil.getParentOfType(prevLeaf, PsiNewExpression.class, true, PsiCodeBlock.class, PsiMember.class) != null) return true;
+    // local class
+    if (prevLeaf instanceof PsiIdentifier && prevLeaf.getParent() instanceof PsiClass) return true;
+    // local record
+    if (PsiUtil.isJavaToken(prevLeaf, JavaTokenType.RPARENTH) && prevLeaf.getParent() instanceof PsiRecordHeader) return true;
+    return false;
   }
 
   private static boolean shouldInsertStatementBody(@NotNull PsiElement statement, @NotNull Document doc, @Nullable PsiElement prev) {
@@ -251,7 +279,7 @@ public class JavaTypedHandler extends TypedHandlerDelegate {
   }
 
   private static boolean handleSemicolon(@NotNull Project project, @NotNull Editor editor, @NotNull PsiFile file, @NotNull FileType fileType) {
-    if (fileType != StdFileTypes.JAVA) return false;
+    if (fileType != JavaFileType.INSTANCE) return false;
     int offset = editor.getCaretModel().getOffset();
     if (offset == editor.getDocument().getTextLength()) return false;
 

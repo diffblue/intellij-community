@@ -3,6 +3,7 @@ package com.intellij.openapi.actionSystem.impl;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.ui.UISettings;
+import com.intellij.internal.inspector.UiInspectorUtil;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionPopupMenu;
 import com.intellij.openapi.actionSystem.DataContext;
@@ -10,6 +11,7 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationActivationListener;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.impl.LaterInvocator;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ui.JBPopupMenu;
 import com.intellij.openapi.util.Getter;
 import com.intellij.openapi.wm.IdeFrame;
@@ -17,7 +19,6 @@ import com.intellij.openapi.wm.impl.InternalDecorator;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.messages.MessageBusConnection;
-import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,6 +32,7 @@ import java.awt.*;
  * @author Vladimir Kondratyev
  */
 final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivationListener {
+  private static final Logger LOG = Logger.getInstance(ActionPopupMenuImpl.class);
   private final Application myApp;
   private final MyMenu myMenu;
   private final ActionManagerImpl myManager;
@@ -74,8 +76,7 @@ final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivatio
   @Override
   public void setTargetComponent(@NotNull JComponent component) {
     myDataContextProvider = () -> DataManager.getInstance().getDataContext(component);
-    myIsToolWindowContextMenu = ComponentUtil
-                                  .getParentOfType((Class<? extends InternalDecorator>)InternalDecorator.class, (Component)component) != null;
+    myIsToolWindowContextMenu = ComponentUtil.getParentOfType(InternalDecorator.class, component) != null;
   }
 
   boolean isToolWindowContextMenu() {
@@ -95,10 +96,12 @@ final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivatio
       myGroup = group;
       myPresentationFactory = factory != null ? factory : new MenuItemPresentationFactory();
       addPopupMenuListener(new MyPopupMenuListener());
+
+      UiInspectorUtil.registerProvider(this, () -> UiInspectorUtil.collectActionGroupInfo("Menu", myGroup, myPlace));
     }
 
     @Override
-    public void show(final Component component, int x, int y) {
+    public void show(@NotNull Component component, int x, int y) {
       if (!component.isShowing()) {
         throw new IllegalArgumentException("component must be shown on the screen (" + component + ")");
       }
@@ -111,13 +114,17 @@ final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationActivatio
       int y2 = Math.max(0, Math.min(y, component.getHeight() - 1)); // fit y into [0, height-1]
 
       myContext = myDataContextProvider != null ? myDataContextProvider.get() : DataManager.getInstance().getDataContext(component, x2, y2);
-      Utils.fillMenu(myGroup, this, true, myPresentationFactory, myContext, myPlace, false, LaterInvocator.isInModalContext(), false);
+      long time = -System.currentTimeMillis();
+      Utils.fillMenu(myGroup, this, !UISettings.getInstance().getDisableMnemonics(), myPresentationFactory, myContext, myPlace, false, LaterInvocator.isInModalContext(), false);
+      time += System.currentTimeMillis();
+      if (time > 1000) LOG.warn(time + "ms to fill popup menu " + myPlace);
       if (getComponentCount() == 0) {
+        LOG.warn("no components in popup menu " + myPlace);
         return;
       }
       if (myApp != null) {
         if (myApp.isActive()) {
-          Component frame = UIUtil.findUltimateParent(component);
+          Component frame = ComponentUtil.findUltimateParent(component);
           if (frame instanceof IdeFrame) {
             myFrame = (IdeFrame)frame;
           }

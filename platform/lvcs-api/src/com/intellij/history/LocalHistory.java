@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.history;
 
 import com.intellij.openapi.components.ServiceManager;
@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
 public abstract class LocalHistory {
   public static final Object VFS_EVENT_REQUESTOR = new Object();
 
-  private static class LocalHistoryHolder {
+  private static final class LocalHistoryHolder {
     static final LocalHistory ourInstance = ServiceManager.getService(LocalHistory.class);
   }
 
@@ -29,8 +29,7 @@ public abstract class LocalHistory {
 
   public abstract Label putUserLabel(Project p, @NotNull String name);
 
-  @Nullable
-  public abstract byte[] getByteContent(VirtualFile f, FileRevisionTimestampComparator c);
+  public abstract byte @Nullable [] getByteContent(VirtualFile f, FileRevisionTimestampComparator c);
 
   public abstract boolean isUnderControl(@NotNull VirtualFile f);
 }

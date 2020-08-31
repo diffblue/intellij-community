@@ -6,6 +6,7 @@ import com.intellij.codeInsight.daemon.impl.IntentionsUI;
 import com.intellij.codeInsight.daemon.impl.ShowIntentionsPass;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.impl.CachedIntentions;
+import com.intellij.codeInspection.unneededThrows.RedundantThrowsDeclarationLocalInspection;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase;
 
@@ -32,7 +33,7 @@ public class GutterIntentionsTest extends LightJavaCodeInsightFixtureTestCase {
 
   public void testOptions() {
     myFixture.configureByText(JavaFileType.INSTANCE, "public class Foo {\n" +
-                                                     "  public static void <caret>main(String[] args) {}" +
+                                                     "  public static void <caret>main(String[] args) { someCode(); }" +
                                                      "}");
     assertSize(1, myFixture.findGuttersAtCaret());
 
@@ -53,7 +54,7 @@ public class GutterIntentionsTest extends LightJavaCodeInsightFixtureTestCase {
 
   public void testDoNotIncludeActionGroup() {
     myFixture.configureByText(JavaFileType.INSTANCE, "public class Foo {\n" +
-                                                     "  public static void <caret>main(String[] args) {}" +
+                                                     "  public static void <caret>main(String[] args) { someCode(); }" +
                                                      "}");
     assertSize(1, myFixture.findGuttersAtCaret());
 
@@ -68,5 +69,18 @@ public class GutterIntentionsTest extends LightJavaCodeInsightFixtureTestCase {
                                                      "  public static void main(String[] args) {}" +
                                                      "}");
     List<IntentionAction> actions = myFixture.getAvailableIntentions();
-    assertThat(actions.get(0).getText()).startsWith("Create class ");  }
+    assertThat(actions.get(0).getText()).startsWith("Create class ");
+  }
+
+  public void testWarningFixesOnTop() {
+    myFixture.addClass("package junit.framework; public class TestCase {}");
+    myFixture.configureByText("MainTest.java", "public class MainTest extends junit.framework.TestCase {\n" +
+                                               "    public void testFoo() throws Exce<caret>ption {\n" +
+                                               "    }\n" +
+                                               "}");
+    myFixture.enableInspections(new RedundantThrowsDeclarationLocalInspection());
+    myFixture.doHighlighting();
+    CachedIntentions intentions = IntentionsUI.getInstance(getProject()).getCachedIntentions(getEditor(), getFile());
+    assertThat(intentions.getAllActions().get(0).getText()).startsWith("Remove ");
+  }
 }

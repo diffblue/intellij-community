@@ -15,6 +15,7 @@
  */
 package com.intellij.cvsSupport2.cvsoperations.cvsUpdate.ui;
 
+import com.intellij.CvsBundle;
 import com.intellij.cvsSupport2.Options;
 import com.intellij.cvsSupport2.config.CvsConfiguration;
 import com.intellij.cvsSupport2.cvsoperations.cvsUpdate.MergedWithConflictProjectOrModuleFile;
@@ -35,14 +36,15 @@ import java.awt.event.ActionEvent;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 public class CorruptedProjectFilesDialog extends DialogWrapper {
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.cvsSupport2.cvsoperations.cvsUpdate.ui.CorruptedProjectFilesDialog");
+  private static final Logger LOG = Logger.getInstance(CorruptedProjectFilesDialog.class);
 
   private JLabel myMessageLabel;
   private JLabel myIconLabel;
-  private final java.util.List<MergedWithConflictProjectOrModuleFile> myCorruptedFiles;
+  private final List<MergedWithConflictProjectOrModuleFile> myCorruptedFiles;
   private final Project myProject;
   private JPanel myPanel;
   private JRadioButton myGetAllOption;
@@ -65,7 +67,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
 
     myShowDialogOption.setSelected(true);
 
-    setTitle(com.intellij.CvsBundle.message("operation.name.update"));
+    setTitle(CvsBundle.message("operation.name.update"));
     init();
     showNextFileInfo();
   }
@@ -76,8 +78,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
   }
 
   @Override
-  @NotNull
-  protected Action[] createActions() {
+  protected Action @NotNull [] createActions() {
     return new Action[]{new SkipFile(), new GetFile(), new SkipAll(), new GetAll()
     //  , new VisualMerge()
     };
@@ -87,10 +88,10 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
     VirtualFile currentVirtualFile = getCurrentVirtualFile();
     FileType fileType = currentVirtualFile.getFileType();
     myMessageLabel.setText(
-      com.intellij.CvsBundle.message("label.project.files.cannot.be.merged.without.conflict",
+      CvsBundle.message("label.project.files.cannot.be.merged.without.conflict",
 
       fileType.getDescription(), currentVirtualFile.getPresentableUrl()));
-    setTitle(com.intellij.CvsBundle.message("dialog.title.file.cannot.be.merged.without.conflicts", fileType.getDescription(), currentVirtualFile.getName()));
+    setTitle(CvsBundle.message("dialog.title.file.cannot.be.merged.without.conflicts", fileType.getDescription(), currentVirtualFile.getName()));
   }
 
   private void onCurrentFileProcessed(boolean isOk) {
@@ -119,7 +120,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
 
   private class SkipFile extends AbstractAction {
     SkipFile() {
-      putValue(NAME, com.intellij.CvsBundle.message("button.text.skip"));
+      putValue(NAME, CvsBundle.message("button.text.skip"));
     }
 
     @Override
@@ -130,7 +131,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
 
   private class GetFile extends AbstractAction {
     GetFile() {
-      putValue(NAME, com.intellij.CvsBundle.message("button.text.get"));
+      putValue(NAME, CvsBundle.message("button.text.get"));
     }
 
     @Override
@@ -142,7 +143,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
 
   private class SkipAll extends AbstractAction {
     SkipAll() {
-      putValue(NAME, com.intellij.CvsBundle.message("button.text.skip.all"));
+      putValue(NAME, CvsBundle.message("button.text.skip.all"));
     }
 
     @Override
@@ -154,7 +155,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
 
   private class GetAll extends AbstractAction {
     GetAll() {
-      putValue(NAME, com.intellij.CvsBundle.message("button.text.get.all"));
+      putValue(NAME, CvsBundle.message("button.text.get.all"));
     }
 
     @Override
@@ -193,7 +194,7 @@ public class CorruptedProjectFilesDialog extends DialogWrapper {
   }
   */
 
-  private void saveExternally(VirtualFile currentVirtualFile, Document document) {
+  private static void saveExternally(VirtualFile currentVirtualFile, Document document) {
     FileDocumentManager fileDocumentManager = FileDocumentManager.getInstance();
     fileDocumentManager.saveDocument(fileDocumentManager.getDocument(currentVirtualFile));
     File ioProjectFile = VfsUtil.virtualToIoFile(currentVirtualFile);

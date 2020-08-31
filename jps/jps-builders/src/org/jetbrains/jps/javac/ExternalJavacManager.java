@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.javac;
 
 import com.intellij.execution.process.*;
@@ -31,7 +31,7 @@ import org.jetbrains.jps.builders.java.JavaCompilingTool;
 import org.jetbrains.jps.cmdline.ClasspathBootstrap;
 import org.jetbrains.jps.incremental.GlobalContextKey;
 
-import javax.tools.*;
+import javax.tools.Diagnostic;
 import java.io.File;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -40,13 +40,12 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-/**
- * @author Eugene Zhuravlev
- */
 public class ExternalJavacManager extends ProcessAdapter {
-  private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.javac.ExternalJavacServer");
+  private static final Logger LOG = Logger.getInstance(ExternalJavacManager.class);
 
   public static final GlobalContextKey<ExternalJavacManager> KEY = GlobalContextKey.create("_external_javac_server_");
   public static final int DEFAULT_SERVER_PORT = 7878;
@@ -135,7 +134,7 @@ public class ExternalJavacManager extends ProcessAdapter {
                            CanceledStatus cancelStatus) {
     return forkJavac(
       javaHome, heapSize, vmOptions, options,
-      CompilationPaths.create(platformCp, classpath, upgradeModulePath, modulePath, sourcePath),
+      CompilationPaths.create(platformCp, classpath, upgradeModulePath, ModulePath.create(modulePath), sourcePath),
       files, outs, diagnosticSink, outputSink, compilingTool, cancelStatus, false
     ).get();
   }
@@ -154,8 +153,8 @@ public class ExternalJavacManager extends ProcessAdapter {
                                           CanceledStatus cancelStatus, final boolean keepProcessAlive) {
     try {
       final ExternalJavacProcessHandler running = findRunningProcess(processHash(javaHome, vmOptions, compilingTool));
-      final ExternalJavacProcessHandler processHandler = running != null && running.lock()? running : launchExternalJavacProcess(
-        javaHome, heapSize, myListenPort, myWorkingDir, vmOptions, compilingTool, running == null && keepProcessAlive
+      final ExternalJavacProcessHandler processHandler = running != null? running : launchExternalJavacProcess(
+        javaHome, heapSize, myListenPort, myWorkingDir, vmOptions, compilingTool, keepProcessAlive
       );
 
       final Channel channel = lookupChannel(processHandler.getProcessId());
@@ -168,6 +167,9 @@ public class ExternalJavacManager extends ProcessAdapter {
           options, files, paths.getClasspath(), paths.getPlatformClasspath(), paths.getModulePath(), paths.getUpgradeModulePath(), paths.getSourcePath(), outs
         )));
         return session;
+      }
+      else {
+        LOG.warn("Failed to connect to javac process");
       }
     }
     catch (Throwable e) {
@@ -205,23 +207,32 @@ public class ExternalJavacManager extends ProcessAdapter {
   }
 
   private ExternalJavacProcessHandler findRunningProcess(int processHash) {
+    debug(()-> "findRunningProcess: looking for hash " + processHash);
     List<ExternalJavacProcessHandler> idleProcesses = null;
     try {
       synchronized (myRunningProcesses) {
         for (Map.Entry<UUID, ExternalJavacProcessHandler> entry : myRunningProcesses.entrySet()) {
           final ExternalJavacProcessHandler process = entry.getValue();
+          if (!process.isKeepProcessAlive()) {
+            //we shouldn't try to reuse process which will stop after finishing the current compilation
+            continue;
+          }
+
           final Integer hash = PROCESS_HASH.get(process);
-          if (hash != null && hash == processHash) {
+          if (hash != null && hash == processHash && process.lock()) {
+            debug(()-> "findRunningProcess: returning process " + process.getProcessId() + " for hash " + processHash);
             return process;
           }
           if (process.getIdleTime() > myKeepAliveTimeout) {
             if (idleProcesses == null) {
               idleProcesses = new ArrayList<>();
             }
+            debug(()-> "findRunningProcess: adding " + process.getProcessId() + " to idle list");
             idleProcesses.add(process);
           }
         }
       }
+      debug(()-> "findRunningProcess: no running process for " + processHash + " is found");
       return null;
     }
     finally {
@@ -230,6 +241,18 @@ public class ExternalJavacManager extends ProcessAdapter {
           shutdownProcess(process);
         }
       }
+    }
+  }
+
+  private static <T> void debug(T data, Function<T, String> message) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(message.apply(data));
+    }
+  }
+
+  private static void debug(Supplier<String> message) {
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(message.get());
     }
   }
 
@@ -286,9 +309,12 @@ public class ExternalJavacManager extends ProcessAdapter {
   }
 
   private boolean shutdownProcess(ExternalJavacProcessHandler process) {
-    final Channel conn = myConnections.get(process.getProcessId());
+    UUID processId = process.getProcessId();
+    debug(()-> "shutdownProcess: shutting down " + processId);
+    final Channel conn = myConnections.get(processId);
     if (conn != null && process.lock()) {
-      conn.writeAndFlush(JavacProtoUtil.toMessage(process.getProcessId(), JavacProtoUtil.createShutdownRequest()));
+      debug(()-> "shutdownProcess: sending shutdown request to " + processId);
+      conn.writeAndFlush(JavacProtoUtil.toMessage(processId, JavacProtoUtil.createShutdownRequest()));
       return true;
     }
     return false;
@@ -354,9 +380,7 @@ public class ExternalJavacManager extends ProcessAdapter {
 
     appendParam(cmdLine, FileUtil.toSystemIndependentName(workingDir.getPath()));
 
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("starting external compiler: " + cmdLine);
-    }
+    debug(()-> "starting external compiler: " + cmdLine);
     FileUtil.createDirectory(workingDir);
 
     final int processHash = processHash(sdkHomePath, vmOptions, compilingTool);
@@ -364,6 +388,7 @@ public class ExternalJavacManager extends ProcessAdapter {
     PROCESS_HASH.set(processHandler, processHash);
     processHandler.lock();
     myRunningProcesses.put(processId, processHandler);
+    debug(()-> "external compiler process registered: id=" + processId + ", hash=" + processHash);
     processHandler.addProcessListener(this);
     processHandler.startNotify();
     return processHandler;
@@ -372,6 +397,7 @@ public class ExternalJavacManager extends ProcessAdapter {
   @Override
   public void processTerminated(@NotNull ProcessEvent event) {
     final UUID processId = ((ExternalJavacProcessHandler)event.getProcessHandler()).getProcessId();
+    debug(()-> "process " + processId + " terminated");
     myRunningProcesses.remove(processId);
     if (myConnections.get(processId) == null) {
       // only if connection has never been established
@@ -396,6 +422,9 @@ public class ExternalJavacManager extends ProcessAdapter {
   public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
     final String text = event.getText();
     if (!StringUtil.isEmptyOrSpaces(text)) {
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("text from javac: " + text);
+      }
       String prefix = null;
       if (outputType == ProcessOutputTypes.STDOUT) {
         prefix = STDOUT_LINE_PREFIX;
@@ -472,16 +501,16 @@ public class ExternalJavacManager extends ProcessAdapter {
 
     public synchronized long getIdleTime() {
       final long idleSince = myIdleSince;
-      return idleSince <= 0L? 0L : (System.currentTimeMillis() - idleSince);
+      return idleSince == -42L? 0L : TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - idleSince);
     }
 
     public synchronized void unlock() {
-      myIdleSince = System.currentTimeMillis();
+      myIdleSince = System.nanoTime();
       myIsBusy = false;
     }
 
     public synchronized boolean lock() {
-      myIdleSince = 0L;
+      myIdleSince = -42L;
       return !myIsBusy && (myIsBusy = true);
     }
 
@@ -571,8 +600,10 @@ public class ExternalJavacManager extends ProcessAdapter {
     Channel channel = null;
     synchronized (myConnections) {
       channel = myConnections.get(processId);
+      debug(channel, ch-> "lookupChannel: channel for " + processId + " is " + ch);
       while (channel == null) {
         if (!myRunningProcesses.containsKey(processId)) {
+          debug(()-> "lookupChannel: no process for " + processId);
           break; // the process is already gone
         }
         try {
@@ -581,6 +612,7 @@ public class ExternalJavacManager extends ProcessAdapter {
         catch (InterruptedException ignored) {
         }
         channel = myConnections.get(processId);
+        debug(channel, ch-> "lookupChannel: after wait channel for " + processId + " is " + ch);
       }
     }
     return channel;
@@ -680,7 +712,11 @@ public class ExternalJavacManager extends ProcessAdapter {
         }
         notifyCancelled();
       }
-      return isTerminatedSuccessfully();
+      boolean successfully = isTerminatedSuccessfully();
+      if (!successfully) {
+        debug(()-> "Javac compile session " + myId + " in process " + myProcessId + "didn't terminate successfully");
+      }
+      return successfully;
     }
 
     @NotNull
@@ -691,7 +727,11 @@ public class ExternalJavacManager extends ProcessAdapter {
         // if execution continues, just notify about timeout
         throw new TimeoutException();
       }
-      return isTerminatedSuccessfully();
+      boolean successfully = isTerminatedSuccessfully();
+      if (!successfully) {
+        debug(()-> "Javac compile session " + myId + " in process " + myProcessId + "didn't terminate successfully");
+      }
+      return successfully;
     }
 
     private void notifyCancelled() {

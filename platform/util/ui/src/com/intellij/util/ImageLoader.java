@@ -13,6 +13,7 @@ import com.intellij.ui.scale.DerivedScaleType;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.ui.scale.ScaleType;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.EmptyIcon;
 import com.intellij.util.ui.ImageUtil;
 import com.intellij.util.ui.StartupUiUtil;
@@ -30,6 +31,7 @@ import java.io.*;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public final class ImageLoader implements Serializable {
   public static final int ALLOW_FLOAT_SCALING = 0x01;
@@ -80,7 +82,8 @@ public final class ImageLoader implements Serializable {
     }
   }
 
-  private static final class ImageDescriptorListBuilder {
+  @ApiStatus.Internal
+  public static final class ImageDescriptorListBuilder {
     private final List<ImageDescriptor> list = new SmartList<>();
     final String name;
     final String ext;
@@ -120,16 +123,30 @@ public final class ImageLoader implements Serializable {
     }
 
     @NotNull
-    List<ImageDescriptor> build() {
-      return list;
+    ImageDescriptorList build() {
+      return new ImageDescriptorList(list, name, svg ? ImageType.SVG : ImageType.IMG);
     }
   }
 
-  private static final class ImageDescriptorList {
-    private final List<ImageDescriptor> list;
+  public static void clearCache() {
+    ImageDescriptorList.IO_MISS_CACHE.clear();
+  }
 
-    private ImageDescriptorList(@NotNull List<ImageDescriptor> list) {
+  public static final class ImageDescriptorList {
+    private static final Set<String> IO_MISS_CACHE = ContainerUtil.newConcurrentSet();
+
+    private final List<ImageDescriptor> list;
+    private final String name;
+    private final ImageType type;
+
+    private ImageDescriptorList(@NotNull List<ImageDescriptor> list, @NotNull String name, @NotNull ImageType type) {
       this.list = list;
+      this.name = name;
+      this.type = type;
+    }
+
+    public @NotNull List<@NotNull ImageDescriptor> getDescriptors() {
+      return list;
     }
 
     @Nullable
@@ -144,8 +161,13 @@ public final class ImageLoader implements Serializable {
 
     @Nullable
     public Image load(@NotNull ImageConverterChain converters, boolean useCache, @Nullable Class<?> resourceClass) {
+      String cacheKey = name + "." + type.name();
+      if (IO_MISS_CACHE.contains(cacheKey)) {
+        return null;
+      }
       long start = StartUpMeasurer.isEnabled() ? StartUpMeasurer.getCurrentTime() : -1;
 
+      boolean ioExceptionThrown = false;
       Image result = null;
       for (ImageDescriptor descriptor : list) {
         try {
@@ -161,8 +183,12 @@ public final class ImageLoader implements Serializable {
           }
           break;
         }
-        catch (IOException ignore) {
+        catch (IOException e) {
+          ioExceptionThrown = true;
         }
+      }
+      if (result == null && ioExceptionThrown) {
+        IO_MISS_CACHE.add(cacheKey);
       }
       return result;
     }
@@ -197,7 +223,7 @@ public final class ImageLoader implements Serializable {
       else {
         builder.add(false, false);
       }
-      return new ImageDescriptorList(builder.build());
+      return builder.build();
     }
   }
 
@@ -212,7 +238,7 @@ public final class ImageLoader implements Serializable {
       return new ImageConverterChain();
     }
 
-    ImageConverterChain withFilter(@Nullable ImageFilter[] filters) {
+    ImageConverterChain withFilter(ImageFilter @Nullable [] filters) {
       if (filters == null) return this;
       ImageConverterChain chain = this;
       for (ImageFilter filter : filters) {
@@ -293,7 +319,7 @@ public final class ImageLoader implements Serializable {
    * Then wraps the image with {@link JBHiDPIScaledImage} if necessary.
    */
   @Nullable
-  public static Image loadFromUrl(@NotNull URL url, @Nullable Class aClass, @MagicConstant(flags = {ALLOW_FLOAT_SCALING, USE_CACHE, DARK, FIND_SVG}) int flags, @Nullable ImageFilter[] filters, ScaleContext scaleContext) {
+  public static Image loadFromUrl(@NotNull URL url, @Nullable Class aClass, @MagicConstant(flags = {ALLOW_FLOAT_SCALING, USE_CACHE, DARK, FIND_SVG}) int flags, ImageFilter @Nullable [] filters, ScaleContext scaleContext) {
     return loadFromUrl(url.toString(), aClass, flags, filters, scaleContext);
   }
 
@@ -302,7 +328,7 @@ public final class ImageLoader implements Serializable {
    * Then wraps the image with {@link JBHiDPIScaledImage} if necessary.
    */
   @Nullable
-  public static Image loadFromUrl(@NotNull String path, @Nullable Class aClass, @MagicConstant(flags = {ALLOW_FLOAT_SCALING, USE_CACHE, DARK, FIND_SVG}) int flags, @Nullable ImageFilter[] filters, ScaleContext scaleContext) {
+  public static Image loadFromUrl(@NotNull String path, @Nullable Class aClass, @MagicConstant(flags = {ALLOW_FLOAT_SCALING, USE_CACHE, DARK, FIND_SVG}) int flags, ImageFilter @Nullable [] filters, ScaleContext scaleContext) {
     // We can't check all 3rd party plugins and convince the authors to add @2x icons.
     // In IDE-managed HiDPI mode with scale > 1.0 we scale images manually.
     return ImageDescriptorList.create(path, flags, scaleContext).load(
@@ -387,7 +413,7 @@ public final class ImageLoader implements Serializable {
       .load(ImageConverterChain.create().withHiDPI(scaleContext), true, aClass);
   }
 
-  public static Image loadFromBytes(@NotNull final byte[] bytes) {
+  public static Image loadFromBytes(final byte @NotNull [] bytes) {
     return loadFromStream(new ByteArrayInputStream(bytes));
   }
 

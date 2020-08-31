@@ -19,7 +19,7 @@ import org.jetbrains.plugins.groovy.lang.psi.impl.GroovyPsiElementImpl;
  * @date: 28.03.2007
  */
 public class GrWildcardTypeArgumentImpl extends GroovyPsiElementImpl implements GrWildcardTypeArgument {
-  private static final Logger LOG = Logger.getInstance("org.jetbrains.plugins.groovy.lang.psi.impl.types.GrWildcardTypeArgumentImpl");
+  private static final Logger LOG = Logger.getInstance(GrWildcardTypeArgumentImpl.class);
 
   public GrWildcardTypeArgumentImpl(@NotNull ASTNode node) {
     super(node);
@@ -60,9 +60,8 @@ public class GrWildcardTypeArgumentImpl extends GroovyPsiElementImpl implements 
     return findChildByType(GroovyTokenTypes.kSUPER) != null;
   }
 
-  @NotNull
   @Override
-  public GrAnnotation[] getAnnotations() {
+  public GrAnnotation @NotNull [] getAnnotations() {
     return findChildrenByType(GroovyStubElementTypes.ANNOTATION, GrAnnotation.class);
   }
 }

@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2009 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.testframework;
 
 import com.intellij.execution.ExecutionBundle;
@@ -43,7 +29,7 @@ import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.List;
 
-public class TestsUIUtil {
+public final class TestsUIUtil {
   public static final NotificationGroup NOTIFICATION_GROUP = NotificationGroup.logOnlyGroup("Test Runner");
 
   public static final Color PASSED_COLOR = new Color(0, 128, 0);
@@ -289,7 +275,8 @@ public class TestsUIUtil {
 
     public TestResultPresentation getPresentation(int failedCount, int passedCount, int notStartedCount, int ignoredCount) {
       if (myRoot == null) {
-        myBalloonText = myTitle = myStarted ? "Tests were interrupted" : ExecutionBundle.message("test.not.started.progress.text");
+        myBalloonText = myTitle = myStarted ? TestRunnerBundle.message("test.interrupted.progress.text")
+                                            : ExecutionBundle.message("test.not.started.progress.text");
         myText = "";
         myType = MessageType.WARNING;
       }
@@ -301,29 +288,28 @@ public class TestsUIUtil {
 
         if (failedCount > 0) {
           myTitle = ExecutionBundle.message("junit.runing.info.tests.failed.label");
-          myBalloonText = "Tests failed: " + failedCount + ", passed: " + passedCount +
-                          (ignoredCount > 0 ? ", ignored: " + ignoredCount : notStartedCount > 0 ? ", not started: " + notStartedCount : "");
-          String notStartedMessage = ignoredCount > 0 ? ", " + ignoredCount + " ignored"
-                                                      : notStartedCount > 0 ? ", " + notStartedCount + " not started" : "";
-          myText = failedCount + " failed, " + passedCount + " passed" + notStartedMessage;
+          myBalloonText = TestRunnerBundle.message("tests.failed.0.passed.1.ignored.2.not.started.3",
+                                                   failedCount, passedCount, ignoredCount, notStartedCount);
+          myText = TestRunnerBundle.message("0.failed.1.passed.2.ignored.3.not.started",
+                                            failedCount, passedCount, ignoredCount, notStartedCount);
           myType = MessageType.ERROR;
         }
         else if (ignoredCount > 0) {
-          myTitle = "Tests Ignored";
-          myBalloonText = "Tests ignored: " + ignoredCount + ", passed: " + passedCount;
-          myText = ignoredCount + " ignored, " + passedCount + " passed";
+          myTitle = TestRunnerBundle.message("tests.ignored.error.message");
+          myBalloonText = TestRunnerBundle.message("tests.ignored.0.passed.1", ignoredCount, passedCount);
+          myText = TestRunnerBundle.message("0.ignored.1.passed", ignoredCount, passedCount);
           myType = MessageType.WARNING;
         }
         else if (notStartedCount > 0) {
           myTitle = ExecutionBundle.message("junit.running.info.failed.to.start.error.message");
-          myBalloonText = "Failed to start: " + notStartedCount + ", passed: " + passedCount;
-          myText = notStartedCount + " not started, " + passedCount + " passed";
+          myBalloonText = TestRunnerBundle.message("failed.to.start.0.passed.1", notStartedCount, passedCount);
+          myText = TestRunnerBundle.message("0.not.started.1.passed", notStartedCount, passedCount);
           myType = MessageType.ERROR;
         }
         else {
           myTitle = ExecutionBundle.message("junit.runing.info.tests.passed.label");
-          myBalloonText = "Tests passed: " + passedCount;
-          myText = passedCount + " passed";
+          myBalloonText = TestRunnerBundle.message("tests.passed.0", passedCount);
+          myText = TestRunnerBundle.message("0.passed", passedCount);
           myType = MessageType.INFO;
         }
         if (myComment != null) {
@@ -332,6 +318,5 @@ public class TestsUIUtil {
       }
       return this;
     }
-
   }
 }

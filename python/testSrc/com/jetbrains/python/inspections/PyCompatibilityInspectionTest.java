@@ -252,6 +252,16 @@ public class PyCompatibilityInspectionTest extends PyInspectionTestCase {
     );
   }
 
+  // PY-35961
+  public void testUnpackingInNonParenthesizedTuplesInReturnAndYield() {
+    doTest(LanguageLevel.PYTHON38);
+  }
+
+  // PY-41305
+  public void testExpressionInDecorators() {
+    doTest(LanguageLevel.PYTHON39);
+  }
+
   private void doTest(@NotNull LanguageLevel level) {
     runWithLanguageLevel(level, this::doTest);
   }

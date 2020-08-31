@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.psi.util;
 
@@ -78,6 +64,10 @@ public class NameUtilMatchingTest extends TestCase {
     assertMatches("na ut", "name_util_test");
     assertMatches("na te", "name_util_test");
     assertDoesntMatch("na ti", "name_util_test");
+
+    assertDoesntMatch("alias imple", "alias simple");
+    assertDoesntMatch("alias mple", "alias simple");
+    assertDoesntMatch("alias nother", "alias another");
   }
   
   public void testXMLCompletion() {
@@ -184,6 +174,7 @@ public class NameUtilMatchingTest extends TestCase {
     assertMatches("j.js", "jquery.autocomplete.js");
     assertDoesntMatch("j.ajs", "jquery.autocomplete.js");
     assertMatches("oracle.bnf", "oracle-11.2.bnf");
+    assertMatches("*foo.*bar", "foo.b.bar");
   }
 
   public void testNoExtension() {
@@ -609,9 +600,7 @@ public class NameUtilMatchingTest extends TestCase {
     assertTrue(caseInsensitiveMatcher(" EUC-").matchingDegree("x-EUC-TW") > Integer.MIN_VALUE);
   }
 
-  private static void assertPreference(@NonNls String pattern,
-                                       @NonNls String less,
-                                       @NonNls String more) {
+  static void assertPreference(@NonNls String pattern, @NonNls String less, @NonNls String more) {
     assertPreference(pattern, less, more, NameUtil.MatchingCaseSensitivity.FIRST_LETTER);
   }
 
@@ -649,8 +638,9 @@ public class NameUtilMatchingTest extends TestCase {
     assertDoesntMatch("*.ico", "a.i.c.o");
   }
 
-  public void testUsingCapsMeansTheyShouldMatchCaps() {
-    assertDoesntMatch("URLCl", "UrlClassLoader");
+  public void testCapsMayMatchNonCaps() {
+    assertMatches("PDFRe", "PdfRenderer");
+    assertMatches("*pGETPartTimePositionInfo", "dbo.pGetPartTimePositionInfo.sql");
   }
 
   public void testACapitalAfterAnotherCapitalMayMatchALowercaseLetterBecauseShiftWasAccidentallyHeldTooLong() {

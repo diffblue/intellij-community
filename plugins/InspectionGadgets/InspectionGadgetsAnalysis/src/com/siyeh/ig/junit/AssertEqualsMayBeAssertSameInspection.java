@@ -14,12 +14,6 @@ public class AssertEqualsMayBeAssertSameInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("assertequals.may.be.assertsame.display.name");
-  }
-
-  @Override
-  @NotNull
   protected String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("assertequals.may.be.assertsame.problem.descriptor");
   }
@@ -39,7 +33,7 @@ public class AssertEqualsMayBeAssertSameInspection extends BaseInspection {
     @Override
     public void visitMethodCallExpression(PsiMethodCallExpression expression) {
       super.visitMethodCallExpression(expression);
-      final AssertHint assertHint = AssertHint.createAssertEqualsHint(expression, false);
+      final AssertHint assertHint = AssertHint.createAssertEqualsHint(expression);
       if (assertHint == null) {
         return;
       }

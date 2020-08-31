@@ -34,13 +34,6 @@ public class DollarSignInNameInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "dollar.sign.in.name.display.name");
-  }
-
-  @Override
-  @NotNull
   protected String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message(
       "dollar.sign.in.name.problem.descriptor");
@@ -65,7 +58,7 @@ public class DollarSignInNameInspection extends BaseInspection {
       if (name == null) {
         return;
       }
-      if (name.indexOf((int)'$') < 0) {
+      if (name.indexOf('$') < 0) {
         return;
       }
       registerVariableError(variable);
@@ -75,7 +68,7 @@ public class DollarSignInNameInspection extends BaseInspection {
     public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       final String name = method.getName();
-      if (name.indexOf((int)'$') < 0) {
+      if (name.indexOf('$') < 0) {
         return;
       }
       registerMethodError(method);
@@ -88,7 +81,7 @@ public class DollarSignInNameInspection extends BaseInspection {
       if (name == null) {
         return;
       }
-      if (name.indexOf((int)'$') < 0) {
+      if (name.indexOf('$') < 0) {
         return;
       }
       registerClassError(aClass);

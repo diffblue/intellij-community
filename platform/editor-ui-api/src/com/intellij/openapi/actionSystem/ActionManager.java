@@ -1,10 +1,9 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ex.AnActionListener;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.util.ActionCallback;
 import org.jetbrains.annotations.NonNls;
@@ -26,7 +25,7 @@ public abstract class ActionManager {
    * Fetches the instance of ActionManager implementation.
    */
   public static ActionManager getInstance() {
-    return ServiceManager.getService(ActionManager.class);
+    return ApplicationManager.getApplication().getService(ActionManager.class);
   }
 
   /**
@@ -50,7 +49,7 @@ public abstract class ActionManager {
    *                   when an action from the group is either performed or updated.
    *                   See {@link com.intellij.openapi.actionSystem.ActionPlaces}
    * @param group      Group from which the actions for the toolbar are taken.
-   * @param horizontal The orientation of the toolbar (true - horizontal, false - vertical)
+   * @param horizontal The orientation of the toolbar ({@code true} - horizontal, {@code false} - vertical)
    * @return An instance of {@code ActionToolbar}
    */
   @NotNull
@@ -77,7 +76,7 @@ public abstract class ActionManager {
   public abstract String getId(@NotNull AnAction action);
 
   /**
-   * Registers the specified action with the specified id. Note that IDEA's keymaps
+   * Registers the specified action with the specified id. Note that the IDE's keymaps
    * processing deals only with registered actions.
    *
    * @param actionId Id to associate with the action
@@ -114,8 +113,7 @@ public abstract class ActionManager {
    *
    * @return all action {@code id}s which have the specified prefix.
    */
-  @NotNull
-  public abstract String[] getActionIds(@NotNull String idPrefix);
+  public abstract String @NotNull [] getActionIds(@NotNull String idPrefix);
 
   /**
    * Checks if the specified action ID represents an action group and not an individual action.
@@ -123,7 +121,7 @@ public abstract class ActionManager {
    * to the action ID.
    *
    * @param actionId the ID to check.
-   * @return true if the ID represents an action group, false otherwise.
+   * @return {@code true} if the ID represents an action group, {@code false} otherwise.
    */
   public abstract boolean isGroup(@NotNull String actionId);
 

@@ -6,14 +6,13 @@ import com.intellij.codeInsight.ExpectedTypesProvider;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightControlFlowUtil;
 import com.intellij.codeInsight.daemon.impl.analysis.JavaHighlightUtil;
 import com.intellij.codeInsight.highlighting.HighlightManager;
+import com.intellij.java.refactoring.JavaRefactoringBundle;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.RangeMarker;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.util.*;
@@ -38,6 +37,7 @@ import com.intellij.refactoring.introduceField.ElementToWorkOn;
 import com.intellij.refactoring.introduceVariable.IntroduceVariableBase;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.containers.Stack;
 import com.intellij.util.text.UniqueNameGenerator;
 import gnu.trove.THashMap;
 import org.jetbrains.annotations.Contract;
@@ -47,7 +47,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public class RefactoringUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.refactoring.util.RefactoringUtil");
+  private static final Logger LOG = Logger.getInstance(RefactoringUtil.class);
   public static final int EXPR_COPY_SAFE = 0;
   public static final int EXPR_COPY_UNSAFE = 1;
   public static final int EXPR_COPY_PROHIBITED = 2;
@@ -411,7 +411,7 @@ public class RefactoringUtil {
     }
   }
 
-  public static PsiElement getAnchorElementForMultipleExpressions(@NotNull PsiExpression[] occurrences, PsiElement scope) {
+  public static PsiElement getAnchorElementForMultipleExpressions(PsiExpression @NotNull [] occurrences, PsiElement scope) {
     PsiElement anchor = null;
     for (PsiExpression occurrence : occurrences) {
       if (scope != null && !PsiTreeUtil.isAncestor(scope, occurrence, false)) {
@@ -534,18 +534,17 @@ public class RefactoringUtil {
   public static List<RangeHighlighter> highlightAllOccurrences(Project project, PsiElement[] occurrences, Editor editor) {
     ArrayList<RangeHighlighter> highlighters = new ArrayList<>();
     HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-    TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     if (occurrences.length > 1) {
       for (PsiElement occurrence : occurrences) {
         final RangeMarker rangeMarker = occurrence.getUserData(ElementToWorkOn.TEXT_RANGE);
         if (rangeMarker != null && rangeMarker.isValid()) {
-          highlightManager
-            .addRangeHighlight(editor, rangeMarker.getStartOffset(), rangeMarker.getEndOffset(), attributes, true, highlighters);
+          highlightManager.addRangeHighlight(editor, rangeMarker.getStartOffset(), rangeMarker.getEndOffset(), 
+                                             EditorColors.SEARCH_RESULT_ATTRIBUTES, true, highlighters);
         }
         else {
           final TextRange textRange = occurrence.getTextRange();
-          highlightManager.addRangeHighlight(editor, textRange.getStartOffset(), textRange.getEndOffset(), attributes, true, highlighters);
+          highlightManager.addRangeHighlight(editor, textRange.getStartOffset(), textRange.getEndOffset(), 
+                                             EditorColors.SEARCH_RESULT_ATTRIBUTES, true, highlighters);
         }
       }
     }
@@ -727,7 +726,7 @@ public class RefactoringUtil {
   }
 
   public static void visitImplicitSuperConstructorUsages(PsiClass subClass,
-                                                         final ImplicitConstructorUsageVisitor implicitConstructorUsageVistor,
+                                                         final ImplicitConstructorUsageVisitor implicitConstructorUsageVisitor,
                                                          PsiClass superClass) {
     final PsiMethod baseDefaultConstructor = findDefaultConstructor(superClass);
     final PsiMethod[] constructors = subClass.getConstructors();
@@ -737,12 +736,12 @@ public class RefactoringUtil {
         if (body == null) continue;
         final PsiStatement[] statements = body.getStatements();
         if (statements.length < 1 || !JavaHighlightUtil.isSuperOrThisCall(statements[0], true, true)) {
-          implicitConstructorUsageVistor.visitConstructor(constructor, baseDefaultConstructor);
+          implicitConstructorUsageVisitor.visitConstructor(constructor, baseDefaultConstructor);
         }
       }
     }
     else {
-      implicitConstructorUsageVistor.visitClassWithoutConstructors(subClass);
+      implicitConstructorUsageVisitor.visitClassWithoutConstructors(subClass);
     }
   }
 
@@ -997,35 +996,11 @@ public class RefactoringUtil {
     return (PsiCodeBlock)CodeStyleManager.getInstance(project).reformat(body.replace(codeBlock));
   }
 
-  /**
-   * Ensures that given call is surrounded by {@link PsiCodeBlock} (that is, it has a parent statement
-   * which is located inside the code block). If not, tries to create a code block.
-   *
-   * <p>
-   * Note that the expression is not necessarily a child of {@link PsiExpressionStatement}; it could be a subexpression,
-   * {@link PsiIfStatement}, etc.
-   * </p>
-   *
-   * <p>
-   * This method works if {@link com.siyeh.ig.psiutils.ControlFlowUtils#canExtractStatement(PsiExpression)}
-   * returns true on the same expression.
-   * </p>
-   *
-   * @param expression an expression which should be located inside the code block
-   * @return a passed expression if it's already surrounded by code block and no changes are necessary;
-   *         a replacement expression (which is equivalent to the passed expression) if a new code block was created;
-   *         {@code null} if the expression cannot be surrounded with code block.
-   */
-  @Nullable
-  public static <T extends PsiExpression> T ensureCodeBlock(@NotNull T expression) {
-    return EnsureCodeBlockImpl.ensureCodeBlock(expression);
-  }
-
   public static String checkEnumConstantInSwitchLabel(PsiExpression expr) {
     if (PsiImplUtil.getSwitchLabel(expr) != null) {
       PsiReferenceExpression ref = ObjectUtils.tryCast(PsiUtil.skipParenthesizedExprDown(expr), PsiReferenceExpression.class);
       if (ref != null && ref.resolve() instanceof PsiEnumConstant) {
-        return RefactoringBundle.getCannotRefactorMessage(RefactoringBundle.message("refactoring.introduce.variable.enum.in.label.message"));
+        return RefactoringBundle.getCannotRefactorMessage(JavaRefactoringBundle.message("refactoring.introduce.variable.enum.in.label.message"));
       }
     }
     return null;
@@ -1047,7 +1022,7 @@ public class RefactoringUtil {
    * Returns subset of {@code graph.getVertices()} that is a transitive closure (by <code>graph.getTargets()<code>)
    * of the following property: initialRelation.value() of vertex or {@code graph.getTargets(vertex)} is true.
    * <p/>
-   * Note that {@code graph.getTargets()} is not neccesrily a subset of {@code graph.getVertex()}
+   * Note that {@code graph.getTargets()} is not necessarily a subset of {@code graph.getVertex()}
    *
    * @param graph
    * @param initialRelation
@@ -1137,11 +1112,18 @@ public class RefactoringUtil {
     fixJavadocsForParams(method, newParameters, eqCondition, Conditions.alwaysTrue());
   }
 
-  public static void fixJavadocsForParams(PsiMethod method,
-                                          Set<? extends PsiParameter> newParameters,
-                                          Condition<? super Pair<PsiParameter, String>> eqCondition,
-                                          Condition<? super String> matchedToOldParam) throws IncorrectOperationException {
-    final PsiDocComment docComment = method.getDocComment();
+  public static void fixJavadocsForParams(@NotNull PsiMethod method,
+                                          @NotNull Set<? extends PsiParameter> newParameters,
+                                          @NotNull Condition<? super Pair<PsiParameter, String>> eqCondition,
+                                          @NotNull Condition<? super String> matchedToOldParam) throws IncorrectOperationException {
+    fixJavadocsForParams(method, method.getDocComment(), newParameters, eqCondition, matchedToOldParam);
+  }
+
+  public static void fixJavadocsForParams(@NotNull PsiMethod method,
+                                          @Nullable PsiDocComment docComment,
+                                          @NotNull Set<? extends PsiParameter> newParameters,
+                                          @NotNull Condition<? super Pair<PsiParameter, String>> eqCondition,
+                                          @NotNull Condition<? super String> matchedToOldParam) throws IncorrectOperationException {
     if (docComment == null) return;
     final PsiParameter[] parameters = method.getParameterList().getParameters();
     final PsiDocTag[] paramTags = docComment.findTagsByName("param");
@@ -1205,11 +1187,13 @@ public class RefactoringUtil {
     }
   }
 
-  private static PsiDocTag createParamTag(PsiParameter parameter) {
+  @NotNull
+  private static PsiDocTag createParamTag(@NotNull PsiParameter parameter) {
     return JavaPsiFacade.getElementFactory(parameter.getProject()).createParamTag(parameter.getName(), "");
   }
 
-  public static PsiDirectory createPackageDirectoryInSourceRoot(PackageWrapper aPackage, final VirtualFile sourceRoot)
+  @NotNull
+  public static PsiDirectory createPackageDirectoryInSourceRoot(@NotNull PackageWrapper aPackage, @NotNull final VirtualFile sourceRoot)
     throws IncorrectOperationException {
     final PsiDirectory[] directories = aPackage.getDirectories();
     for (PsiDirectory directory : directories) {
@@ -1319,20 +1303,20 @@ public class RefactoringUtil {
   }
 
   @Nullable
-  public static PsiTypeParameterList createTypeParameterListWithUsedTypeParameters(@NotNull final PsiElement... elements) {
+  public static PsiTypeParameterList createTypeParameterListWithUsedTypeParameters(final PsiElement @NotNull ... elements) {
     return createTypeParameterListWithUsedTypeParameters(null, elements);
   }
 
   @Nullable
   public static PsiTypeParameterList createTypeParameterListWithUsedTypeParameters(@Nullable final PsiTypeParameterList fromList,
-                                                                                   @NotNull final PsiElement... elements) {
+                                                                                   final PsiElement @NotNull ... elements) {
     return createTypeParameterListWithUsedTypeParameters(fromList, Conditions.alwaysTrue(), elements);
   }
 
   @Nullable
   public static PsiTypeParameterList createTypeParameterListWithUsedTypeParameters(@Nullable final PsiTypeParameterList fromList,
                                                                                    Condition<? super PsiTypeParameter> filter,
-                                                                                   @NotNull final PsiElement... elements) {
+                                                                                   final PsiElement @NotNull ... elements) {
     if (elements.length == 0) return null;
     final Set<PsiTypeParameter> used = new HashSet<>();
     for (final PsiElement element : elements) {

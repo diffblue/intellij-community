@@ -27,8 +27,6 @@ import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.util.*;
@@ -41,7 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class AccessStaticViaInstanceFix extends LocalQuickFixAndIntentionActionOnPsiElement {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.quickfix.AccessStaticViaInstanceFix");
+  private static final Logger LOG = Logger.getInstance(AccessStaticViaInstanceFix.class);
   private final boolean myOnTheFly;
   private final String myText;
 
@@ -137,8 +135,8 @@ public class AccessStaticViaInstanceFix extends LocalQuickFixAndIntentionActionO
     if (editor == null) {
       return false;
     }
-    TextAttributes attributes = EditorColorsManager.getInstance().getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
-    HighlightManager.getInstance(project).addOccurrenceHighlights(editor, PsiUtilCore.toPsiElementArray(sideEffects), attributes, true, null);
+    HighlightManager.getInstance(project).addOccurrenceHighlights(editor, PsiUtilCore.toPsiElementArray(sideEffects), 
+                                                                  EditorColors.SEARCH_RESULT_ATTRIBUTES, true, null);
     try {
       hasSideEffects = PsiUtil.isStatement(factory.createStatementFromText(qualifierExpression.getText(), qualifierExpression));
     }

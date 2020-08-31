@@ -4,7 +4,7 @@ package org.jetbrains.uast.test.common
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiRecursiveElementVisitor
 import org.jetbrains.uast.*
-import org.jetbrains.uast.test.env.assertEqualsToFile
+import com.intellij.testFramework.assertEqualsToFile
 import org.jetbrains.uast.visitor.UastVisitor
 import org.junit.Assert
 import java.io.File
@@ -85,17 +85,17 @@ interface RenderLogTestBase {
   fun UFile.checkContainingFileForAllElements() {
     accept(object : UastVisitor {
       override fun visitElement(node: UElement): Boolean {
-        if (node is PsiElement) {
-          val uElement = node.sourcePsi.toUElement()!!
-          Assert.assertEquals("getContainingUFile should be equal to source for ${uElement.javaClass}",
-                                this@checkContainingFileForAllElements,
-                                uElement.getContainingUFile())
+        node.sourcePsi?.let { sourcePsi ->
+          val uElement = sourcePsi.toUElement()!!
+          Assert.assertEquals("getContainingUFile should be equal to source for ${uElement.javaClass} for ${sourcePsi.text}",
+                              this@checkContainingFileForAllElements,
+                              uElement.getContainingUFile())
         }
 
         val uastAnchor = (node as? UDeclaration)?.uastAnchor
         if (uastAnchor != null) {
           Assert.assertEquals("should be appropriate sourcePsi for uastAnchor for ${node.javaClass} [${node.sourcePsi?.text}] ",
-                                node.sourcePsiElement!!.containingFile!!, uastAnchor.sourcePsi?.containingFile)
+                              node.sourcePsiElement!!.containingFile!!, uastAnchor.sourcePsi?.containingFile)
         }
 
         val anchorPsi = uastAnchor?.sourcePsi

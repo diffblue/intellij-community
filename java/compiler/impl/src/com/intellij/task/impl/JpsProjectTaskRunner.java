@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.task.impl;
 
 import com.intellij.compiler.impl.CompileDriver;
@@ -25,12 +25,13 @@ import com.intellij.task.*;
 import com.intellij.ui.GuiUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.messages.MessageBusConnection;
+import com.intellij.util.messages.SimpleMessageBusConnection;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,7 +41,7 @@ import java.util.stream.Stream;
 public class JpsProjectTaskRunner extends ProjectTaskRunner {
   private static final Logger LOG = Logger.getInstance(JpsProjectTaskRunner.class);
   @ApiStatus.Internal
-  public static final Key<JpsBuildData> JPS_BUILD_DATA_KEY = KeyWithDefaultValue.create("jps_build_data", MyJpsBuildData::new);
+  public static final Key<JpsBuildData> JPS_BUILD_DATA_KEY = KeyWithDefaultValue.create("jps_build_data", () -> new MyJpsBuildData());
   @ApiStatus.Internal
   public static final Key<Object> EXECUTION_SESSION_ID_KEY = ExecutionManagerImpl.EXECUTION_SESSION_ID_KEY;
 
@@ -50,17 +51,26 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
                   @Nullable ProjectTaskNotification callback,
                   @NotNull Collection<? extends ProjectTask> tasks) {
     context.putUserData(JPS_BUILD_DATA_KEY, new MyJpsBuildData());
-    MessageBusConnection connection = project.getMessageBus().connect(project);
-    connection.subscribe(CompilerTopics.COMPILATION_STATUS, new CompilationStatusListener() {
-      @Override
-      public void fileGenerated(@NotNull String outputRoot, @NotNull String relativePath) {
-        context.fileGenerated(outputRoot, relativePath);
-      }
-    });
-
+    SimpleMessageBusConnection fileGeneratedTopicConnection;
+    if (context.isCollectionOfGeneratedFilesEnabled()) {
+      fileGeneratedTopicConnection = project.getMessageBus().simpleConnect();
+      fileGeneratedTopicConnection.subscribe(CompilerTopics.COMPILATION_STATUS, new CompilationStatusListener() {
+        @Override
+        public void fileGenerated(@NotNull String outputRoot, @NotNull String relativePath) {
+          context.fileGenerated(outputRoot, relativePath);
+        }
+      });
+    }
+    else {
+      fileGeneratedTopicConnection = null;
+    }
     Map<Class<? extends ProjectTask>, List<ProjectTask>> taskMap = groupBy(tasks);
     GuiUtils.invokeLaterIfNeeded(() -> {
-      try (MyNotificationCollector notificationCollector = new MyNotificationCollector(context, callback, () -> connection.disconnect())) {
+      try (MyNotificationCollector notificationCollector = new MyNotificationCollector(context, callback, () -> {
+        if (fileGeneratedTopicConnection != null) {
+          fileGeneratedTopicConnection.disconnect();
+        }
+      })) {
         runModulesResourcesBuildTasks(project, context, notificationCollector, taskMap);
         runModulesBuildTasks(project, context, notificationCollector, taskMap);
         runFilesBuildTasks(project, notificationCollector, taskMap);
@@ -74,6 +84,11 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
   public boolean canRun(@NotNull ProjectTask projectTask) {
     return projectTask instanceof ModuleBuildTask || projectTask instanceof EmptyCompileScopeBuildTask ||
            (projectTask instanceof ProjectModelBuildTask && ((ProjectModelBuildTask)projectTask).getBuildableElement() instanceof Artifact);
+  }
+
+  @Override
+  public boolean isFileGeneratedEventsSupported() {
+    return true;
   }
 
   public static Map<Class<? extends ProjectTask>, List<ProjectTask>> groupBy(@NotNull Collection<? extends ProjectTask> tasks) {
@@ -184,9 +199,9 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
 
   private static ModulesBuildSettings assembleModulesBuildSettings(Collection<? extends ProjectTask> buildTasks) {
     Collection<Module> modules = new SmartList<>();
-    Collection<ModuleBuildTask> incrementalTasks = ContainerUtil.newSmartList();
-    Collection<ModuleBuildTask> excludeDependentTasks = ContainerUtil.newSmartList();
-    Collection<ModuleBuildTask> excludeRuntimeTasks = ContainerUtil.newSmartList();
+    Collection<ModuleBuildTask> incrementalTasks = new SmartList<>();
+    Collection<ModuleBuildTask> excludeDependentTasks = new SmartList<>();
+    Collection<ModuleBuildTask> excludeRuntimeTasks = new SmartList<>();
 
     for (ProjectTask buildProjectTask : buildTasks) {
       ModuleBuildTask moduleBuildTask = (ModuleBuildTask)buildProjectTask;
@@ -326,7 +341,7 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
 
     synchronized private void notifyFinished() {
       if (myTaskNotification != null) {
-        myTaskNotification.finished(myContext, new ProjectTaskResult(myAborted, myErrors, myWarnings));
+        myTaskNotification.finished(new ProjectTaskResult(myAborted, myErrors, myWarnings));
       }
       myOnFinished.run();
     }
@@ -359,6 +374,7 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
   private static class MyCompileStatusNotification implements CompileStatusNotification {
 
     private final MyNotificationCollector myCollector;
+    private final AtomicBoolean finished = new AtomicBoolean();
 
     private MyCompileStatusNotification(@NotNull MyNotificationCollector collector) {
       myCollector = collector;
@@ -367,7 +383,12 @@ public class JpsProjectTaskRunner extends ProjectTaskRunner {
 
     @Override
     public void finished(boolean aborted, int errors, int warnings, @NotNull CompileContext compileContext) {
-      myCollector.appendJpsBuildResult(aborted, errors, warnings, compileContext, this);
+      if (finished.compareAndSet(false, true)) {
+        myCollector.appendJpsBuildResult(aborted, errors, warnings, compileContext, this);
+      } else {
+        // can be invoked by CompileDriver for rerun action
+        LOG.debug("Multiple invocation of the same CompileStatusNotification.");
+      }
     }
   }
 

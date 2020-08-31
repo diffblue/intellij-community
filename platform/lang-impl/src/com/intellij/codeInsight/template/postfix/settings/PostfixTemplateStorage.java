@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.template.postfix.settings;
 
 import com.intellij.codeInsight.template.postfix.templates.LanguagePostfixTemplate;
@@ -13,6 +13,7 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.SimpleModificationTracker;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jdom.Element;
@@ -22,7 +23,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 @State(name = "PostfixTemplates", storages = @Storage("postfixTemplates.xml"))
-public class PostfixTemplateStorage extends SimpleModificationTracker implements PersistentStateComponent<Element> {
+public final class PostfixTemplateStorage extends SimpleModificationTracker implements PersistentStateComponent<Element> {
   private static final String TEMPLATE_TAG = "template";
   private static final String PROVIDER_ATTR_NAME = "provider";
   private static final String ID_ATTR_NAME = "id";
@@ -30,8 +31,8 @@ public class PostfixTemplateStorage extends SimpleModificationTracker implements
   private static final String BUILTIN_ATTR_NAME = "builtin";
 
   private final Map<String, PostfixTemplateProvider> myTemplateProviders;
-  private final MultiMap<String, PostfixTemplate> myTemplates = MultiMap.createSmart();
-  private final List<Element> myUnloadedTemplates = ContainerUtil.newSmartList();
+  private final MultiMap<String, PostfixTemplate> myTemplates = new MultiMap<>();
+  private final List<Element> myUnloadedTemplates = new SmartList<>();
 
   public PostfixTemplateStorage() {
     myTemplateProviders = new HashMap<>();

@@ -20,8 +20,9 @@ package com.intellij.application.options.codeStyle;
 import com.intellij.application.options.schemes.AbstractSchemeActions;
 import com.intellij.application.options.schemes.SchemesModel;
 import com.intellij.application.options.schemes.SimpleSchemesPanel;
+import com.intellij.icons.AllIcons;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.ui.MessageType;
 import com.intellij.psi.codeStyle.CodeStyleScheme;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager;
@@ -52,8 +53,9 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
     super(vGap);
     myModel = model;
   }
-  CodeStyleSchemesPanel(CodeStyleSchemesModel model, @NotNull JComponent linkComponent) {
-    super(DEFAULT_VGAP, linkComponent);
+
+  CodeStyleSchemesPanel(CodeStyleSchemesModel model) {
+    super(DEFAULT_VGAP);
     myModel = model;
     showOverridingMessage(myModel.getOverridingStatus());
   }
@@ -136,14 +138,14 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
   protected JComponent createBottomComponent() {
     myBottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
     JLabel iconLabel = new JLabel();
-    iconLabel.setIcon(MessageType.WARNING.getDefaultIcon());
+    iconLabel.setIcon(AllIcons.General.Warning);
     myBottomPanel.add(iconLabel);
-    myBottomPanel.add(Box.createRigidArea(new JBDimension(10,0)));
+    myBottomPanel.add(Box.createRigidArea(new JBDimension(5,0)));
     myBottomLabel = new JLabel();
     myBottomPanel.add(myBottomLabel);
-    LinkLabel<Object> disableHyperLink = new LinkLabel<>("Disable", null, new LinkListener<Object>() {
+    LinkLabel<Object> disableHyperLink = new LinkLabel<>(LangBundle.message("action.link.disable"), null, new LinkListener<Object>() {
       @Override
-      public void linkSelected(LinkLabel aSource, Object aLinkData) {
+      public void linkSelected(LinkLabel<Object> aSource, Object aLinkData) {
         disableOverriding();
       }
     });
@@ -188,7 +190,7 @@ public class CodeStyleSchemesPanel extends SimpleSchemesPanel<CodeStyleScheme> {
     myBottomPanel.setVisible(false);
   }
 
-  private static String getMessage(@NotNull CodeStyleSettingsModifier[] modifiers) {
+  private static String getMessage(CodeStyleSettingsModifier @NotNull [] modifiers) {
     final StringBuilder messageBuilder = new StringBuilder();
     messageBuilder.append("Settings may be overridden by ");
     boolean isList = false;

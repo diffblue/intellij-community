@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.search;
 
+import com.intellij.model.ModelBranch;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.UnloadedModuleDescription;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -23,7 +24,7 @@ public class DelegatingGlobalSearchScope extends GlobalSearchScope {
     this(baseScope, ArrayUtilRt.EMPTY_OBJECT_ARRAY);
   }
 
-  public DelegatingGlobalSearchScope(@NotNull GlobalSearchScope baseScope, @NotNull Object... equality) {
+  public DelegatingGlobalSearchScope(@NotNull GlobalSearchScope baseScope, Object @NotNull ... equality) {
     super(baseScope.getProject());
     myBaseScope = baseScope;
     myEquality = Arrays.asList(equality);
@@ -54,15 +55,15 @@ public class DelegatingGlobalSearchScope extends GlobalSearchScope {
     return myBaseScope.isSearchInLibraries();
   }
 
-  @Override
-  public boolean isSearchOutsideRootModel() {
-    return myBaseScope.isSearchOutsideRootModel();
-  }
-
   @NotNull
   @Override
   public Collection<UnloadedModuleDescription> getUnloadedModulesBelongingToScope() {
     return myBaseScope.getUnloadedModulesBelongingToScope();
+  }
+
+  @Override
+  public @NotNull Collection<ModelBranch> getModelBranchesAffectingScope() {
+    return myBaseScope.getModelBranchesAffectingScope();
   }
 
   @NotNull

@@ -1,9 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.serialization
 
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.assertions.Assertions.assertThat
-import gnu.trove.THashMap
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -11,6 +10,7 @@ import org.junit.rules.TestName
 import java.io.File
 import java.nio.file.Paths
 import java.util.*
+import kotlin.collections.HashMap
 
 class ObjectSerializerTest {
   @Rule
@@ -114,6 +114,11 @@ class ObjectSerializerTest {
   }
 
   @Test
+  fun `bean with long array`() {
+    test(TestLongArray())
+  }
+
+  @Test
   fun enum() {
     val bean = TestEnumBean()
     bean.color = TestEnum.RED
@@ -153,7 +158,7 @@ class ObjectSerializerTest {
   fun `interface type for map value - allowSubTypes`() {
     class TestInterfaceBean {
       @JvmField
-      val shape: MutableMap<String, Shape> = THashMap()
+      val shape: MutableMap<String, Shape> = HashMap()
     }
 
     val bean = TestInterfaceBean()
@@ -197,6 +202,12 @@ private class TestEnumBean {
 }
 
 private class TestByteArray @JvmOverloads constructor(@Suppress("unused") @JvmField var data: ByteArray? = null)
+
+
+private class TestLongArray {
+  @JvmField
+  val field: Array<Long> = arrayOf(1, 2, Long.MAX_VALUE, Long.MIN_VALUE)
+}
 
 private class TestArrayBean(
   @JvmField var list: Array<String>? = null,

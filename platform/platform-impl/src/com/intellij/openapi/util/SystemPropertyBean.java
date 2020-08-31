@@ -5,6 +5,7 @@ import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.extensions.PluginAware;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.util.xmlb.annotations.Attribute;
+import com.intellij.util.xmlb.annotations.Transient;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,18 +13,16 @@ import org.jetbrains.annotations.Nullable;
  * @author gregsh
  */
 public final class SystemPropertyBean implements PluginAware {
-  public static final ExtensionPointName<SystemPropertyBean> EP_NAME = ExtensionPointName.create("com.intellij.systemProperty");
+  private static final ExtensionPointName<SystemPropertyBean> EP_NAME = ExtensionPointName.create("com.intellij.systemProperty");
 
   private PluginDescriptor myPluginDescriptor;
 
   public static void initSystemProperties() {
-    for (SystemPropertyBean bean : EP_NAME.getIterable()) {
-      if (System.getProperty(bean.name) != null) {
-        continue;
+    EP_NAME.forEachExtensionSafe(bean -> {
+      if (System.getProperty(bean.name) == null) {
+        System.setProperty(bean.name, bean.value);
       }
-
-      System.setProperty(bean.name, bean.value);
-    }
+    });
   }
 
   @Attribute("name")
@@ -37,6 +36,7 @@ public final class SystemPropertyBean implements PluginAware {
     myPluginDescriptor = pluginDescriptor;
   }
 
+  @Transient
   @Nullable
   public PluginDescriptor getPluginDescriptor() {
     return myPluginDescriptor;

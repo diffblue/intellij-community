@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeInsight.intention.IntentionActionProvider;
@@ -9,19 +9,13 @@ import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl;
 import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider;
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.PsiFile;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.util.List;
 
-class EditorNotificationActions implements IntentionMenuContributor {
-  @Override
-  public void collectActions(@NotNull Editor hostEditor,
-                             @NotNull PsiFile hostFile,
-                             @NotNull ShowIntentionsPass.IntentionsInfo intentions,
-                             int passIdToShowIntentionsFor,
-                             int offset) {
+final class EditorNotificationActions {
+  static void collectActions(@NotNull Editor hostEditor, @NotNull ShowIntentionsPass.IntentionsInfo intentions) {
     Project project = hostEditor.getProject();
     if (project == null) return;
     FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);

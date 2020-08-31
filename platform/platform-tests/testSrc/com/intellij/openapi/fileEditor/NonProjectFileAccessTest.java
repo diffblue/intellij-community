@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileEditor;
 
 import com.intellij.configurationStore.StoreReloadManager;
@@ -32,6 +32,7 @@ import com.intellij.ui.EditorNotifications;
 import com.intellij.ui.EditorNotificationsImpl;
 import com.intellij.util.NullableFunction;
 import com.intellij.util.PathUtil;
+import com.intellij.util.containers.ContainerUtil;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -48,7 +49,7 @@ public class NonProjectFileAccessTest extends HeavyFileEditorManagerTestCase {
     super.setUp();
 
     EditorNotifications notifications = new EditorNotificationsImpl(getProject());
-    ServiceContainerUtil.registerComponentInstance(getProject(), EditorNotifications.class, notifications, getTestRootDisposable());
+    ServiceContainerUtil.replaceService(getProject(), EditorNotifications.class, notifications, getTestRootDisposable());
     NonProjectFileWritingAccessProvider.enableChecksInTests(getProject());
     StoreReloadManager.getInstance().blockReloadingProjectOnExternalChanges();
   }
@@ -318,12 +319,12 @@ public class NonProjectFileAccessTest extends HeavyFileEditorManagerTestCase {
 
   private Set<VirtualFile> registerWriteAccessProvider(final VirtualFile... filesToDeny) {
     final Set<VirtualFile> requested = new LinkedHashSet<>();
-    ServiceContainerUtil.registerExtension(getProject(), WritingAccessProvider.EP_NAME, new WritingAccessProvider() {
+    ServiceContainerUtil.registerExtension(getProject(), WritingAccessProvider.EP, new WritingAccessProvider() {
       @NotNull
       @Override
       public Collection<VirtualFile> requestWriting(@NotNull Collection<? extends VirtualFile> files) {
         requested.addAll(files);
-        HashSet<VirtualFile> denied = new HashSet<>(Arrays.asList(filesToDeny));
+        Set<VirtualFile> denied = ContainerUtil.set(filesToDeny);
         denied.retainAll(files);
         return denied;
       }

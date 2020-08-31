@@ -26,9 +26,9 @@ import org.jetbrains.idea.svn.status.StatusType;
 
 import java.io.File;
 import java.util.Collection;
+import java.util.TreeSet;
 
 import static com.intellij.util.containers.ContainerUtil.ar;
-import static com.intellij.util.containers.ContainerUtil.newTreeSet;
 import static org.jetbrains.idea.svn.SvnBundle.message;
 
 public class MarkResolvedAction extends BasicAction {
@@ -62,7 +62,7 @@ public class MarkResolvedAction extends BasicAction {
   }
 
   @Override
-  protected void batchPerform(@NotNull SvnVcs vcs, @NotNull VirtualFile[] files, @NotNull DataContext context) throws VcsException {
+  protected void batchPerform(@NotNull SvnVcs vcs, VirtualFile @NotNull [] files, @NotNull DataContext context) throws VcsException {
     StoreUtil.saveDocumentsAndProjectSettings(vcs.getProject());
     Collection<String> paths = collectResolvablePaths(vcs, files);
     if (paths.isEmpty()) {
@@ -103,8 +103,8 @@ public class MarkResolvedAction extends BasicAction {
   }
 
   @NotNull
-  private static Collection<String> collectResolvablePaths(@NotNull SvnVcs vcs, @NotNull VirtualFile[] files) {
-    Collection<String> result = newTreeSet();
+  private static Collection<String> collectResolvablePaths(@NotNull SvnVcs vcs, VirtualFile @NotNull [] files) {
+    Collection<String> result = new TreeSet<>();
 
     for (VirtualFile file : files) {
       try {

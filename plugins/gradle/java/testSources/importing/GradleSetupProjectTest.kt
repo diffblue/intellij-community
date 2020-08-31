@@ -1,13 +1,16 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.importing
 
-import com.intellij.openapi.application.invokeAndWaitIfNeeded
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.externalSystem.action.AttachExternalProjectAction
 import com.intellij.openapi.externalSystem.importing.ExternalSystemSetupProjectTest
 import com.intellij.openapi.externalSystem.importing.ExternalSystemSetupProjectTestCase
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
+import com.intellij.openapi.externalSystem.service.execution.ExternalSystemJdkUtil
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.PlatformTestUtil
 import org.jetbrains.plugins.gradle.action.ImportProjectFromScriptAction
@@ -45,7 +48,6 @@ class GradleSetupProjectTest : ExternalSystemSetupProjectTest, GradleImportingTe
     val settings = ExternalSystemApiUtil.getSettings(project, SYSTEM_ID) as GradleSettings
     val projectSettings = settings.getLinkedProjectSettings(externalProjectPath)!!
     assertEquals(projectSettings.externalProjectPath, externalProjectPath)
-    assertEquals(projectSettings.isUseAutoImport, false)
     assertEquals(projectSettings.isUseQualifiedModuleNames, true)
     assertEquals(settings.storeProjectFilesExternally, true)
   }
@@ -59,7 +61,12 @@ class GradleSetupProjectTest : ExternalSystemSetupProjectTest, GradleImportingTe
   }
 
   override fun waitForImportCompletion(project: Project) {
-    invokeAndWaitIfNeeded { PlatformTestUtil.dispatchAllEventsInIdeEventQueue() }
+    ApplicationManager.getApplication().invokeAndWait { PlatformTestUtil.dispatchAllEventsInIdeEventQueue() }
+  }
+
+  override fun cleanupProjectTestResources(project: Project) {
+    super.cleanupProjectTestResources(project)
+    removeGradleJvmSdk(project)
   }
 
   companion object {
@@ -69,5 +76,19 @@ class GradleSetupProjectTest : ExternalSystemSetupProjectTest, GradleImportingTe
     @Parameterized.Parameters(name = "with Gradle-{0}")
     @JvmStatic
     fun tests(): Collection<Array<out String>> = arrayListOf(arrayOf(BASE_GRADLE_VERSION))
+
+    fun removeGradleJvmSdk(project: Project) {
+      ApplicationManager.getApplication().invokeAndWait {
+        runWriteAction {
+          val projectJdkTable = ProjectJdkTable.getInstance()
+          val settings = GradleSettings.getInstance(project)
+          for (projectSettings in settings.linkedProjectsSettings) {
+            val gradleJvm = projectSettings.gradleJvm
+            val sdk = ExternalSystemJdkUtil.getJdk(project, gradleJvm)
+            if (sdk != null) projectJdkTable.removeJdk(sdk)
+          }
+        }
+      }
+    }
   }
 }

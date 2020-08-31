@@ -7,9 +7,9 @@ import com.intellij.psi.PsiIdentifier
 import com.intellij.psi.PsiModifierListOwner
 import org.jetbrains.uast.UFile
 import org.jetbrains.uast.UReferenceExpression
-import org.jetbrains.uast.test.common.IndentedPrintingVisitor
+import org.jetbrains.uast.util.IndentedPrintingVisitor
 import org.jetbrains.uast.test.common.visitUFileAndGetResult
-import org.jetbrains.uast.test.env.assertEqualsToFile
+import com.intellij.testFramework.assertEqualsToFile
 import org.jetbrains.uast.toUElementOfType
 import java.io.File
 

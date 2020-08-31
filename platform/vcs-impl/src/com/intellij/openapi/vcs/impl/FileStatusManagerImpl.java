@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.impl;
 
 import com.intellij.openapi.Disposable;
@@ -11,16 +11,15 @@ import com.intellij.openapi.editor.colors.ColorKey;
 import com.intellij.openapi.editor.colors.EditorColorsListener;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
-import com.intellij.openapi.editor.event.BulkAwareDocumentListener;
 import com.intellij.openapi.editor.event.DocumentEvent;
-import com.intellij.openapi.extensions.impl.ExtensionPointImpl;
+import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
-import com.intellij.openapi.project.DumbAwareRunnable;
+import com.intellij.openapi.fileEditor.FileDocumentManagerListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.NotNullLazyValue;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.FileStatusListener;
 import com.intellij.openapi.vcs.FileStatusManager;
@@ -46,14 +45,6 @@ public final class FileStatusManagerImpl extends FileStatusManager implements Di
   private final Project myProject;
   private final List<FileStatusListener> myListeners = ContainerUtil.createLockFreeCopyOnWriteList();
   private final FileStatusProvider myFileStatusProvider;
-
-  private final NotNullLazyValue<ExtensionPointImpl<FileStatusProvider>> myExtensionPoint = new NotNullLazyValue<ExtensionPointImpl<FileStatusProvider>>() {
-    @NotNull
-    @Override
-    protected ExtensionPointImpl<FileStatusProvider> compute() {
-      return (ExtensionPointImpl<FileStatusProvider>)FileStatusProvider.EP_NAME.getPoint(myProject);
-    }
-  };
 
   private static class FileStatusNull implements FileStatus {
     private static final FileStatus INSTANCE = new FileStatusNull();
@@ -83,7 +74,7 @@ public final class FileStatusManagerImpl extends FileStatusManager implements Di
 
   public FileStatusManagerImpl(@NotNull Project project) {
     myProject = project;
-    myFileStatusProvider = project.getService(VcsFileStatusProvider.class);
+    myFileStatusProvider = VcsFileStatusProvider.getInstance(project);
 
     MessageBusConnection projectBus = project.getMessageBus().connect();
     projectBus.subscribe(EditorColorsManager.TOPIC, new EditorColorsListener() {
@@ -92,33 +83,49 @@ public final class FileStatusManagerImpl extends FileStatusManager implements Di
         fileStatusesChanged();
       }
     });
-    projectBus.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, () -> fileStatusesChanged());
+    projectBus.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, this::fileStatusesChanged);
 
     if (!project.isDefault()) {
-      StartupManager startManager = StartupManager.getInstance(project);
-      if (!startManager.postStartupActivityPassed()) {
-        startManager.registerPostStartupActivity((DumbAwareRunnable)() -> fileStatusesChanged());
-      }
+      StartupManager.getInstance(project).runAfterOpened(this::fileStatusesChanged);
     }
+
+    FileStatusProvider.EP_NAME.addChangeListener(myProject, this::fileStatusesChanged, project);
   }
 
-  static final class FileStatusManagerDocumentListener implements BulkAwareDocumentListener {
+  static final class FileStatusManagerDocumentListener implements FileDocumentManagerListener, DocumentListener {
+    private final Key<Boolean> CHANGED = Key.create("FileStatusManagerDocumentListener.document.changed");
+
     @Override
-    public void documentChangedNonBulk(@NotNull DocumentEvent event) {
-      if (event.getOldLength() == 0 && event.getNewLength() == 0) {
-        return;
+    public void documentChanged(@NotNull DocumentEvent event) {
+      Document document = event.getDocument();
+      if (document.isInBulkUpdate()) {
+        document.putUserData(CHANGED, Boolean.TRUE);
       }
-      bulkUpdateFinished(event.getDocument());
+      else {
+        refreshFileStatus(document);
+      }
     }
 
     @Override
     public void bulkUpdateFinished(@NotNull Document document) {
+      if (document.getUserData(CHANGED) != null) {
+        document.putUserData(CHANGED, null);
+        refreshFileStatus(document);
+      }
+    }
+
+    @Override
+    public void unsavedDocumentDropped(@NotNull Document document) {
+      refreshFileStatus(document);
+    }
+
+    private static void refreshFileStatus(@NotNull Document document) {
       VirtualFile file = FileDocumentManager.getInstance().getFile(document);
       if (file == null) {
         return;
       }
 
-      ProjectManager projectManager = ApplicationManager.getApplication().getServiceIfCreated(ProjectManager.class);
+      ProjectManager projectManager = ProjectManager.getInstanceIfCreated();
       if (projectManager == null) {
         return;
       }
@@ -130,7 +137,7 @@ public final class FileStatusManagerImpl extends FileStatusManager implements Di
   }
 
   public FileStatus calcStatus(@NotNull final VirtualFile virtualFile) {
-    for (FileStatusProvider extension : myExtensionPoint.getValue()) {
+    for (FileStatusProvider extension : FileStatusProvider.EP_NAME.getExtensions(myProject)) {
       final FileStatus status = extension.getFileStatus(virtualFile);
       if (status != null) {
         if (LOG.isDebugEnabled()) {

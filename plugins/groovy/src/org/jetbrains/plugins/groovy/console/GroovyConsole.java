@@ -1,8 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.console;
 
 import com.intellij.execution.ExecutionException;
-import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.Executor;
 import com.intellij.execution.configurations.GeneralCommandLine;
 import com.intellij.execution.configurations.JavaParameters;
@@ -12,6 +11,7 @@ import com.intellij.execution.process.*;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
 import com.intellij.execution.ui.RunContentDescriptor;
+import com.intellij.execution.ui.RunContentManager;
 import com.intellij.execution.ui.actions.CloseAction;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionToolbar;
@@ -27,7 +27,6 @@ import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.Consumer;
-import com.intellij.util.io.BaseOutputReader;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.groovy.runner.DefaultGroovyScriptRunner;
@@ -42,6 +41,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import static org.jetbrains.plugins.groovy.console.GroovyConsoleUtilKt.getWorkingDirectory;
+import static org.jetbrains.plugins.groovy.console.GroovyConsoleUtilKt.hasNeededDependenciesToRunConsole;
 import static org.jetbrains.plugins.groovy.util.UserDataHolderUtilKt.removeUserData;
 
 public final class GroovyConsole {
@@ -75,8 +75,10 @@ public final class GroovyConsole {
   }
 
   public void execute(@NotNull String command) {
-    if (!StringUtil.isEmptyOrSpaces(command)) doExecute(command);
-    ExecutionManager.getInstance(myProject).getContentManager().toFrontRunContent(defaultExecutor, myContentDescriptor);
+    if (!StringUtil.isEmptyOrSpaces(command)) {
+      doExecute(command);
+    }
+    RunContentManager.getInstance(myProject).toFrontRunContent(defaultExecutor, myContentDescriptor);
   }
 
   public void stop() {
@@ -186,7 +188,7 @@ public final class GroovyConsole {
     consoleView.attachToProcess(processHandler);
     processHandler.startNotify();
 
-    ExecutionManager.getInstance(project).getContentManager().showRunContent(defaultExecutor, descriptor);
+    RunContentManager.getInstance(project).showRunContent(defaultExecutor, descriptor);
     return console;
   }
 
@@ -194,16 +196,10 @@ public final class GroovyConsole {
     try {
       final JavaParameters javaParameters = createJavaParameters(module);
       final GeneralCommandLine commandLine = javaParameters.toCommandLine();
-      return new OSProcessHandler(commandLine) {
+      return new OSProcessHandler.Silent(commandLine) {
         @Override
         public boolean isSilentlyDestroyOnClose() {
           return true;
-        }
-
-        @NotNull
-        @Override
-        protected BaseOutputReader.Options readerOptions() {
-          return BaseOutputReader.Options.forMostlySilentProcess();
         }
       };
     }
@@ -215,8 +211,10 @@ public final class GroovyConsole {
 
   private static JavaParameters createJavaParameters(@NotNull Module module) throws ExecutionException {
     JavaParameters res = GroovyScriptRunConfiguration.createJavaParametersWithSdk(module);
-    DefaultGroovyScriptRunner
-      .configureGenericGroovyRunner(res, module, "groovy.ui.GroovyMain", !GroovyConsoleUtil.hasGroovyAll(module), true, true, false);
+    DefaultGroovyScriptRunner.configureGenericGroovyRunner(
+      res, module, "groovy.ui.GroovyMain",
+      !hasNeededDependenciesToRunConsole(module), true, true, false
+    );
     res.getProgramParametersList().addAll("-p", GroovyScriptRunner.getPathInConf("console.groovy"));
     res.setWorkingDirectory(getWorkingDirectory(module));
     res.setUseDynamicClasspath(true);

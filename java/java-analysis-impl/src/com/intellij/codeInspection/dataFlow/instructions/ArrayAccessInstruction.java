@@ -15,32 +15,34 @@
  */
 package com.intellij.codeInspection.dataFlow.instructions;
 
-import com.intellij.codeInspection.dataFlow.DataFlowRunner;
-import com.intellij.codeInspection.dataFlow.DfaInstructionState;
-import com.intellij.codeInspection.dataFlow.DfaMemoryState;
-import com.intellij.codeInspection.dataFlow.InstructionVisitor;
+import com.intellij.codeInspection.dataFlow.*;
 import com.intellij.codeInspection.dataFlow.value.DfaValue;
 import com.intellij.psi.PsiArrayAccessExpression;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-public class ArrayAccessInstruction extends Instruction implements ExpressionPushingInstruction {
+import java.util.Objects;
+
+public class ArrayAccessInstruction extends ExpressionPushingInstruction<PsiArrayAccessExpression> {
   private final @NotNull DfaValue myValue;
-  private final @NotNull PsiArrayAccessExpression myExpression;
+  private final @Nullable DfaControlTransferValue myTransferValue;
 
-  public ArrayAccessInstruction(@NotNull DfaValue value, @NotNull PsiArrayAccessExpression expression) {
+  public ArrayAccessInstruction(@NotNull DfaValue value,
+                                @NotNull PsiArrayAccessExpression expression,
+                                @Nullable DfaControlTransferValue transferValue) {
+    super(expression);
     myValue = value;
-    myExpression = expression;
+    myTransferValue = transferValue;
+  }
+
+  @Nullable
+  public DfaControlTransferValue getOutOfBoundsExceptionTransfer() {
+    return myTransferValue;
   }
 
   @NotNull
   public DfaValue getValue() {
     return myValue;
-  }
-
-  @Override
-  @NotNull
-  public PsiArrayAccessExpression getExpression() {
-    return myExpression;
   }
 
   @Override
@@ -50,6 +52,6 @@ public class ArrayAccessInstruction extends Instruction implements ExpressionPus
 
   @Override
   public String toString() {
-    return "ARRAY_ACCESS "+myExpression.getText();
+    return "ARRAY_ACCESS " + Objects.requireNonNull(getExpression()).getText();
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.uiDesigner.binding;
 
 import com.intellij.lang.properties.IProperty;
@@ -7,7 +7,6 @@ import com.intellij.lang.properties.psi.Property;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
@@ -16,10 +15,10 @@ import com.intellij.openapi.util.NullableComputable;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.cache.CacheManager;
-import com.intellij.psi.impl.search.PsiSearchHelperImpl;
 import com.intellij.psi.search.*;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.uiDesigner.GuiFormFileType;
 import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
 import com.intellij.util.QueryExecutor;
@@ -29,9 +28,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * @author max
- */
 public class FormReferencesSearcher implements QueryExecutor<PsiReference, ReferencesSearch.SearchParameters> {
   @Override
   public boolean execute(@NotNull final ReferencesSearch.SearchParameters p, @NotNull final Processor<? super PsiReference> consumer) {
@@ -98,7 +94,7 @@ public class FormReferencesSearcher implements QueryExecutor<PsiReference, Refer
           if (!element.isValid()) return false;
           file = element.getContainingFile();
         }
-        return file.getFileType() == StdFileTypes.GUI_DESIGNER_FORM;
+        return file.getFileType() == GuiFormFileType.INSTANCE;
       });
       if (isForm) return true;
     }
@@ -123,7 +119,7 @@ public class FormReferencesSearcher implements QueryExecutor<PsiReference, Refer
                                                         PsiManager psiManager, final PsiEnumConstant enumConstant,
                                                         GlobalSearchScope scope, final LocalSearchScope filterScope) {
     String className = ReadAction.compute(() -> enumConstant.getName());
-    return className == null || processReferencesInUIFormsInner(className, enumConstant, processor, scope, psiManager, filterScope);
+    return processReferencesInUIFormsInner(className, enumConstant, processor, scope, psiManager, filterScope);
   }
 
   private static boolean processReferencesInUIFormsInner(String name,
@@ -208,13 +204,11 @@ public class FormReferencesSearcher implements QueryExecutor<PsiReference, Refer
       CommonProcessors.CollectProcessor<VirtualFile> collector = new CommonProcessors.CollectProcessor<VirtualFile>() {
         @Override
         protected boolean accept(VirtualFile virtualFile) {
-          return FileTypeRegistry.getInstance().isFileOfType(virtualFile, StdFileTypes.GUI_DESIGNER_FORM);
+          return FileTypeRegistry.getInstance().isFileOfType(virtualFile, GuiFormFileType.INSTANCE);
         }
       };
-      ((PsiSearchHelperImpl)PsiSearchHelper.getInstance(project)).processFilesWithText(
-        scope, UsageSearchContext.IN_PLAIN_TEXT, true, name, collector
-      );
-      
+      PsiSearchHelper.getInstance(project).processCandidateFilesForText(scope, UsageSearchContext.IN_PLAIN_TEXT, true, name, collector);
+
       for (final VirtualFile vfile:collector.getResults()) {
         ProgressManager.checkCanceled();
 
@@ -239,7 +233,7 @@ public class FormReferencesSearcher implements QueryExecutor<PsiReference, Refer
     final String baseName = ReadAction.compute(() -> propFile.getResourceBundle().getBaseName());
     PsiFile containingFile = ReadAction.compute(() -> propFile.getContainingFile());
 
-    List<PsiFile> files = Arrays.asList(CacheManager.SERVICE.getInstance(project).getFilesWithWord(baseName, UsageSearchContext.IN_PLAIN_TEXT, scope, true));
+    List<PsiFile> files = Arrays.asList(CacheManager.getInstance(project).getFilesWithWord(baseName, UsageSearchContext.IN_PLAIN_TEXT, scope, true));
     return processReferencesInFiles(files, psiManager, baseName, containingFile, filterScope, processor);
   }
 
@@ -254,7 +248,7 @@ public class FormReferencesSearcher implements QueryExecutor<PsiReference, Refer
       for (PsiFile file : files) {
         ProgressManager.checkCanceled();
 
-        if (file.getFileType() != StdFileTypes.GUI_DESIGNER_FORM) continue;
+        if (file.getFileType() != GuiFormFileType.INSTANCE) continue;
         if (!processReferences(processor, file, baseName, element, filterScope)) return false;
       }
     }

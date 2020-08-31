@@ -73,7 +73,7 @@ public class PatternEditorContextMembersProvider extends NonCodeMembersContribut
   }
 
   @NotNull
-  private static PsiFile getRootByClasses(@NotNull PsiFile file, @NotNull Class[] classes) {
+  private static PsiFile getRootByClasses(@NotNull PsiFile file, Class @NotNull [] classes) {
     final Project project = file.getProject();
     SoftFactoryMap<Class[], PsiFile> map = project.getUserData(PATTERN_INJECTION_CONTEXT);
     if (map == null) {
@@ -129,7 +129,7 @@ public class PatternEditorContextMembersProvider extends NonCodeMembersContribut
     CachedValue<Set<String>> cachedValue = project.getUserData(PATTERN_CLASSES);
     if (cachedValue == null) {
       cachedValue = CachedValuesManager.getManager(project).createCachedValue(
-        () -> CachedValueProvider.Result.create(calcDevPatternClassNames(project), PsiModificationTracker.OUT_OF_CODE_BLOCK_MODIFICATION_COUNT), false);
+        () -> CachedValueProvider.Result.create(calcDevPatternClassNames(project), PsiModificationTracker.MODIFICATION_COUNT), false);
       project.putUserData(PATTERN_CLASSES, cachedValue);
     }
     return cachedValue.getValue();
@@ -150,7 +150,7 @@ public class PatternEditorContextMembersProvider extends NonCodeMembersContribut
         return true;
       };
       final StringSearcher searcher = new StringSearcher("patternClass", true, true);
-      CacheManager.SERVICE.getInstance(beanClass.getProject()).processFilesWithWord(psiFile -> {
+      CacheManager.getInstance(beanClass.getProject()).processFilesWithWord(psiFile -> {
         LowLevelSearchUtil.processElementsContainingWordInElement(occurenceProcessor, psiFile, searcher, true,
                                                                    new EmptyProgressIndicator());
         return true;

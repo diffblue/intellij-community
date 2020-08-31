@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.packaging.ui;
 
 import com.google.common.collect.Lists;
@@ -19,8 +19,8 @@ import com.jetbrains.python.packaging.*;
 import com.jetbrains.python.packaging.PyPIPackageUtil.PackageDetails;
 import com.jetbrains.python.packaging.requirement.PyRequirementRelation;
 import com.jetbrains.python.psi.LanguageLevel;
-import com.jetbrains.python.sdk.PySdkUtil;
 import com.jetbrains.python.sdk.PythonSdkType;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -139,15 +139,15 @@ public class PyPackageManagementService extends PackageManagementServiceEx {
 
   @Override
   public boolean canInstallToUser() {
-    return !PythonSdkType.isVirtualEnv(mySdk);
+    return !PythonSdkUtil.isVirtualEnv(mySdk);
   }
 
   @NotNull
   @Override
   public String getInstallToUserText() {
     String userSiteText = "Install to user's site packages directory";
-    if (!PythonSdkType.isRemote(mySdk))
-      userSiteText += " (" + PySdkUtil.getUserSite() + ")";
+    if (!PythonSdkUtil.isRemote(mySdk))
+      userSiteText += " (" + PythonSdkUtil.getUserSite() + ")";
     return userSiteText;
   }
 
@@ -173,7 +173,7 @@ public class PyPackageManagementService extends PackageManagementServiceEx {
     catch (ExecutionException e) {
       throw new IOException(e);
     }
-    Collections.sort(packages, Comparator.comparing(InstalledPackage::getName));
+    packages.sort(Comparator.comparing(InstalledPackage::getName));
     return new ArrayList<>(packages);
   }
 
@@ -383,7 +383,7 @@ public class PyPackageManagementService extends PackageManagementServiceEx {
 
   @Override
   public void fetchLatestVersion(@NotNull InstalledPackage pkg, @NotNull CatchingConsumer<String, Exception> consumer) {
-    myExecutorService.submit(() -> {
+    myExecutorService.execute(() -> {
       try {
         PyPIPackageUtil.INSTANCE.loadPackages();
         final String version = PyPIPackageUtil.INSTANCE.fetchLatestPackageVersion(myProject, pkg.getName());
@@ -398,5 +398,11 @@ public class PyPackageManagementService extends PackageManagementServiceEx {
   @Override
   public int compareVersions(@NotNull String version1, @NotNull String version2) {
     return PyPackageVersionComparator.getSTR_COMPARATOR().compare(version1, version2);
+  }
+
+  @Nullable
+  @Override
+  public String getID() {
+    return "Python";
   }
 }

@@ -21,18 +21,17 @@ import com.intellij.ide.DataManager;
 import com.intellij.openapi.editor.actionSystem.EditorActionManager;
 import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.testFramework.PlatformTestUtil;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 
 /**
  * @author Maxim.Mossienko
  */
 public class XmlPerformanceTest extends LightQuickFixTestCase {
-  private final Set<String> ourTestsWithFolding = new HashSet<>(Arrays.asList("IndentUnindent2"));
+  private final Set<String> ourTestsWithFolding = ContainerUtil.set("IndentUnindent2");
 
   @Override
   protected String getBasePath() {
@@ -69,9 +68,11 @@ public class XmlPerformanceTest extends LightQuickFixTestCase {
     getEditor().getSelectionModel().setSelection(0, getEditor().getDocument().getTextLength());
 
     PlatformTestUtil.startPerformanceTest("indent/unindent "+time, time, () -> {
-      EditorActionManager.getInstance().getActionHandler("EditorIndentSelection").execute(getEditor(), DataManager.getInstance().getDataContext());
+      EditorActionManager.getInstance().getActionHandler("EditorIndentSelection").execute(getEditor(), null,
+                                                                                          DataManager.getInstance().getDataContext());
 
-      EditorActionManager.getInstance().getActionHandler("EditorUnindentSelection").execute(getEditor(), DataManager.getInstance().getDataContext());
+      EditorActionManager.getInstance().getActionHandler("EditorUnindentSelection").execute(getEditor(), null,
+                                                                                            DataManager.getInstance().getDataContext());
     }).useLegacyScaling().assertTiming();
     final int startOffset = getEditor().getCaretModel().getOffset();
     getEditor().getSelectionModel().setSelection(startOffset, startOffset);

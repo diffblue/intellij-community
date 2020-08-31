@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.intellij.build.impl
 
 import com.intellij.openapi.util.SystemInfo
@@ -8,129 +8,77 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.CompressorStreamFactory
 import org.jetbrains.intellij.build.BuildContext
 import org.jetbrains.intellij.build.JvmArchitecture
+import org.jetbrains.intellij.build.OsFamily
 
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file.attribute.DosFileAttributeView
+import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * @author nik
- */
+import static java.nio.file.attribute.PosixFilePermission.*
+
 @CompileStatic
 class BundledJreManager {
   private final BuildContext buildContext
-  String baseDirectoryForJre
+  private final Map<File, String> jbrArchiveInspectionCache = new ConcurrentHashMap<>()
 
-  BundledJreManager(BuildContext buildContext, String baseDirectoryForJre) {
+  @Lazy private String jreBuild = {
+    buildContext.options.bundledJreBuild ?: buildContext.dependenciesProperties.property('jdkBuild')
+  }()
+
+  BundledJreManager(BuildContext buildContext) {
     this.buildContext = buildContext
-    this.baseDirectoryForJre = baseDirectoryForJre
   }
 
-  /**
-   * Extract JRE for Linux distribution of the product
-   * @return path to the directory containing 'jre' subdirectory with extracted JRE
-   */
-  String extractSecondBundledJreForLinux() {
-    return extractSecondBundledJre("linux")
+  private File dependenciesDir() {
+    new File(buildContext.paths.communityHome, 'build/dependencies')
   }
 
-  boolean doBundleSecondJre() {
-    return System.getProperty('intellij.build.bundle.second.jre', 'false').toBoolean()
-  }
-
-  private String getJreBuild(String osName) {
-    loadDependencyVersions()
-    return dependencyVersions.get("jreBuild_${osName}" as String, buildContext.options.bundledJreBuild ?: dependencyVersions.get("jdkBuild", ""))
-  }
-
-  private int getJreVersion() {
-    return buildContext.options.bundledJreVersion
-  }
-
-  private int getSecondBundledJreVersion() {
-    return 8
-  }
-
-  String extractJre(String osName) {
-    String targetDir = "$baseDirectoryForJre/secondJre.${osName}_${JvmArchitecture.x64}"
+  String extractJre(OsFamily os, JvmArchitecture arch = JvmArchitecture.x64) {
+    String targetDir = "${buildContext.paths.buildOutputRoot}/jre_${os.jbrArchiveSuffix}_$arch"
     if (new File(targetDir).exists()) {
       buildContext.messages.info("JRE is already extracted to $targetDir")
       return targetDir
     }
-    File archive = findArchive(osName, getJreBuild(osName), getJreVersion(), jrePrefix(), JvmArchitecture.x64)
-    if (archive == null) {
-      return null
-    }
-    buildContext.messages.block("Extract $archive.absolutePath JRE") {
-      String destination = "$targetDir/jbr"
-      def destinationDir = new File(destination)
+
+    File archive = findArchive(os, jreBuild, arch)
+    if (archive == null) return null
+
+    String destination = "${targetDir}/jbr"
+    buildContext.messages.block("Extracting ${archive} into ${destination}") {
+      File destinationDir = new File(destination)
       if (destinationDir.exists()) destinationDir.deleteDir()
-      untar(archive, destination, isBundledJreModular())
-    }
-    return targetDir
-  }
-
-  /**
-   * Extract JRE for Windows distribution of the product
-   * @return path to the directory containing 'jre' subdirectory with extracted JRE
-   */
-  String extractSecondBundledJreForWin(JvmArchitecture arch) {
-    return extractSecondBundledJre("windows", arch)
-  }
-
-  /**
-   * Return path to a .tar.gz archive containing distribution of JRE for macOS which will be bundled with the product
-   */
-  String findSecondBundledJreArchiveForMac() {
-    return findSecondBundledJreArchive("osx")?.absolutePath
-  }
-
-  /**
-   * Return a .tar.gz archive containing distribution of JRE for Win OS which will be bundled with the product
-   */
-  File findSecondBundledJreArchiveForWin(JvmArchitecture arch) {
-    return findSecondBundledJreArchive("windows", arch)
-  }
-
-  File findJreArchive(String osName, JvmArchitecture arch = JvmArchitecture.x64) {
-    return findArchive(osName, getJreBuild(osName), getJreVersion(), jrePrefix(), arch)
-  }
-
-  String archiveNameJre(BuildContext buildContext) {
-    return "jre-for-${buildContext.buildNumber}.tar.gz"
-  }
-
-  private String extractSecondBundledJre(String osName, JvmArchitecture arch = JvmArchitecture.x64) {
-    String targetDir = arch == JvmArchitecture.x64 ?
-                       "$baseDirectoryForJre/jre.$osName$arch.fileSuffix" :
-                       "$baseDirectoryForJre/jre.${osName}32"
-    if (new File(targetDir).exists()) {
-      buildContext.messages.info("JRE is already extracted to $targetDir")
-      return targetDir
+      untar(archive, destination)
+      fixJbrPermissions(destination, os == OsFamily.WINDOWS)
     }
 
-    File archive = findSecondBundledJreArchive(osName, arch)
-    if (archive == null) {
-      return null
-    }
-    buildContext.messages.block("Extract $archive.name JRE") {
-      String destination = "$targetDir/jbr"
-      if (osName == "windows" && arch == JvmArchitecture.x32) {
-        destination = "$targetDir/jre32"
-      }
-      buildContext.messages.progress("Extracting JRE from '$archive.name' archive")
-      untar(archive, destination, isSecondBundledJreModular())
-    }
-    return targetDir
+    targetDir
   }
 
-  /**
-   * @param archive linux or windows JRE archive
-   */
+  File findJreArchive(OsFamily os, JvmArchitecture arch = JvmArchitecture.x64) {
+    findArchive(os, jreBuild, arch)
+  }
+
+  private File findArchive(OsFamily os, String jreBuild, JvmArchitecture arch) {
+    String archiveName = jbrArchiveName(jreBuild, buildContext.options.bundledJreVersion, arch, os)
+    File jreDir = new File(dependenciesDir(), 'build/jbre')
+    File jreArchive = new File(jreDir, archiveName)
+    if (jreArchive.file) return jreArchive
+
+    def errorMessage = "Cannot extract $os.osName JRE: file $jreArchive is not found (${jreDir.listFiles()})"
+    if (buildContext.options.isInDevelopmentMode) {
+      buildContext.messages.warning(errorMessage)
+    }
+    else {
+      buildContext.messages.error(errorMessage)
+    }
+    return null
+  }
+
   @CompileDynamic
-  private def untar(File archive, String destination, boolean isModular) {
-    // strip `jre` root directory for jbr8
-    def stripRootDir = !isModular ||
-                       // or `jbr` root directory for jbr11+
-                       buildContext.bundledJreManager.hasJbrRootDir(archive)
+  private void untar(File archive, String destination) {
+    boolean stripRootDir = buildContext.bundledJreManager.hasJbrRootDir(archive)
     if (SystemInfo.isWindows) {
       buildContext.ant.untar(src: archive.absolutePath, dest: destination, compression: 'gzip') {
         if (stripRootDir) {
@@ -141,8 +89,8 @@ class BundledJreManager {
     else {
       // 'tar' command is used instead of Ant task to ensure that executable flags will be preserved
       buildContext.ant.mkdir(dir: destination)
-      buildContext.ant.exec(executable: "tar", dir: archive.parent) {
-        arg(value: "-xf")
+      buildContext.ant.exec(executable: "tar", dir: archive.parent, failonerror: true) {
+        arg(value: "xf")
         arg(value: archive.name)
         if (stripRootDir) {
           arg(value: "--strip")
@@ -154,13 +102,32 @@ class BundledJreManager {
     }
   }
 
-  private File dependenciesDir() {
-    new File(buildContext.paths.communityHome, 'build/dependencies')
-  }
+  private static void fixJbrPermissions(String destination, boolean forWin) {
+    Set<PosixFilePermission> exeOrDir = EnumSet.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE, GROUP_READ, GROUP_EXECUTE, OTHERS_READ, OTHERS_EXECUTE)
+    Set<PosixFilePermission> regular = EnumSet.of(OWNER_READ, OWNER_WRITE, GROUP_READ, OTHERS_READ)
 
-  File jreDir() {
-    def dependenciesDir = dependenciesDir()
-    new File(dependenciesDir, 'build/jbre')
+    Path root = Paths.get(destination)
+    Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+      @Override
+      FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+        if (dir != root && SystemInfo.isUnix) {
+          Files.setPosixFilePermissions(dir, exeOrDir)
+        }
+        return FileVisitResult.CONTINUE
+      }
+
+      @Override
+      FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+        if (SystemInfo.isUnix) {
+          boolean noExec = forWin || !(OWNER_EXECUTE in Files.getPosixFilePermissions(file))
+          Files.setPosixFilePermissions(file, noExec ? regular : exeOrDir)
+        }
+        else {
+          ((DosFileAttributeView)Files.getFileAttributeView(file, DosFileAttributeView.class)).setReadOnly(false)
+        }
+        return FileVisitResult.CONTINUE
+      }
+    })
   }
 
   /**
@@ -168,13 +135,11 @@ class BundledJreManager {
    *  `build/dependencies/setupJbre.gradle`
    *  `build/dependencies/setupJdk.gradle`
   */
-  private String jreArchiveSuffix(String jreBuild, int version, JvmArchitecture arch, String osName) {
+  private String jbrArchiveName(String jreBuild, int version, JvmArchitecture arch, OsFamily os) {
     String update, build
-    def split = jreBuild.split('b')
+    String[] split = jreBuild.split('b')
     if (split.length > 2) {
-      throw new IllegalArgumentException(
-        "$jreBuild is expected in format <update>b<build_number>. Examples: u202b1483.24, 11_0_2b140, b96"
-      )
+      throw new IllegalArgumentException("${jreBuild} doesn't match '<update>b<build_number>' format (e.g.: u202b1483.24, 11_0_2b140, b96)")
     }
     if (split.length == 2) {
       update = split[0]
@@ -186,107 +151,80 @@ class BundledJreManager {
       // [11, b96]
       (update, build) = [version.toString(), jreBuild]
     }
-    "${update}-${osName}-${arch == JvmArchitecture.x32 ? 'i586' : 'x64'}-${build}.tar.gz"
-  }
 
-  private File findSecondBundledJreArchive(String osName, JvmArchitecture arch = JvmArchitecture.x64) {
-    return findArchive(osName, secondBundledJreBuild, secondBundledJreVersion, null, arch)
-  }
-
-  private File findArchive(String osName, String jreBuild,
-                           int jreVersion, String jrePrefix,
-                           JvmArchitecture arch) {
-    def jreDir = jreDir()
-    String suffix = jreArchiveSuffix(jreBuild, jreVersion, arch, osName)
-    if (jrePrefix == null) {
-      jrePrefix = jreVersion < 9 && buildContext.productProperties.toolsJarRequired ? "jbrx-" : "jbr-"
+    String prefix
+    if (buildContext.options.bundledJrePrefix != null) {
+      prefix = buildContext.options.bundledJrePrefix
     }
-    def jreArchive = new File(jreDir, "$jrePrefix$suffix")
-    if (!jreArchive.file || !jreArchive.exists()) {
-      def errorMessage = "Cannot extract $osName JRE: file $jreArchive is not found (${jreDir.listFiles()})"
-      if (buildContext.options.isInDevelopmentMode) {
-        buildContext.messages.warning(errorMessage)
-      }
-      else {
-        buildContext.messages.error(errorMessage)
-      }
-      return null
+    else if (arch == JvmArchitecture.x32 || buildContext.productProperties.jbrDistribution.classifier.isEmpty()) {
+      prefix = 'jbr-'
     }
-    return jreArchive
-  }
-
-  private Properties dependencyVersions
-  private synchronized void loadDependencyVersions() {
-    if (dependencyVersions == null) {
-      buildContext.gradle.run('Preparing dependencies file', 'dependenciesFile')
-
-      def stream = new File(dependenciesDir(), 'build/dependencies.properties').newInputStream()
-      try {
-        Properties properties = new Properties()
-        properties.load(stream)
-        dependencyVersions = properties
-      }
-      finally {
-        stream.close()
-      }
+    else {
+      prefix = "jbr_${buildContext.productProperties.jbrDistribution.classifier}-"
     }
-  }
 
-  private String getSecondBundledJreBuild() {
-    if (!doBundleSecondJre()) {
-      throw new IllegalArgumentException("Second JBR won't be bundled, unable to determine build")
-    }
-    def build = System.getProperty("intellij.build.bundled.second.jre.build")
-    if (build == null) {
-      loadDependencyVersions()
-      build = dependencyVersions.get('secondJreBuild')
-    }
-    return build
+    "${prefix}${update}-${os.jbrArchiveSuffix}-${arch == JvmArchitecture.x32 ? 'x86' : 'x64'}-${build}.tar.gz"
   }
-
-  String jrePrefix() {
-    return System.getProperty("intellij.build.bundled.jre.prefix")
-  }
-
-  String secondJreSuffix() {
-    return "-jbr8"
-  }
-
-  /**
-   *  If {@code true} then bundled JRE version is 9+
-   */
-  boolean isBundledJreModular() {
-    return buildContext.options.bundledJreVersion >= 9
-  }
-
-  /**
-   *  If {@code true} then second bundled JRE version is 9+
-   */
-  boolean isSecondBundledJreModular() {
-    return secondBundledJreVersion.toInteger() >= 9
-  }
-
-  private final Map<File, String> jbrArchiveInspectionCache = new ConcurrentHashMap<>()
 
   /**
    * If {@code true} then JRE top directory was renamed to JBR, see JBR-1295
    */
   boolean hasJbrRootDir(File archive) {
-    jbrArchiveInspectionCache.computeIfAbsent(archive) {
-      def tarArchive = new TarArchiveInputStream(
-        new CompressorStreamFactory().createCompressorInputStream(
-          new BufferedInputStream(new FileInputStream(archive))
-        ))
-      tarArchive.nextTarEntry?.name ?: {
-        throw new IllegalStateException("Unable to read $archive")
-      }()
-    }.startsWith('jbr')
+    String rootDir = jbrRootDir(archive)
+    rootDir != null && rootDir.startsWith('jbr')
   }
 
   /**
    * @return JBR top directory, see JBR-1295
    */
   String jbrRootDir(File archive) {
-    hasJbrRootDir(archive) ? jbrArchiveInspectionCache[archive] : null
+    jbrArchiveInspectionCache.computeIfAbsent(archive) {
+      new TarArchiveInputStream(new CompressorStreamFactory().createCompressorInputStream(archive.newInputStream())).withStream {
+        it.nextTarEntry?.name ?: { throw new IllegalStateException("Unable to read $archive") }()
+      }
+    }
   }
+
+  String x86JreDownloadUrl(OsFamily os) {
+    String patchesUrl = buildContext.applicationInfo.patchesUrl
+    patchesUrl != null ? "${patchesUrl}${x86JbrArtifactName(os)}" : null
+  }
+
+  @CompileDynamic
+  void repackageX86Jre(OsFamily osFamily) {
+    buildContext.messages.info("Packaging x86 JRE for ${osFamily}")
+
+    if (x86JreDownloadUrl(osFamily) == null) {
+      buildContext.messages.warning("... skipped: download URL is unknown")
+      return
+    }
+
+    String jreDirectoryPath = extractJre(osFamily, JvmArchitecture.x32)
+    if (jreDirectoryPath == null) {
+      buildContext.messages.warning("... skipped: JRE archive not found")
+      return
+    }
+
+    String rootDir = "${jreDirectoryPath}/jbr"
+    String artifactPath = "${buildContext.paths.artifacts}/${x86JbrArtifactName(osFamily)}"
+    if (SystemInfo.isWindows) {
+      buildContext.ant.tar(tarfile: artifactPath, longfile: "gnu", compression: "gzip") {
+        tarfileset(dir: rootDir) {
+          include(name: "**/**")
+        }
+      }
+    }
+    else {
+      buildContext.ant.exec(executable: "tar", dir: rootDir, failonerror: true) {
+        arg(value: "czf")
+        arg(value: artifactPath)
+        for (f in new File(rootDir).list()) {
+          arg(value: f)
+        }
+      }
+    }
+    buildContext.notifyArtifactBuilt(artifactPath)
+  }
+
+  private String x86JbrArtifactName(OsFamily os) { "jbr-for-${buildContext.buildNumber}-${os.jbrArchiveSuffix}-x86.tar.gz" }
 }

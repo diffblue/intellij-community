@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.debugger.sourcemap
 
 import com.intellij.openapi.util.SystemInfo
@@ -8,23 +8,25 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.Url
 import com.intellij.util.Urls
-import com.intellij.util.containers.ObjectIntHashMap
-import com.intellij.util.containers.isNullOrEmpty
 import com.intellij.util.io.URLUtil
+import it.unimi.dsi.fastutil.Hash
+import it.unimi.dsi.fastutil.objects.Object2IntMap
+import it.unimi.dsi.fastutil.objects.Object2IntOpenCustomHashMap
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap
+import org.jetbrains.debugger.ScriptDebuggerUrls
 import java.io.File
 
 interface SourceFileResolver {
   /**
    * Return -1 if no match
    */
-  fun resolve(map: ObjectIntHashMap<Url>): Int = -1
+  fun resolve(map: Object2IntMap<Url>): Int = -1
   fun resolve(rawSources: List<String>): Int = -1
 }
 
 class SourceResolver(private val rawSources: List<String>,
                      trimFileScheme: Boolean,
                      baseUrl: Url?,
-                     private val sourceContents: List<String?>?,
                      baseUrlIsFile: Boolean = true) {
   companion object {
     fun isAbsolute(path: String): Boolean = path.startsWith('/') || (SystemInfo.isWindows && (path.length > 2 && path[1] == ':'))
@@ -34,15 +36,19 @@ class SourceResolver(private val rawSources: List<String>,
     Array(rawSources.size) { canonicalizeUrl(rawSources[it], baseUrl, trimFileScheme, baseUrlIsFile) }
   }
 
-  private val canonicalizedUrlToSourceIndex: ObjectIntHashMap<Url> by lazy {
-    (
-      if (SystemInfo.isFileSystemCaseSensitive) ObjectIntHashMap(rawSources.size)
-      else ObjectIntHashMap(rawSources.size, Urls.caseInsensitiveUrlHashingStrategy)
-    ).also {
-      for (i in rawSources.indices) {
-        it.put(canonicalizedUrls[i], i)
-      }
+  private val canonicalizedUrlToSourceIndex: Object2IntMap<Url> by lazy {
+    val map: Object2IntMap<Url> = if (SystemInfo.isFileSystemCaseSensitive) {
+      Object2IntOpenHashMap(rawSources.size)
     }
+    else {
+      Object2IntOpenCustomHashMap(rawSources.size, CaseInsensitiveUrlHashingStrategy)
+    }
+    map.defaultReturnValue(-1)
+
+    for (i in rawSources.indices) {
+      map.put(canonicalizedUrls[i], i)
+    }
+    map
   }
 
   fun getSource(entry: MappingEntry): Url? {
@@ -50,28 +56,7 @@ class SourceResolver(private val rawSources: List<String>,
     return if (index < 0) null else canonicalizedUrls[index]
   }
 
-  fun getSourceContent(entry: MappingEntry): String? {
-    if (sourceContents.isNullOrEmpty()) {
-      return null
-    }
-
-    val index = entry.source
-    return if (index < 0 || index >= sourceContents!!.size) null else sourceContents[index]
-  }
-
-  fun getSourceContent(sourceIndex: Int): String? {
-    if (sourceContents.isNullOrEmpty()) {
-      return null
-    }
-    return if (sourceIndex < 0 || sourceIndex >= sourceContents!!.size) null else sourceContents[sourceIndex]
-  }
-
-  fun getSourceIndex(url: Url): Int = canonicalizedUrlToSourceIndex[url]
-
-  fun getRawSource(entry: MappingEntry): String? {
-    val index = entry.source
-    return if (index < 0) null else rawSources[index]
-  }
+  fun getSourceIndex(url: Url): Int = canonicalizedUrlToSourceIndex.getInt(url)
 
   internal fun findSourceIndex(resolver: SourceFileResolver): Int {
     val resolveByCanonicalizedUrls = resolver.resolve(canonicalizedUrlToSourceIndex)
@@ -79,7 +64,7 @@ class SourceResolver(private val rawSources: List<String>,
   }
 
   fun findSourceIndex(sourceUrl: Url, sourceFile: VirtualFile?, localFileUrlOnly: Boolean): Int {
-    val index = canonicalizedUrlToSourceIndex.get(sourceUrl)
+    val index = canonicalizedUrlToSourceIndex.getInt(sourceUrl)
     if (index != -1) {
       return index
     }
@@ -92,7 +77,7 @@ class SourceResolver(private val rawSources: List<String>,
 
   internal fun findSourceIndexByFile(sourceFile: VirtualFile, localFileUrlOnly: Boolean): Int {
     if (!localFileUrlOnly) {
-      val index = canonicalizedUrlToSourceIndex.get(Urls.newFromVirtualFile(sourceFile).trimParameters())
+      val index = canonicalizedUrlToSourceIndex.getInt(Urls.newFromVirtualFile(sourceFile).trimParameters())
       if (index != -1) {
         return index
       }
@@ -102,8 +87,7 @@ class SourceResolver(private val rawSources: List<String>,
       return -1
     }
 
-    // local file url - without "file" scheme, just path
-    val index = canonicalizedUrlToSourceIndex.get(Urls.newLocalFileUrl(sourceFile))
+    val index = canonicalizedUrlToSourceIndex.getInt(ScriptDebuggerUrls.newLocalFileUrl(sourceFile))
     if (index != -1) {
       return index
     }
@@ -126,7 +110,7 @@ class SourceResolver(private val rawSources: List<String>,
 
 fun canonicalizePath(url: String, baseUrl: Url, baseUrlIsFile: Boolean): String {
   var path = url
-  if (!FileUtil.isAbsolute(url) && !url.isEmpty() && url[0] != '/') {
+  if (!FileUtil.isAbsolute(url) && url.isNotEmpty() && url[0] != '/') {
     val basePath = baseUrl.path
     if (baseUrlIsFile) {
       val lastSlashIndex = basePath.lastIndexOf('/')
@@ -138,6 +122,7 @@ fun canonicalizePath(url: String, baseUrl: Url, baseUrlIsFile: Boolean): String 
         pathBuilder.append(basePath, 0, lastSlashIndex + 1)
       }
       path = pathBuilder.append(url).toString()
+      return FileUtil.toCanonicalPath(path, true)
     }
     else {
       path = "$basePath/$url"
@@ -148,8 +133,8 @@ fun canonicalizePath(url: String, baseUrl: Url, baseUrlIsFile: Boolean): String 
 
 // see canonicalizeUri kotlin impl and https://trac.webkit.org/browser/trunk/Source/WebCore/inspector/front-end/ParsedURL.js completeURL
 fun canonicalizeUrl(url: String, baseUrl: Url?, trimFileScheme: Boolean, baseUrlIsFile: Boolean = true): Url {
-  if (trimFileScheme && url.startsWith(StandardFileSystems.FILE_PROTOCOL_PREFIX)) {
-    return Urls.newLocalFileUrl(FileUtil.toCanonicalPath(VfsUtilCore.toIdeaUrl(url, true).substring(StandardFileSystems.FILE_PROTOCOL_PREFIX.length), '/'))
+  if (url.startsWith(StandardFileSystems.FILE_PROTOCOL_PREFIX)) {
+    return ScriptDebuggerUrls.newLocalFileUrl(FileUtil.toCanonicalPath(VfsUtilCore.toIdeaUrl(url, true).substring(StandardFileSystems.FILE_PROTOCOL_PREFIX.length), '/'))
   }
   else if (baseUrl == null || url.contains(URLUtil.SCHEME_SEPARATOR) || url.startsWith("data:") || url.startsWith("blob:") ||
            url.startsWith("javascript:") || url.startsWith("webpack:")) {
@@ -165,20 +150,26 @@ fun canonicalizeUrl(url: String, baseUrl: Url?, trimFileScheme: Boolean, baseUrl
 
 fun doCanonicalize(url: String, baseUrl: Url, baseUrlIsFile: Boolean, asLocalFileIfAbsoluteAndExists: Boolean): Url {
   val path = canonicalizePath(url, baseUrl, baseUrlIsFile)
-  if ((baseUrl.scheme == null && baseUrl.isInLocalFileSystem) ||
+  if (baseUrl.isInLocalFileSystem ||
       asLocalFileIfAbsoluteAndExists && SourceResolver.isAbsolute(path) && File(path).exists()) {
-    // file:///home/user/foo.js.map, foo.ts -> /home/user/foo.ts (baseUrl is in local fs)
-    // http://localhost/home/user/foo.js.map, foo.ts -> /home/user/foo.ts (File(path) exists)
-    return Urls.newLocalFileUrl(path)
+    // file:///home/user/foo.js.map, foo.ts -> file:///home/user/foo.ts (baseUrl is in local fs)
+    // http://localhost/home/user/foo.js.map, foo.ts -> file:///home/user/foo.ts (File(path) exists)
+    return ScriptDebuggerUrls.newLocalFileUrl(path)
   }
   else if (!path.startsWith("/")) {
     // http://localhost/source.js.map, C:/foo.ts webpack-dsj3c45 -> C:/foo.ts webpack-dsj3c45
     // (we can't append path suffixes unless they start with /
-    return Urls.parse(path, true) ?: Urls.newUnparsable(path)
+    return ScriptDebuggerUrls.parse(path, true) ?: Urls.newUnparsable(path)
   }
   else {
     // new url from path and baseUrl's scheme and authority
     val split = path.split('?', limit = 2)
-    return Urls.newUrl(baseUrl.scheme!!, baseUrl.authority!!, split[0], if (split.size > 1) '?' + split[1] else null)
+    return Urls.newUrl(baseUrl.scheme, baseUrl.authority, split[0], if (split.size > 1) '?' + split[1] else null)
   }
+}
+
+private object CaseInsensitiveUrlHashingStrategy: Hash.Strategy<Url> {
+  override fun hashCode(url: Url?) = url?.hashCodeCaseInsensitive() ?: 0
+
+  override fun equals(url1: Url?, url2: Url?) = Urls.equals(url1, url2, caseSensitive = false, ignoreParameters = false)
 }

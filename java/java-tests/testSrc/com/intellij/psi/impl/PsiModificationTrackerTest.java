@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.codeInsight.JavaCodeInsightTestCase;
@@ -137,7 +137,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
     });
   }
 
-  private void doTest(@NonNls String text, Processor<PsiFile> run) {
+  private void doTest(@NonNls String text, Processor<? super PsiFile> run) {
     PsiFile file = configureByText(JavaFileType.INSTANCE, text);
     PsiModificationTracker tracker = PsiModificationTracker.SERVICE.getInstance(getProject());
     long count = tracker.getModificationCount();
@@ -205,7 +205,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
     assertNull(facade.findClass("Foo", allScope));
     long count1 = getJavaTracker().getModificationCount();
 
-    GCWatcher.tracking(PsiDocumentManager.getInstance(getProject()).getCachedPsiFile(document)).tryGc();
+    GCWatcher.tracking(PsiDocumentManager.getInstance(getProject()).getCachedPsiFile(document)).ensureCollected();
     assertNull(PsiDocumentManager.getInstance(getProject()).getCachedPsiFile(document));
 
     WriteCommandAction.runWriteCommandAction(getProject(), () -> document.insertString(0, "class Foo {}"));
@@ -242,7 +242,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
   private void gcPsi(VirtualFile file) {
     PsiManagerEx psiManager = PsiManagerEx.getInstanceEx(getProject());
-    GCWatcher.tracking(psiManager.getFileManager().getCachedPsiFile(file)).tryGc();
+    GCWatcher.tracking(psiManager.getFileManager().getCachedPsiFile(file)).ensureCollected();
     assertNull(psiManager.getFileManager().getCachedPsiFile(file));
   }
 
@@ -262,7 +262,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
   private void gcPsiAndDocument(VirtualFile file) {
     PsiManagerEx psiManager = PsiManagerEx.getInstanceEx(getProject());
-    GCWatcher.tracking(FileDocumentManager.getInstance().getCachedDocument(file), psiManager.getFileManager().getCachedPsiFile(file)).tryGc();
+    GCWatcher.tracking(FileDocumentManager.getInstance().getCachedDocument(file), psiManager.getFileManager().getCachedPsiFile(file)).ensureCollected();
     assertNull(FileDocumentManager.getInstance().getCachedDocument(file));
     assertNull(psiManager.getFileManager().getCachedPsiFile(file));
   }
@@ -405,13 +405,13 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
     PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
     long mc = tracker.getModificationCount();
     long js = getJavaTracker().getModificationCount();
-    long ocb = tracker.getOutOfCodeBlockModificationCount();
+    long ocb = tracker.getModificationCount();
 
     WriteAction.run(() -> ProjectRootManagerEx.getInstanceEx(getProject()).makeRootsChange(EmptyRunnable.INSTANCE, false, true));
 
     assertTrue(mc != tracker.getModificationCount());
     assertTrue(js != getJavaTracker().getModificationCount());
-    assertTrue(ocb != tracker.getOutOfCodeBlockModificationCount());
+    assertTrue(ocb != tracker.getModificationCount());
   }
 
   public void testNoIncrementOnWorkspaceFileChange() {
@@ -448,32 +448,6 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
     WriteAction.run(() -> file.setWritable(true));
     assertEquals(mc, tracker.getModificationCount());
-  }
-
-  public void testJavaStructureModCountMustNotBeAdvancedOnJavadocChange() {
-    configureByText(JavaFileType.INSTANCE, "/* <selection>abc</selection> */ class A{}");
-
-    PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
-    long javaCount = getJavaTracker().getModificationCount();
-    long codeBlockCount = tracker.getOutOfCodeBlockModificationCount();
-
-    WriteCommandAction.runWriteCommandAction(getProject(), () -> replaceSelection("cde"));
-
-    assertEquals(javaCount, getJavaTracker().getModificationCount());
-    assertFalse(codeBlockCount == tracker.getOutOfCodeBlockModificationCount());
-  }
-
-  public void testJavaStructureModCountMustNotBeAdvancedOnAddingSpace() {
-    configureByText(JavaFileType.INSTANCE, "class A{ <selection></selection> }");
-
-    PsiModificationTracker tracker = (PsiModificationTracker)getTracker();
-    long javaCount = getJavaTracker().getModificationCount();
-    long codeBlockCount = tracker.getOutOfCodeBlockModificationCount();
-
-    WriteCommandAction.runWriteCommandAction(getProject(), () -> replaceSelection(" "));
-
-    assertEquals(javaCount, getJavaTracker().getModificationCount());
-    assertFalse(codeBlockCount == tracker.getOutOfCodeBlockModificationCount());
   }
 
   public void testChangeBothInsideAnonymousAndOutsideShouldAdvanceJavaModStructureAndClearCaches() {
@@ -542,7 +516,7 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
 
   @NotNull
   ModificationTracker getJavaTracker() {
-    return PsiModificationTracker.SERVICE.getInstance(getProject()).getJavaStructureModificationTracker();
+    return PsiModificationTracker.SERVICE.getInstance(getProject());
   }
 
   public static class JavaLanguageTrackerTest extends PsiModificationTrackerTest {
@@ -552,8 +526,5 @@ public class PsiModificationTrackerTest extends JavaCodeInsightTestCase {
       return ((PsiModificationTrackerImpl)PsiModificationTracker.SERVICE.getInstance(getProject()))
         .forLanguage(JavaLanguage.INSTANCE);
     }
-
-    public void testJavaStructureModCountMustNotBeAdvancedOnJavadocChange() {}
-    public void testJavaStructureModCountMustNotBeAdvancedOnAddingSpace() {}
   }
 }

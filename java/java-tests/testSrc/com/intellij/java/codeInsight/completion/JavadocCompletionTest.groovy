@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.java.codeInsight.completion
 
 import com.intellij.JavaTestUtil
@@ -32,13 +18,10 @@ import com.intellij.psi.codeStyle.JavaCodeStyleSettings
 import com.intellij.psi.impl.source.resolve.reference.PsiReferenceRegistrarImpl
 import com.intellij.psi.impl.source.resolve.reference.ReferenceProvidersRegistry
 import com.intellij.psi.javadoc.PsiDocTag
-import com.intellij.util.ObjectUtils
+import com.intellij.testFramework.NeedsIndex
 import com.intellij.util.ProcessingContext
 import com.intellij.util.SystemProperties
 import org.jetbrains.annotations.NotNull
-/**
- * @author mike
- */
 class JavadocCompletionTest extends LightFixtureCompletionTestCase {
   private JavaCodeStyleSettings javaSettings
 
@@ -82,7 +65,7 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
 
   void testParamValueCompletion() {
     configureByFile("ParamValue0.java")
-    assertStringItems("a", "b", "c")
+    assertStringItems("a", "b", "c", "<A>", "<B>")
   }
 
   void testParamValueWithPrefixCompletion() {
@@ -90,21 +73,29 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
     assertStringItems("a1", "a2", "a3")
   }
 
+  void testTypeParamValueWithPrefix() {
+    configureByTestName()
+    assertStringItems("<A>", "<B>")
+  }
+
   void testDescribedParameters() {
     configureByFile("ParamValue2.java")
     assertStringItems("a2", "a3")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testSee0() {
     configureByFile("See0.java")
     myFixture.assertPreferredCompletionItems(0, "foo", "clone", "equals", "hashCode")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testSee1() {
     configureByFile("See1.java")
     assertStringItems("notify", "notifyAll")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testSee2() {
     configureByFile("See2.java")
     assertStringItems("notify", "notifyAll")
@@ -118,7 +109,7 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
 
   @NotNull
   private List<String> getLookupElementStrings() {
-    return ObjectUtils.assertNotNull(myFixture.getLookupElementStrings())
+    return Objects.requireNonNull(myFixture.getLookupElementStrings())
   }
 
   void testSee4() {
@@ -133,6 +124,7 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
     assertTrue(getLookupElementStrings().containsAll(Arrays.asList("foo", "myName")))
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testIDEADEV10620() {
     configureByFile("IDEADEV10620.java")
 
@@ -149,6 +141,7 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
     assertTrue(myItems.length > 18)
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testException2() {
     myFixture.configureByFile("Exception2.java")
     myFixture.complete(CompletionType.SMART)
@@ -194,19 +187,23 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
     doTest()
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testShortenClassReference() throws Throwable {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.SHORTEN_NAMES_ALWAYS_AND_ADD_IMPORT
     doTest()
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testQualifiedClassReference() throws Throwable {
     configureByFile(getTestName(false) + ".java")
     myFixture.complete(CompletionType.BASIC, 2)
     checkResultByFile(getTestName(false) + "_after.java")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testQualifiedImportedClassReference() throws Throwable { doTest() }
 
+  @NeedsIndex.ForStandardLibrary
   void testThrowsNonImported() throws Throwable {
     configureByFile(getTestName(false) + ".java")
     myFixture.complete(CompletionType.BASIC, 2)
@@ -223,6 +220,7 @@ class JavadocCompletionTest extends LightFixtureCompletionTestCase {
     assertTrue(getLookupElementStrings().containsAll(Arrays.asList("io", "lang", "util")))
   }
 
+  @NeedsIndex.Full
   void testQualifyClassReferenceInPackageStatement() {
     configureByFile(getTestName(false) + ".java")
     myFixture.type('\n')
@@ -246,6 +244,21 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'param', 'param param2'
   }
 
+  void "test suggest type param names"() {
+    myFixture.configureByText "a.java", '''
+/**
+* @par<caret>
+*/
+class Foo<T,V>{}
+'''
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'param', 'param <T>', 'param <V>'
+    myFixture.type('\n <T>\n@para')
+    myFixture.completeBasic()
+    myFixture.assertPreferredCompletionItems 0, 'param', 'param <V>'
+  }
+
+  @NeedsIndex.ForStandardLibrary
   void "test fqns in package info"() {
     myFixture.configureByText "package-info.java", '''
 /**
@@ -313,6 +326,7 @@ class Foo {
     myFixture.assertPreferredCompletionItems 0, 'some integer param'
   }
 
+  @NeedsIndex.Full
   void "test see super class"() {
     myFixture.addClass("package foo; public interface Foo {}")
     myFixture.addClass("package bar; public class Bar {} ")
@@ -358,6 +372,7 @@ class Goo { void goo(Foo foo, Bar bar) {} }
     myFixture.checkResult(text)
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testShortNameInJavadocIfWasImported() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_IF_NOT_IMPORTED
     def text = '''
@@ -383,6 +398,7 @@ class Test {
 '''
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testFqnInJavadocIfWasNotImported() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_IF_NOT_IMPORTED
     def text = '''
@@ -408,7 +424,7 @@ class Test {
 '''
   }
 
-
+  @NeedsIndex.ForStandardLibrary
   void testFqnNameInJavadocIfWasImported() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_ALWAYS
     def text = '''
@@ -434,6 +450,7 @@ class Test {
 '''
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testShortNameInJavadoc() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.SHORTEN_NAMES_ALWAYS_AND_ADD_IMPORT
     def text = '''
@@ -459,6 +476,7 @@ class Test {
 '''
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testShortNameInJavadocIfWasImportOnDemand() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_IF_NOT_IMPORTED
     def text = '''
@@ -521,6 +539,7 @@ public class Test {
 
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testShortNameIfImplicitlyImported() {
     javaSettings.CLASS_NAMES_IN_JAVADOC = JavaCodeStyleSettings.FULLY_QUALIFY_NAMES_IF_NOT_IMPORTED
     def text = '''
@@ -619,12 +638,14 @@ class Foo {
     myFixture.checkResult "/** @author $userName<caret> */"
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test insert link to class"() {
     myFixture.configureByText 'a.java', "/** FileNotFoEx<caret> */"
     myFixture.completeBasic()
     myFixture.checkResult "/** {@link java.io.FileNotFoundException<caret>} */"
   }
 
+  @NeedsIndex.Full
   void "test insert link to inner class"() {
     myFixture.addClass('package zoo; public class Outer { public static class FooBarGoo{}}')
     myFixture.configureByText 'a.java', "/** FooBarGo<caret> */"
@@ -632,6 +653,7 @@ class Foo {
     myFixture.checkResult "/** {@link zoo.Outer.FooBarGoo<caret>} */"
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test insert link to imported class"() {
     myFixture.configureByText 'a.java', "import java.io.*; /** FileNotFoEx<caret> */ class A{}"
     myFixture.completeBasic()
@@ -652,6 +674,14 @@ class Foo {
     assert !TemplateManagerImpl.getTemplateState(myFixture.editor)
   }
 
+  @NeedsIndex.ForStandardLibrary
+  void "test insert link to method in a q-named class"() {
+    myFixture.configureByText 'a.java', "/** a. java.io.File#liFi<caret> */ interface Foo {}"
+    myFixture.completeBasic()
+    myFixture.type('\n')
+    myFixture.checkResult "import java.io.File;\n\n/** a. {@link File#listFiles()} */ interface Foo {}"
+  }
+
   void "test insert link to field"() {
     myFixture.configureByText 'a.java', "/** a. #fo<caret> */ interface Foo { int foo; }}"
     myFixture.completeBasic()
@@ -670,7 +700,7 @@ class Foo {
     myFixture.completeBasic()
     myFixture.checkResult "/** {@code null<caret>} */"
   }
-  
+
   void "test no link inside code tag"() {
     myFixture.configureByText 'a.java', "/** {@code FBG<caret>} */ interface FooBarGoo {}"
     myFixture.completeBasic()
@@ -685,6 +715,7 @@ class Foo {
     myFixture.checkResult "/** @see java.io.IOException<caret> */"
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test no hierarchical generic method duplicates"() {
     myFixture.configureByText 'a.java', """
 interface Foo<T> {

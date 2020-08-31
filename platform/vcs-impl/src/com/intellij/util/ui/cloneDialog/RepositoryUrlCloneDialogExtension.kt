@@ -1,12 +1,14 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui.cloneDialog
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.CheckoutProvider
-import com.intellij.openapi.vcs.ProjectLevelVcsManager
+import com.intellij.openapi.vcs.VcsBundle
 import com.intellij.openapi.vcs.ui.VcsCloneComponent
 import com.intellij.openapi.vcs.ui.cloneDialog.VcsCloneDialogExtension
 import com.intellij.openapi.vcs.ui.cloneDialog.VcsCloneDialogExtensionComponent
@@ -18,30 +20,38 @@ import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.event.ItemEvent
 import java.util.*
+import javax.swing.DefaultComboBoxModel
 import javax.swing.Icon
+import javax.swing.JComponent
 import javax.swing.JPanel
 
 class RepositoryUrlCloneDialogExtension : VcsCloneDialogExtension {
-  private val tooltip = CheckoutProvider.EXTENSION_POINT_NAME.extensions
-    .map { it.vcsName }
-    .joinToString { it.replace("_".toRegex(), "") }
 
-  override fun getIcon(): Icon = AllIcons.Welcome.FromVCS
+  override fun getIcon(): Icon = AllIcons.Vcs.FromVCSDialog
 
-  override fun getName() = "Repository URL"
+  override fun getName() = VcsBundle.message("clone.dialog.repository.url.item")
 
   override fun getTooltip(): String? {
-    return tooltip
+    return CheckoutProvider.EXTENSION_POINT_NAME.extensions
+      .map { it.vcsName }
+      .joinToString { it.replace("_", "") }
   }
 
-  override fun createMainComponent(project: Project): RepositoryUrlMainExtensionComponent {
-    return RepositoryUrlMainExtensionComponent(project)
+  override fun createMainComponent(project: Project): VcsCloneDialogExtensionComponent {
+    throw AssertionError("Shouldn't be called")
   }
 
-  class RepositoryUrlMainExtensionComponent(private val project: Project) : VcsCloneDialogExtensionComponent() {
+  override fun createMainComponent(project: Project, modalityState: ModalityState): VcsCloneDialogExtensionComponent {
+    return RepositoryUrlMainExtensionComponent(project, modalityState)
+  }
+
+  class RepositoryUrlMainExtensionComponent(private val project: Project,
+                                            private val modalityState: ModalityState) : VcsCloneDialogExtensionComponent() {
     override fun onComponentSelected() {
-      dialogStateListener.onOkActionNameChanged(getCurrentVcsComponent()?.getOkButtonText() ?: "Clone")
+      dialogStateListener.onOkActionNameChanged(getCurrentVcsComponent()?.getOkButtonText() ?: VcsBundle.message("clone.dialog.clone.button"))
       dialogStateListener.onOkActionEnabled(true)
+
+      getCurrentVcsComponent()?.onComponentSelected(dialogStateListener)
     }
 
     private val vcsComponents = HashMap<CheckoutProvider, VcsCloneComponent>()
@@ -54,7 +64,7 @@ class RepositoryUrlCloneDialogExtension : VcsCloneDialogExtension {
 
     init {
       val northPanel = panel {
-        row("Version control:") {
+        row(VcsBundle.message("vcs.common.labels.version.control")) {
           comboBox()
         }
       }
@@ -63,21 +73,26 @@ class RepositoryUrlCloneDialogExtension : VcsCloneDialogExtension {
       mainPanel.add(northPanel, BorderLayout.NORTH)
       mainPanel.add(centerPanel, BorderLayout.CENTER)
 
+      val providers = CheckoutProvider.EXTENSION_POINT_NAME.extensions
+      val selectedByDefaultProvider: CheckoutProvider? = if (providers.isNotEmpty()) providers[0] else null
+      providers.sortWith(CheckoutProvider.CheckoutProviderComparator())
+      comboBox.model = DefaultComboBoxModel(providers).apply {
+        selectedItem = null
+      }
       comboBox.addItemListener { e: ItemEvent ->
         if (e.stateChange == ItemEvent.SELECTED) {
           val provider = e.item as CheckoutProvider
-          centerPanel.setContent(vcsComponents[provider]?.getView())
+          centerPanel.setContent(vcsComponents.getOrPut(provider, {
+            val cloneComponent = provider.buildVcsCloneComponent(project, modalityState, dialogStateListener)
+            Disposer.register(this, cloneComponent)
+            cloneComponent
+          }).getView())
           centerPanel.revalidate()
           centerPanel.repaint()
           onComponentSelected()
         }
       }
-
-      val providers = CheckoutProvider.EXTENSION_POINT_NAME.extensions.sortedArrayWith(CheckoutProvider.CheckoutProviderComparator())
-      for (checkoutProvider in providers) {
-        vcsComponents[checkoutProvider] = checkoutProvider.buildVcsCloneComponent(project)
-        comboBox.addItem(checkoutProvider)
-      }
+      comboBox.selectedItem = selectedByDefaultProvider
     }
 
     override fun getView() = mainPanel
@@ -87,14 +102,15 @@ class RepositoryUrlCloneDialogExtension : VcsCloneDialogExtension {
       return this
     }
 
-    override fun doClone() {
-      val listener = ProjectLevelVcsManager.getInstance(project).compositeCheckoutListener
-      getCurrentVcsComponent()?.doClone(project, listener)
+    override fun doClone(checkoutListener: CheckoutProvider.Listener) {
+      getCurrentVcsComponent()?.doClone(project, checkoutListener)
     }
 
     override fun doValidateAll(): List<ValidationInfo> {
       return getCurrentVcsComponent()?.doValidateAll() ?: emptyList()
     }
+
+    override fun getPreferredFocusedComponent(): JComponent? = getCurrentVcsComponent()?.getPreferredFocusedComponent()
 
     private fun getCurrentVcsComponent() = vcsComponents[comboBox.selectedItem as CheckoutProvider]
   }

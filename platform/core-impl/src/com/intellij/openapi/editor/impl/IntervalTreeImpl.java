@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.ex.MarkupIterator;
 import com.intellij.openapi.editor.ex.RangeMarkerEx;
 import com.intellij.openapi.util.Getter;
+import com.intellij.openapi.util.StaticGetter;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.Processor;
 import com.intellij.util.SmartList;
@@ -30,7 +31,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
 abstract class IntervalTreeImpl<T> extends RedBlackTree<T> implements IntervalTree<T> {
-  static final Logger LOG = Logger.getInstance("#com.intellij.openapi.editor.impl.RangeMarkerTree");
+  static final Logger LOG = Logger.getInstance(RangeMarkerTree.class);
   static final boolean DEBUG = LOG.isDebugEnabled() || ApplicationManager.getApplication() != null && ApplicationManager.getApplication().isUnitTestMode();
   private int keySize; // number of all intervals, counting all duplicates, some of them maybe gced
   final ReadWriteLock l = new ReentrantReadWriteLock();
@@ -164,8 +165,8 @@ abstract class IntervalTreeImpl<T> extends RedBlackTree<T> implements IntervalTr
       }
     }
 
-    protected Getter<E> createGetter(@NotNull E interval) {
-      return new WeakReferencedGetter<>(interval, myIntervalTree.myReferenceQueue);
+    private Getter<E> createGetter(@NotNull E interval) {
+      return myIntervalTree.keepIntervalsOnWeakReferences() ? new WeakReferencedGetter<>(interval, myIntervalTree.myReferenceQueue) : new StaticGetter<>(interval);
     }
 
     private static class WeakReferencedGetter<T> extends WeakReference<T> implements Getter<T> {
@@ -391,6 +392,10 @@ abstract class IntervalTreeImpl<T> extends RedBlackTree<T> implements IntervalTr
       pushDeltaFromRoot(node.getParent());
       pushDelta(node);
     }
+  }
+
+  protected boolean keepIntervalsOnWeakReferences() {
+    return true;
   }
 
   @NotNull
@@ -838,8 +843,8 @@ abstract class IntervalTreeImpl<T> extends RedBlackTree<T> implements IntervalTr
                               int deltaUpToRootExclusive,
                               boolean assertInvalid,
                               @NotNull AtomicBoolean allValid,
-                              @NotNull int[] keyCounter,
-                              @NotNull int[] nodeCounter,
+                              int @NotNull [] keyCounter,
+                              int @NotNull [] nodeCounter,
                               @NotNull TLongHashSet ids,
                               boolean allDeltasUpAreNull) {
     if (root == null) return new IntTrinity(Integer.MAX_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE);

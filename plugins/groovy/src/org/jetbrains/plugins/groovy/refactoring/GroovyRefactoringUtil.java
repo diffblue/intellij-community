@@ -8,9 +8,7 @@ import com.intellij.lang.Language;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.colors.EditorColors;
-import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.TextRange;
@@ -134,10 +132,8 @@ public abstract class GroovyRefactoringUtil {
     if (editor == null) return;
     ArrayList<RangeHighlighter> highlighters = new ArrayList<>();
     HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-    TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     if (elements.length > 0) {
-      highlightManager.addOccurrenceHighlights(editor, elements, attributes, false, highlighters);
+      highlightManager.addOccurrenceHighlights(editor, elements, EditorColors.SEARCH_RESULT_ATTRIBUTES, false, highlighters);
     }
   }
 
@@ -145,10 +141,9 @@ public abstract class GroovyRefactoringUtil {
     if (editor == null) return;
     ArrayList<RangeHighlighter> highlighters = new ArrayList<>();
     HighlightManager highlightManager = HighlightManager.getInstance(project);
-    EditorColorsManager colorsManager = EditorColorsManager.getInstance();
-    TextAttributes attributes = colorsManager.getGlobalScheme().getAttributes(EditorColors.SEARCH_RESULT_ATTRIBUTES);
     for (TextRange range : ranges) {
-      highlightManager.addRangeHighlight(editor, range.getStartOffset(), range.getEndOffset(), attributes, false, highlighters);
+      highlightManager.addRangeHighlight(editor, range.getStartOffset(), range.getEndOffset(), 
+                                         EditorColors.SEARCH_RESULT_ATTRIBUTES, false, highlighters);
     }
   }
 
@@ -172,7 +167,7 @@ public abstract class GroovyRefactoringUtil {
     editor.getSelectionModel().setSelection(start, end);
   }
 
-  @NotNull public static PsiElement[] findStatementsInRange(PsiFile file, int startOffset, int endOffset, boolean strict) {
+  public static PsiElement @NotNull [] findStatementsInRange(PsiFile file, int startOffset, int endOffset, boolean strict) {
     if (!(file instanceof GroovyFileBase)) return PsiElement.EMPTY_ARRAY;
     Language language = GroovyLanguage.INSTANCE;
     PsiElement element1 = file.getViewProvider().findElementAt(startOffset, language);
@@ -307,18 +302,18 @@ public abstract class GroovyRefactoringUtil {
 
   public static String getMethodSignature(PsiMethod method) {
     MethodSignature signature = method.getSignature(PsiSubstitutor.EMPTY);
-    String s = signature.getName() + "(";
+    StringBuilder s = new StringBuilder(signature.getName() + "(");
     int i = 0;
     PsiType[] types = signature.getParameterTypes();
     for (PsiType type : types) {
-      s += type.getPresentableText();
+      s.append(type.getPresentableText());
       if (i < types.length - 1) {
-        s += ", ";
+        s.append(", ");
       }
       i++;
     }
-    s += ")";
-    return s;
+    s.append(")");
+    return s.toString();
 
   }
 
@@ -520,7 +515,7 @@ public abstract class GroovyRefactoringUtil {
    *    while(true) {a=foo()}
    * @param statement
    * @return corresponding statement inside block if it has been created or statement itself.
-   * @throws com.intellij.util.IncorrectOperationException
+   * @throws IncorrectOperationException
    */
 
   @NotNull
@@ -594,17 +589,14 @@ public abstract class GroovyRefactoringUtil {
     return parent instanceof GrStatementOwner ? ((GrStatementOwner) parent) : null;
   }
 
-  @Nullable
-  public static PsiType getType(@Nullable PsiParameter myParameter) {
-    if (myParameter == null) return null;
+  @NotNull
+  private static PsiType getType(@NotNull PsiParameter myParameter) {
     PsiType type = myParameter.getType();
     return type instanceof PsiEllipsisType ? ((PsiEllipsisType)type).toArrayType() : type;
   }
 
-    @Nullable
-  public static PsiType getSubstitutedType(@Nullable GrParameter parameter) {
-    if (parameter == null) return null;
-
+  @NotNull
+  public static PsiType getSubstitutedType(@NotNull GrParameter parameter) {
     final PsiType type = getType(parameter);
 
     if (type instanceof PsiArrayType) {
@@ -671,17 +663,17 @@ public abstract class GroovyRefactoringUtil {
         private final Set<PsiTypeParameter> myTypeParams = new HashSet<>();
 
         @Override
-        public Boolean visitType(final PsiType type) {
+        public Boolean visitType(@NotNull final PsiType type) {
           return false;
         }
 
         @Override
-        public Boolean visitArrayType(final PsiArrayType arrayType) {
+        public Boolean visitArrayType(@NotNull final PsiArrayType arrayType) {
           return arrayType.getComponentType().accept(this);
         }
 
         @Override
-        public Boolean visitClassType(final PsiClassType classType) {
+        public Boolean visitClassType(@NotNull final PsiClassType classType) {
           final PsiClass aClass = classType.resolve();
           if (aClass instanceof PsiTypeParameter) {
             myTypeParams.add((PsiTypeParameter)aClass);
@@ -695,7 +687,7 @@ public abstract class GroovyRefactoringUtil {
         }
 
         @Override
-        public Boolean visitWildcardType(final PsiWildcardType wildcardType) {
+        public Boolean visitWildcardType(@NotNull final PsiWildcardType wildcardType) {
           final PsiType bound = wildcardType.getBound();
           if (bound != null) {
             bound.accept(this);

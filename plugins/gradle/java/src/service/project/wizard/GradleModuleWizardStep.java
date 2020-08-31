@@ -9,25 +9,28 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.externalSystem.model.project.ProjectData;
 import com.intellij.openapi.externalSystem.model.project.ProjectId;
 import com.intellij.openapi.externalSystem.service.project.wizard.ExternalModuleSettingsStep;
-import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
+import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
-import org.jetbrains.plugins.gradle.util.GradleConstants;
 
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import static com.intellij.ide.util.newProjectWizard.AbstractProjectWizard.getNewProjectJdk;
+
 /**
  * @author Vladislav.Soroka
+ * @deprecated Use {@link GradleStructureWizardStep} instead
  */
+@SuppressWarnings("DeprecatedIsStillUsed")
+@Deprecated
 public class GradleModuleWizardStep extends ModuleWizardStep {
   private static final Icon WIZARD_ICON = null;
 
@@ -38,7 +41,7 @@ public class GradleModuleWizardStep extends ModuleWizardStep {
   @Nullable
   private final Project myProjectOrNull;
   @NotNull
-  private final GradleModuleBuilder myBuilder;
+  private final AbstractGradleModuleBuilder myBuilder;
   @NotNull
   private final WizardContext myContext;
   @NotNull
@@ -56,7 +59,7 @@ public class GradleModuleWizardStep extends ModuleWizardStep {
   private JCheckBox myInheritVersionCheckBox;
   private JPanel myAddToPanel;
 
-  public GradleModuleWizardStep(@NotNull GradleModuleBuilder builder, @NotNull WizardContext context) {
+  public GradleModuleWizardStep(@NotNull AbstractGradleModuleBuilder builder, @NotNull WizardContext context) {
     myProjectOrNull = context.getProject();
     myBuilder = builder;
     myContext = context;
@@ -203,13 +206,6 @@ public class GradleModuleWizardStep extends ModuleWizardStep {
     return "";
   }
 
-  public static boolean isGradleModuleExist(WizardContext myContext) {
-    for (Module module : myContext.getModulesProvider().getModules()) {
-      if (ExternalSystemApiUtil.isExternalSystemAwareModule(GradleConstants.SYSTEM_ID, module)) return true;
-    }
-    return false;
-  }
-
   @Override
   public void updateDataModel() {
     myContext.setProjectBuilder(myBuilder);
@@ -233,6 +229,9 @@ public class GradleModuleWizardStep extends ModuleWizardStep {
         myContext.setProjectFileDirectory(myProjectOrNull.getBasePath() + '/' + myContext.getProjectName());
       }
     }
+
+    myBuilder.setCreatingNewProject(myContext.isCreatingNewProject());
+    myBuilder.setModuleJdk(ObjectUtils.chooseNotNull(myBuilder.getModuleJdk(), getNewProjectJdk(myContext)));
   }
 
   @Override
@@ -264,6 +263,11 @@ public class GradleModuleWizardStep extends ModuleWizardStep {
   @TestOnly
   public void setArtifactId(@NotNull String artifactId) {
     myArtifactIdField.setText(artifactId);
+  }
+
+  @TestOnly
+  public void setVersion(@NotNull String version) {
+    myVersionField.setText(version);
   }
 
   @TestOnly

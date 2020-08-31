@@ -2,26 +2,27 @@
 package org.jetbrains.plugins.gradle.model;
 
 import org.gradle.tooling.BuildController;
-import org.gradle.tooling.model.BuildModel;
 import org.gradle.tooling.model.Model;
+import org.gradle.tooling.model.gradle.GradleBuild;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 public final class ClassSetImportModelProvider implements ProjectImportModelProvider {
-  @NotNull private final Set<Class> projectModelClasses;
-  @NotNull private final Set<Class> buildModelClasses;
+  @NotNull private final Set<Class<?>> projectModelClasses;
+  @NotNull private final Set<Class<?>> buildModelClasses;
 
-  public ClassSetImportModelProvider(@NotNull Set<Class> projectModelClasses, @NotNull Set<Class> buildModelClasses) {
-    this.projectModelClasses = projectModelClasses;
-    this.buildModelClasses = buildModelClasses;
+  public ClassSetImportModelProvider(@NotNull Set<Class<?>> projectModelClasses, @NotNull Set<Class<?>> buildModelClasses) {
+    this.projectModelClasses = new LinkedHashSet<Class<?>>(projectModelClasses);
+    this.buildModelClasses = new LinkedHashSet<Class<?>>(buildModelClasses);
   }
 
   @Override
-  public <T extends Model & BuildModel> void populateBuildModels(@NotNull BuildController controller,
-                                                                 @NotNull T buildModel,
-                                                                 @NotNull BuildModelConsumer consumer) {
+  public void populateBuildModels(@NotNull BuildController controller,
+                                  @NotNull GradleBuild buildModel,
+                                  @NotNull BuildModelConsumer consumer) {
     for (Class<?> aClass : buildModelClasses) {
       Object instance = controller.findModel(buildModel, aClass);
       if (instance != null) {
@@ -40,5 +41,23 @@ public final class ClassSetImportModelProvider implements ProjectImportModelProv
         modelConsumer.consume(instance, aClass);
       }
     }
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    ClassSetImportModelProvider provider = (ClassSetImportModelProvider)o;
+    if (!projectModelClasses.equals(provider.projectModelClasses)) return false;
+    if (!buildModelClasses.equals(provider.buildModelClasses)) return false;
+
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    int result = projectModelClasses.hashCode();
+    result = 31 * result + buildModelClasses.hashCode();
+    return result;
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.plugin.ui;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -56,20 +56,22 @@ import java.util.function.Supplier;
 /**
  * @author Maxim.Mossienko
  */
-public class UIUtil {
-  private static final String MODIFY_EDITOR_CONTENT = SSRBundle.message("modify.editor.content.command.name");
+public final class UIUtil {
   @NonNls private static final String SS_GROUP = "structuralsearchgroup";
 
   public static final NotificationGroup SSR_NOTIFICATION_GROUP =
-    new NotificationGroup(SSRBundle.message("structural.search.title"), NotificationDisplayType.STICKY_BALLOON, true, ToolWindowId.FIND);
+    new NotificationGroup("Structural Search", NotificationDisplayType.STICKY_BALLOON, true, ToolWindowId.FIND, null,
+                          SSRBundle.message("structural.search.title"), null);
 
   @NonNls public static final String TEXT = "TEXT";
   @NonNls public static final String TEXT_HIERARCHY = "TEXT HIERARCHY";
   @NonNls public static final String REFERENCE = "REFERENCE";
   @NonNls public static final String TYPE = "TYPE";
+  @NonNls public static final String TYPE_REGEX = "TYPE REGEX";
   @NonNls public static final String EXPECTED_TYPE = "EXPECTED TYPE";
   @NonNls public static final String MINIMUM_ZERO = "MINIMUM ZERO";
   @NonNls public static final String MAXIMUM_UNLIMITED = "MAXIMUM UNLIMITED";
+  @NonNls public static final String CONTEXT = "CONTEXT";
 
   private UIUtil() {
   }
@@ -105,32 +107,17 @@ public class UIUtil {
     return editor;
   }
 
-  public static JComponent createOptionLine(JComponent... options) {
-    final JPanel tmp = new JPanel();
-
-    tmp.setLayout(new BoxLayout(tmp, BoxLayout.X_AXIS));
-    for (int i = 0; i < options.length; i++) {
-      if (i != 0) {
-        tmp.add(Box.createHorizontalStrut(com.intellij.util.ui.UIUtil.DEFAULT_HGAP));
-      }
-      tmp.add(options[i]);
-    }
-    tmp.add(Box.createHorizontalGlue());
-
-    return tmp;
-  }
-
   public static void setContent(@NotNull final Editor editor, String text) {
     final String value = text != null ? text : "";
     final Document document = editor.getDocument();
-    WriteCommandAction.runWriteCommandAction(editor.getProject(), MODIFY_EDITOR_CONTENT, SS_GROUP,
+    WriteCommandAction.runWriteCommandAction(editor.getProject(), SSRBundle.message("modify.editor.content.command.name"), SS_GROUP,
                                              () -> document.replaceString(0, document.getTextLength(), value));
   }
 
   public static void setContent(@NotNull EditorTextField editor, String text) {
     final String value = text != null ? text : "";
     final Document document = editor.getDocument();
-    WriteCommandAction.runWriteCommandAction(editor.getProject(), MODIFY_EDITOR_CONTENT, SS_GROUP,
+    WriteCommandAction.runWriteCommandAction(editor.getProject(), SSRBundle.message("modify.editor.content.command.name"), SS_GROUP,
                                              () -> document.replaceString(0, document.getTextLength(), value));
   }
 
@@ -190,7 +177,7 @@ public class UIUtil {
     completeMatchInfo.addMouseListener(new MouseAdapter() {
       @Override
       public void mouseEntered(MouseEvent ignore) {
-        if (Registry.is("ssr.use.editor.inlays.instead.of.tool.tips") && Registry.is("ssr.use.new.search.dialog")) {
+        if (Registry.is("ssr.use.editor.inlays.instead.of.tool.tips")) {
           return;
         }
         final Configuration configuration = configurationProducer.get();
@@ -246,7 +233,10 @@ public class UIUtil {
 
   @NotNull
   public static EditorTextField createEditorComponent(String text, String fileName, Project project) {
-    return new EditorTextField(text, project, getFileType(fileName));
+    final FileType fileType = getFileType(fileName);
+    final PsiFile file = PsiFileFactory.getInstance(project).createFileFromText(fileName, fileType, text, -1, true);
+    final Document document = PsiDocumentManager.getInstance(project).getDocument(file);
+    return new EditorTextField(document, project, fileType);
   }
 
   private static FileType getFileType(final String fileName) {

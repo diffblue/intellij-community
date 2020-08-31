@@ -15,6 +15,7 @@
  */
 package com.intellij.remoteServer.impl.runtime.ui;
 
+import com.intellij.remoteServer.CloudBundle;
 import com.intellij.ui.ColorUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -22,7 +23,7 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 
-class ServersToolWindowMessagePanel implements ServersToolWindowContent.MessagePanel {
+class ServersToolWindowMessagePanel implements RemoteServersDeploymentManager.MessagePanel {
   private JPanel myPanel;
   private JEditorPane myMessageArea;
   private String myCurrentText;
@@ -30,7 +31,9 @@ class ServersToolWindowMessagePanel implements ServersToolWindowContent.MessageP
   ServersToolWindowMessagePanel() {
     myMessageArea.setBackground(UIUtil.getPanelBackground());
     myMessageArea.setBorder(JBUI.Borders.empty());
-    myMessageArea.setCaretPosition(0);
+    if (myMessageArea.getCaret() != null) {
+      myMessageArea.setCaretPosition(0);
+    }
     myMessageArea.setEditable(false);
   }
 
@@ -39,14 +42,8 @@ class ServersToolWindowMessagePanel implements ServersToolWindowContent.MessageP
     if (text.equals(myCurrentText)) {
       return;
     }
-    myMessageArea.setText("<html><head>" +
-                          UIUtil.getCssFontDeclaration(UIUtil.getLabelFont(), null, null, null) +
-                          "<style>body {" +
-                          "text-align: center; white-space: normal;" +
-                          "background: #" + ColorUtil.toHex(UIUtil.getPanelBackground()) + ";" +
-                          "color: #" + ColorUtil.toHex(UIUtil.getInactiveTextColor()) + ";" +
-                          "}</style>" +
-                          "</head><body>" + text + "</body></html>");
+    myMessageArea.setText(CloudBundle.message("editor.pane.text.empty.text", UIUtil.getCssFontDeclaration(UIUtil.getLabelFont(), null, null, null),
+                                     ColorUtil.toHex(UIUtil.getPanelBackground()), ColorUtil.toHex(UIUtil.getInactiveTextColor()), text));
     myCurrentText = text;
   }
 

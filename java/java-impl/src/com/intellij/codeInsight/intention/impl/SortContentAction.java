@@ -4,6 +4,7 @@ package com.intellij.codeInsight.intention.impl;
 import com.google.common.collect.Comparators;
 import com.intellij.codeInsight.intention.PsiElementBaseIntentionAction;
 import com.intellij.ide.highlighter.JavaFileType;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -30,25 +31,26 @@ import static com.intellij.util.ObjectUtils.tryCast;
 public class SortContentAction extends PsiElementBaseIntentionAction {
   public static final int MIN_ELEMENTS_COUNT = 3;
 
-  public static final SortingStrategy[] EXPRESSION_SORTING_STRATEGIES = {
-    new StringLiteralSortingStrategy(),
-    new IntLiteralSortingStrategy(),
-    new EnumConstantSortingStrategy()
-  };
+  private static class Holder {
+    public static final SortingStrategy[] EXPRESSION_SORTING_STRATEGIES = {
+      new StringLiteralSortingStrategy(),
+      new IntLiteralSortingStrategy(),
+      new EnumConstantSortingStrategy()
+    };
 
-  private static final Sortable<?>[] OUR_SORTABLES = new Sortable[]{
-    new ArrayInitializerSortable(),
-    new VarargSortable(),
-    new EnumConstantDeclarationSortable(),
-    new AnnotationArraySortable()
-  };
-
+    private static final Sortable<?>[] OUR_SORTABLES = new Sortable[]{
+      new ArrayInitializerSortable(),
+      new VarargSortable(),
+      new EnumConstantDeclarationSortable(),
+      new AnnotationArraySortable()
+    };
+  }
 
   @Nls
   @NotNull
   @Override
   public String getFamilyName() {
-    return "Sort content";
+    return JavaBundle.message("intention.family.sort.content");
   }
 
   @NotNull
@@ -59,7 +61,7 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
 
   @Override
   public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) throws IncorrectOperationException {
-    for (Sortable<?> sortable : OUR_SORTABLES) {
+    for (Sortable<?> sortable : Holder.OUR_SORTABLES) {
       if (sortable.isAvailable(element)) {
         sortable.replaceWithSorted(element);
       }
@@ -68,7 +70,7 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
 
   @Override
   public boolean isAvailable(@NotNull Project project, Editor editor, @NotNull PsiElement element) {
-    for (Sortable<?> sortable : OUR_SORTABLES) {
+    for (Sortable<?> sortable : Holder.OUR_SORTABLES) {
       if (sortable.isAvailable(element)) return true;
     }
     return false;
@@ -231,12 +233,6 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       }
       return newLineNeed;
     }
-
-    SortableEntry copy() {
-      List<PsiComment> afterSeparator = ContainerUtil.map(myAfterSeparator, el -> (PsiComment)el.copy());
-      List<PsiComment> beforeSeparator = ContainerUtil.map(myBeforeSeparator, el -> (PsiComment)el.copy());
-      return new SortableEntry(myElement.copy(), beforeSeparator, afterSeparator);
-    }
   }
 
   private static class SortableList {
@@ -288,8 +284,7 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
   private static abstract class Sortable<C> {
     abstract boolean isEnd(@NotNull PsiElement element);
 
-    @NotNull
-    abstract SortingStrategy[] sortStrategies();
+    abstract SortingStrategy @NotNull [] sortStrategies();
 
     /**
      * Extract context to use in consequent calls
@@ -396,7 +391,7 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
 
       ReadStateMachine(@NotNull PsiElement current,
                               @NotNull SortingStrategy strategy,
-                              @NotNull Sortable block) {
+                              @NotNull Sortable<?> block) {
         // Expect that current element is
         myCurrent = current;
         myStrategy = strategy;
@@ -625,10 +620,9 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       return element instanceof PsiJavaToken && ((PsiJavaToken)element).getTokenType() == JavaTokenType.RBRACE;
     }
 
-    @NotNull
     @Override
-    SortingStrategy[] sortStrategies() {
-      return EXPRESSION_SORTING_STRATEGIES;
+    SortingStrategy @NotNull [] sortStrategies() {
+      return Holder.EXPRESSION_SORTING_STRATEGIES;
     }
 
 
@@ -655,21 +649,51 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
     }
   }
 
-  private static class AnnotationArraySortable extends ElementBasedSortable<PsiArrayInitializerMemberValue> {
+  private static class AnnotationArraySortable extends Sortable<PsiArrayInitializerMemberValue> {
+
     @Override
     boolean isEnd(@NotNull PsiElement element) {
       return element instanceof PsiJavaToken && ((PsiJavaToken)element).getTokenType() == JavaTokenType.RBRACE;
     }
 
-    @NotNull
     @Override
-    SortingStrategy[] sortStrategies() {
-      return EXPRESSION_SORTING_STRATEGIES;
+    SortingStrategy @NotNull [] sortStrategies() {
+      return Holder.EXPRESSION_SORTING_STRATEGIES;
     }
 
+    @Nullable
+    @Override
+    PsiArrayInitializerMemberValue getContext(@NotNull PsiElement origin) {
+      return PsiTreeUtil.getParentOfType(origin, PsiArrayInitializerMemberValue.class);
+    }
+
+    @NotNull
+    @Override
+    List<PsiElement> getElements(@NotNull PsiArrayInitializerMemberValue context) {
+      return Arrays.asList(context.getInitializers());
+    }
 
     @Override
-    String generateReplacementText(@NotNull SortableList list, @NotNull PsiArrayInitializerMemberValue elementToSort) {
+    PsiElement getFirst(PsiArrayInitializerMemberValue context) {
+      return context.getFirstChild();
+    }
+
+    @Override
+    void replaceWithSorted(PsiElement origin) {
+      PsiArrayInitializerMemberValue context = getContext(origin);
+      if (context == null) return;
+      SortableList sortableList = readEntries(context);
+      if (sortableList == null) return;
+      sortableList.sort();
+      String replacement = generateReplacementText(sortableList);
+      PsiElementFactory factory = JavaPsiFacade.getElementFactory(origin.getProject());
+      PsiAnnotation annotation = factory.createAnnotationFromText("@Ann(" + replacement + ")", null);
+      PsiAnnotationMemberValue replacementElement = annotation.getParameterList().getAttributes()[0].getValue();
+      assert replacementElement != null;
+      context.replace(replacementElement);
+    }
+
+    String generateReplacementText(@NotNull SortableList list) {
       StringBuilder sb = new StringBuilder();
       boolean newLineRequired = list.generate(sb);
       if (newLineRequired) {
@@ -677,17 +701,6 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       }
       sb.append("}");
       return sb.toString();
-    }
-
-    @Nullable
-    @Override
-    PsiArrayInitializerMemberValue getElementToSort(@NotNull PsiElement origin) {
-      return PsiTreeUtil.getParentOfType(origin, PsiArrayInitializerMemberValue.class);
-    }
-
-    @Override
-    List<PsiElement> getElements(@NotNull PsiArrayInitializerMemberValue elementToSort) {
-      return Arrays.asList(elementToSort.getInitializers());
     }
   }
 
@@ -707,10 +720,9 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       return element instanceof PsiJavaToken && ((PsiJavaToken)element).getTokenType() == JavaTokenType.RPARENTH;
     }
 
-    @NotNull
     @Override
-    SortingStrategy[] sortStrategies() {
-      return EXPRESSION_SORTING_STRATEGIES;
+    SortingStrategy @NotNull [] sortStrategies() {
+      return Holder.EXPRESSION_SORTING_STRATEGIES;
     }
 
     @Nullable
@@ -743,10 +755,9 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       return context.myVarargArguments.get(0);
     }
 
-    @Nullable
-    private static PsiExpression[] getVarargArguments(@NotNull PsiExpression[] arguments,
-                                                      @NotNull PsiElement originElement,
-                                                      @NotNull PsiParameter[] parameters) {
+    private static PsiExpression @Nullable [] getVarargArguments(PsiExpression @NotNull [] arguments,
+                                                                 @NotNull PsiElement originElement,
+                                                                 PsiParameter @NotNull [] parameters) {
       PsiParameter last = ArrayUtil.getLastElement(parameters);
       if (last == null) return null;
       if (!last.isVarArgs()) return null;
@@ -846,9 +857,8 @@ public class SortContentAction extends PsiElementBaseIntentionAction {
       return false;
     }
 
-    @NotNull
     @Override
-    SortingStrategy[] sortStrategies() {
+    SortingStrategy @NotNull [] sortStrategies() {
       return new SortingStrategy[] {
         new EnumConstantDeclarationSortingStrategy()
       };

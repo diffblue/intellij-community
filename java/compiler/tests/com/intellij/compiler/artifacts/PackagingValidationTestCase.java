@@ -1,3 +1,4 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.compiler.artifacts;
 
 import com.intellij.openapi.util.text.StringUtil;
@@ -7,16 +8,12 @@ import com.intellij.packaging.elements.CompositePackagingElement;
 import com.intellij.packaging.elements.PackagingElement;
 import com.intellij.packaging.impl.ui.ArtifactProblemsHolderBase;
 import com.intellij.packaging.ui.ArtifactProblemQuickFix;
-import gnu.trove.THashMap;
-import gnu.trove.THashSet;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-/**
- * @author nik
- */
 public abstract class PackagingValidationTestCase extends PackagingElementsTestCase {
   protected PackagingValidationTestCase() {
     mySetupModule = true;
@@ -32,7 +29,7 @@ public abstract class PackagingValidationTestCase extends PackagingElementsTestC
 
   protected class MockArtifactProblemsHolder extends ArtifactProblemsHolderBase {
     private final List<String> myProblems = new ArrayList<>();
-    private final Map<String, ArtifactProblemQuickFix[]> myQuickFixes = new THashMap<>();
+    private final Map<String, ArtifactProblemQuickFix[]> myQuickFixes = new HashMap<>();
 
     public MockArtifactProblemsHolder() {
       super(new MockPackagingEditorContext(new MockArtifactsStructureConfigurableContext(), null));
@@ -42,7 +39,7 @@ public abstract class PackagingValidationTestCase extends PackagingElementsTestC
     public void registerError(@NotNull String message,
                               @NotNull String problemTypeId,
                               @Nullable List<PackagingElement<?>> pathToPlace,
-                              @NotNull ArtifactProblemQuickFix... quickFixes) {
+                              ArtifactProblemQuickFix @NotNull ... quickFixes) {
       myProblems.add(message);
       myQuickFixes.put(message, quickFixes);
     }
@@ -50,7 +47,7 @@ public abstract class PackagingValidationTestCase extends PackagingElementsTestC
     @Override
     public void registerWarning(@NotNull String message,
                                 @NotNull String problemTypeId, @Nullable List<PackagingElement<?>> pathToPlace,
-                                @NotNull ArtifactProblemQuickFix... quickFixes) {
+                                ArtifactProblemQuickFix @NotNull ... quickFixes) {
       registerError(message, problemTypeId, pathToPlace, quickFixes);
     }
 
@@ -59,7 +56,7 @@ public abstract class PackagingValidationTestCase extends PackagingElementsTestC
     }
 
     public void assertProblems(String... expectedMessages) {
-      Set<String> expected = new THashSet<>(Arrays.asList(expectedMessages));
+      Set<String> expected = ContainerUtil.set(expectedMessages);
       outer:
       for (String problem : myProblems) {
         for (String message : expected) {

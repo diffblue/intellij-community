@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.run;
 
 import com.intellij.execution.DefaultExecutionResult;
@@ -35,12 +35,13 @@ import com.intellij.util.io.BaseOutputReader;
 import com.jetbrains.python.actions.PyExecuteSelectionAction;
 import com.jetbrains.python.console.PyConsoleOptions;
 import com.jetbrains.python.console.PydevConsoleRunner;
-import com.jetbrains.python.sdk.PySdkUtil;
 import com.jetbrains.python.sdk.PythonEnvUtil;
+import com.jetbrains.python.sdk.PythonSdkUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -159,7 +160,7 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
    * @see com.intellij.terminal.ProcessHandlerTtyConnector
    */
   private boolean emulateTerminal() {
-    return myConfig.emulateTerminal() && !PySdkUtil.isRemote(getSdk());
+    return myConfig.emulateTerminal() && !PythonSdkUtil.isRemote(getSdk());
   }
 
   @Override
@@ -226,8 +227,7 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
       }
     }
 
-    final String scriptOptionsString = getExpandedScriptParameters();
-    if (scriptOptionsString != null) scriptParameters.addParametersString(scriptOptionsString);
+    scriptParameters.addParameters(getExpandedScriptParameters());
 
     if (!StringUtil.isEmptyOrSpaces(myConfig.getWorkingDirectory())) {
       commandLine.setWorkDirectory(myConfig.getWorkingDirectory());
@@ -238,10 +238,9 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
     }
   }
 
-  @Nullable
-  private String getExpandedScriptParameters() {
+  private @NotNull List<String> getExpandedScriptParameters() {
     final String parameters = myConfig.getScriptParameters();
-    return ProgramParametersConfigurator.expandMacros(parameters);
+    return ProgramParametersConfigurator.expandMacrosAndParseParameters(parameters);
   }
 
   private static String escape(String s) {
@@ -266,22 +265,21 @@ public class PythonScriptCommandLineState extends PythonCommandLineState {
 
     String scriptPath = myConfig.getScriptName();
     String workingDir = myConfig.getWorkingDirectory();
-    if (PySdkUtil.isRemote(sdk) && pathMapper != null) {
+    if (PythonSdkUtil.isRemote(sdk) && pathMapper != null) {
       scriptPath = pathMapper.convertToRemote(scriptPath);
       workingDir = pathMapper.convertToRemote(workingDir);
     }
 
     sb.append("runfile('").append(escape(scriptPath)).append("'");
 
-    final String parametersString = getExpandedScriptParameters();
-    final String[] scriptParameters = parametersString != null ? ParametersList.parse(parametersString) : ArrayUtil.EMPTY_STRING_ARRAY;
-    if (scriptParameters.length != 0) {
+    final List<String> scriptParameters = getExpandedScriptParameters();
+    if (scriptParameters.size() != 0) {
       sb.append(", args=[");
-      for (int i = 0; i < scriptParameters.length; i++) {
+      for (int i = 0; i < scriptParameters.size(); i++) {
         if (i != 0) {
           sb.append(", ");
         }
-        sb.append("'").append(escape(scriptParameters[i])).append("'");
+        sb.append("'").append(escape(scriptParameters.get(i))).append("'");
       }
       sb.append("]");
     }

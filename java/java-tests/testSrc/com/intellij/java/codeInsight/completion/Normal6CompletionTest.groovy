@@ -2,6 +2,7 @@
 package com.intellij.java.codeInsight.completion
 
 import com.intellij.codeInsight.lookup.LookupElementPresentation
+import com.intellij.testFramework.NeedsIndex
 import groovy.transform.CompileStatic
 
 /**
@@ -21,12 +22,16 @@ class Normal6CompletionTest extends NormalCompletionTestCase {
 
   void testOverwriteGenericsAfterNew() { doTest('\n') }
 
+  @NeedsIndex.ForStandardLibrary
   void testExplicitTypeArgumentsWhenParameterTypesDoNotDependOnTypeParameters() { doTest() }
 
+  @NeedsIndex.ForStandardLibrary
   void testClassNameWithGenericsTab2() { doTest('\t') }
 
+  @NeedsIndex.ForStandardLibrary
   void testClassNameGenerics() { doTest('\n') }
 
+  @NeedsIndex.ForStandardLibrary
   void testDoubleExpectedTypeFactoryMethod() throws Throwable {
     configure()
     assertStringItems('Key', 'create', 'create')

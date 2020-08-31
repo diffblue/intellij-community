@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.history.integration.ui.views;
 
@@ -16,7 +16,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 
-public class RecentChangesPopup {
+public final class RecentChangesPopup {
   public static void show(Project project, IdeaGateway gw, LocalHistoryFacade vcs) {
     List<RecentChange> cc = vcs.getRecentChanges(gw.createTransientRootEntry());
     String title = LocalHistoryBundle.message("recent.changes.popup.title");
@@ -34,7 +34,7 @@ public class RecentChangesPopup {
       .showCenteredInCurrentWindow(project);
   }
 
-  private static class RecentChangesListCellRenderer implements ListCellRenderer {
+  private static class RecentChangesListCellRenderer implements ListCellRenderer<RecentChange> {
     private final JPanel myPanel = new JPanel(new FlowLayout(FlowLayout.LEADING,UIUtil.DEFAULT_HGAP,2));
     private final JLabel myActionLabel = new JLabel("", JLabel.LEFT);
     private final JLabel myDateLabel = new JLabel("", JLabel.LEFT);
@@ -52,10 +52,13 @@ public class RecentChangesPopup {
     }
 
     @Override
-    public Component getListCellRendererComponent(JList l, Object val, int i, boolean isSelected, boolean cellHasFocus) {
-      RecentChange c = (RecentChange)val;
-      myActionLabel.setText(c.getChangeName());
-      myDateLabel.setText(DateFormatUtil.formatDateTime(c.getTimestamp()));
+    public Component getListCellRendererComponent(JList<? extends RecentChange> list,
+                                                  RecentChange value,
+                                                  int index,
+                                                  boolean isSelected,
+                                                  boolean cellHasFocus) {
+      myActionLabel.setText(value.getChangeName());
+      myDateLabel.setText(DateFormatUtil.formatDateTime(value.getTimestamp()));
 
       updateColors(isSelected);
       return myPanel;

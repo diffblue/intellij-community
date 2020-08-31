@@ -1,10 +1,11 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.content.tabs;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.ui.ShadowAction;
+import com.intellij.openapi.util.NlsActions;
 import com.intellij.ui.UIBundle;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentManager;
@@ -15,8 +16,12 @@ public abstract class TabbedContentAction extends AnAction implements DumbAware 
 
   protected final ShadowAction myShadow;
 
-  protected TabbedContentAction(@NotNull ContentManager manager, @NotNull AnAction shortcutTemplate, @NotNull String text, @NotNull Disposable parentDisposable) {
+  protected TabbedContentAction(@NotNull ContentManager manager,
+                                @NotNull AnAction shortcutTemplate,
+                                @NotNull @NlsActions.ActionText String text,
+                                @NotNull Disposable parentDisposable) {
     super(text);
+
     myManager = manager;
     myShadow = new ShadowAction(this, shortcutTemplate, manager.getComponent(), new Presentation(text), parentDisposable);
   }
@@ -70,7 +75,8 @@ public abstract class TabbedContentAction extends AnAction implements DumbAware 
 
   public static class CloseAllButThisAction extends ForContent {
     public CloseAllButThisAction(@NotNull Content content) {
-      super(content, ActionManager.getInstance().getAction(IdeActions.ACTION_CLOSE_ALL_EDITORS_BUT_THIS), UIBundle.message("tabbed.pane.close.all.but.this.action.name"));
+      super(content, ActionManager.getInstance().getAction(IdeActions.ACTION_CLOSE_ALL_EDITORS_BUT_THIS),
+            UIBundle.message("tabbed.pane.close.all.but.this.action.name"));
     }
 
     @Override
@@ -102,15 +108,15 @@ public abstract class TabbedContentAction extends AnAction implements DumbAware 
     }
   }
 
-  public static class CloseAllAction extends TabbedContentAction {
-    public CloseAllAction(ContentManager manager) {
-      super(manager, ActionManager.getInstance().getAction(IdeActions.ACTION_CLOSE_ALL_EDITORS), UIBundle.message("tabbed.pane.close.all.action.name"), manager);
+  public static final class CloseAllAction extends TabbedContentAction {
+    public CloseAllAction(@NotNull ContentManager manager) {
+      super(manager, ActionManager.getInstance().getAction(IdeActions.ACTION_CLOSE_ALL_EDITORS),
+            UIBundle.message("tabbed.pane.close.all.action.name"), manager);
     }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      Content[] contents = myManager.getContents();
-      for (Content content : contents) {
+      for (Content content : myManager.getContents()) {
         if (content.isCloseable()) {
           myManager.removeContent(content, true);
         }
@@ -123,7 +129,8 @@ public abstract class TabbedContentAction extends AnAction implements DumbAware 
       presentation.setEnabledAndVisible(myManager.getContentCount() > 1 && myManager.canCloseAllContents());
     }
   }
-  public static class MyNextTabAction extends TabbedContentAction {
+
+  public static final class MyNextTabAction extends TabbedContentAction {
     public MyNextTabAction(ContentManager manager) {
       super(manager, ActionManager.getInstance().getAction(IdeActions.ACTION_NEXT_TAB), manager);
     }

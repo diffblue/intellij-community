@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.ui;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.ui.popup.ComponentPopupBuilder;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
@@ -11,6 +12,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.EditorTextComponent;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.Alarm;
@@ -177,6 +179,16 @@ public class ComponentValidator {
     return this;
   }
 
+  public <T extends JComponent & EditorTextComponent> ComponentValidator andRegisterOnDocumentListener(@NotNull T textComponent) {
+    textComponent.getDocument().addDocumentListener(new DocumentListener() {
+      @Override
+      public void documentChanged(com.intellij.openapi.editor.event.@NotNull DocumentEvent event) {
+        getInstance(textComponent).ifPresent(ComponentValidator::revalidate); // Don't use 'this' to avoid cyclic references.
+      }
+    }, parentDisposable);
+    return this;
+  }
+
   public void revalidate() {
     if (validator != null) {
       updateInfo(validator.get());
@@ -201,6 +213,11 @@ public class ComponentValidator {
     popupLocation = null;
     popupSize = null;
     validationInfo = null;
+  }
+
+  @Nullable
+  public ValidationInfo getValidationInfo() {
+    return validationInfo;
   }
 
   public void updateInfo(@Nullable ValidationInfo info) {
@@ -366,10 +383,14 @@ public class ComponentValidator {
       if (info != null) {
         updateInfo(info);
       } else if (disableValidation) {
-        disableValidation = false;
+        enableValidation();
         revalidate();
       }
     }
+  }
+
+  public void enableValidation() {
+    disableValidation = false;
   }
 
   private class ValidationMouseListener extends MouseAdapter {

@@ -1,5 +1,7 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.javascript.boilerplate;
 
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -18,7 +20,7 @@ import java.io.IOException;
 /**
  * @author Sergey Simonchik
  */
-public class GithubDownloadUtil {
+public final class GithubDownloadUtil {
   private static final String PROJECT_GENERATORS = "projectGenerators";
 
   private GithubDownloadUtil() {}
@@ -83,7 +85,8 @@ public class GithubDownloadUtil {
         if (!retryOnError) {
           return false;
         }
-        return IOExceptionDialog.showErrorDialog("Download Error", "Can not download '" + url + "'");
+        return IOExceptionDialog.showErrorDialog(LangBundle.message("dialog.title.download.error"),
+                                                 LangBundle.message("text.can.not.download", url));
       }
     );
     File out = outcome.get();
@@ -92,9 +95,9 @@ public class GithubDownloadUtil {
     }
     Exception e = outcome.getException();
     if (e != null) {
-      throw new GeneratorException("Can not fetch content from " + url, e);
+      throw new GeneratorException(LangBundle.message("dialog.message.can.fetch.content.from", url), e);
     }
-    throw new GeneratorException("Download was cancelled");
+    throw new GeneratorException(LangBundle.message("dialog.message.download.was.cancelled"));
   }
 
   /**

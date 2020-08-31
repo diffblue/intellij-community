@@ -9,7 +9,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Like {@link YamlDictionaryClass} but allows arbitrary level of unstructured nesting
  */
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public class YamlUnstructuredClass extends YamlMetaClass {
   @SuppressWarnings("FieldAccessedSynchronizedAndUnsynchronized")
   private static YamlUnstructuredClass ourInstance;
@@ -43,6 +43,6 @@ public class YamlUnstructuredClass extends YamlMetaClass {
   }
 
   public YamlUnstructuredClass() {
-    super("yaml:anything");
+    super("yaml:anyobject");
   }
 }

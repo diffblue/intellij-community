@@ -17,7 +17,7 @@ import com.intellij.util.containers.forEachLoggingErrors
 import com.intellij.util.containers.mapNotNullLoggingErrors
 import com.intellij.util.ui.UIUtil.replaceMnemonicAmpersand
 import com.intellij.vcs.commit.AbstractCommitWorkflow.Companion.getCommitHandlers
-import com.intellij.vcsUtil.VcsUtil.getFilePath
+import org.jetbrains.annotations.ApiStatus
 
 private val LOG = logger<AbstractCommitWorkflowHandler<*, *>>()
 
@@ -32,12 +32,14 @@ internal fun getDefaultCommitActionName(vcses: Collection<AbstractVcs> = emptyLi
   )
 
 internal fun CommitWorkflowUi.getDisplayedPaths(): List<FilePath> =
-  getDisplayedChanges().map { getFilePath(it) } + getDisplayedUnversionedFiles().map { getFilePath(it) }
+  getDisplayedChanges().map { getFilePath(it) } + getDisplayedUnversionedFiles()
 
 internal fun CommitWorkflowUi.getIncludedPaths(): List<FilePath> =
-  getIncludedChanges().map { getFilePath(it) } + getIncludedUnversionedFiles().map { getFilePath(it) }
+  getIncludedChanges().map { getFilePath(it) } + getIncludedUnversionedFiles()
 
-internal val CheckinProjectPanel.isNonModalCommit: Boolean get() = commitWorkflowHandler is ChangesViewCommitWorkflowHandler
+@get:ApiStatus.Internal
+val CheckinProjectPanel.isNonModalCommit: Boolean
+  get() = commitWorkflowHandler is ChangesViewCommitWorkflowHandler
 
 private val VCS_COMPARATOR = compareBy<AbstractVcs, String>(String.CASE_INSENSITIVE_ORDER) { it.keyInstanceMethod.name }
 
@@ -67,7 +69,9 @@ abstract class AbstractCommitWorkflowHandler<W : AbstractCommitWorkflow, U : Com
   protected val commitHandlers get() = workflow.commitHandlers
   protected val commitOptions get() = workflow.commitOptions
 
-  protected fun createDataProvider() = DataProvider { dataId ->
+  fun getCommitActionName() = getDefaultCommitActionName(workflow.vcses)
+
+  protected open fun createDataProvider() = DataProvider { dataId ->
     when {
       COMMIT_WORKFLOW_HANDLER.`is`(dataId) -> this
       Refreshable.PANEL_KEY.`is`(dataId) -> commitPanel
@@ -86,65 +90,74 @@ abstract class AbstractCommitWorkflowHandler<W : AbstractCommitWorkflow, U : Com
 
   override fun inclusionChanged() = commitHandlers.forEachLoggingErrors(LOG) { it.includedChangesChanged() }
 
-  override fun executorCalled(executor: CommitExecutor?) = executor?.let { execute(it) } ?: executeDefault(null)
-
   override fun getExecutor(executorId: String): CommitExecutor? = workflow.commitExecutors.find { it.id == executorId }
   override fun isExecutorEnabled(executor: CommitExecutor): Boolean =
     executor in workflow.commitExecutors && (!isCommitEmpty() || (executor is CommitExecutorBase && !executor.areChangesRequired()))
-  override fun execute(executor: CommitExecutor) {
-    val session = executor.createCommitSession(commitContext)
 
-    if (session === CommitSession.VCS_COMMIT) {
-      executeDefault(executor)
+  override fun execute(executor: CommitExecutor) = executorCalled(executor)
+  override fun executorCalled(executor: CommitExecutor?) =
+    workflow.startExecution {
+      val session = executor?.createCommitSession(commitContext)
+
+      if (session == null || session === CommitSession.VCS_COMMIT) executeDefault(executor)
+      else executeCustom(executor, session)
     }
-    else {
-      executeCustom(executor, session)
-    }
-  }
+
+  override fun executionStarted() = Unit
+  override fun executionEnded() = Unit
 
   override fun beforeCommitChecksStarted() = ui.startBeforeCommitChecks()
   override fun beforeCommitChecksEnded(isDefaultCommit: Boolean, result: CheckinHandler.ReturnResult) = ui.endBeforeCommitChecks(result)
 
-  private fun executeDefault(executor: CommitExecutor?) {
-    if (!addUnversionedFiles()) return
-    if (!checkEmptyCommitMessage()) return
-    if (!saveCommitOptions()) return
-    saveCommitMessage(true)
-
-    refreshChanges {
-      updateWorkflow()
-      doExecuteDefault(executor)
+  private fun executeDefault(executor: CommitExecutor?): Boolean =
+    addUnversionedFiles() &&
+    checkEmptyCommitMessage() &&
+    saveCommitOptions() &&
+    run {
+      saveCommitMessage(true)
+      refreshChanges {
+        workflow.continueExecution {
+          updateWorkflow()
+          doExecuteDefault(executor)
+        }
+      }
+      true
     }
-  }
 
-  private fun executeCustom(executor: CommitExecutor, session: CommitSession) {
-    if (!canExecute(executor)) return
-    if (!checkEmptyCommitMessage()) return
-    if (!saveCommitOptions()) return
-    saveCommitMessage(true)
-
-    refreshChanges {
-      updateWorkflow()
-      doExecuteCustom(executor, session)
+  private fun executeCustom(executor: CommitExecutor, session: CommitSession): Boolean =
+    canExecute(executor) &&
+    checkEmptyCommitMessage() &&
+    saveCommitOptions() &&
+    run {
+      saveCommitMessage(true)
+      refreshChanges {
+        workflow.continueExecution {
+          updateWorkflow()
+          doExecuteCustom(executor, session)
+        }
+      }
+      true
     }
-  }
 
   protected open fun updateWorkflow() = Unit
 
   protected abstract fun addUnversionedFiles(): Boolean
 
   protected fun addUnversionedFiles(changeList: LocalChangeList): Boolean =
-    workflow.addUnversionedFiles(changeList, getIncludedUnversionedFiles()) { changes -> ui.includeIntoCommit(changes) }
+    workflow.addUnversionedFiles(changeList, getIncludedUnversionedFiles().mapNotNull { it.virtualFile }) { changes ->
+      ui.includeIntoCommit(changes)
+    }
 
-  private fun doExecuteDefault(executor: CommitExecutor?) = try {
+  private fun doExecuteDefault(executor: CommitExecutor?): Boolean = try {
     workflow.executeDefault(executor)
   }
   catch (e: InputException) { // TODO Looks like this catch is unnecessary - check
     e.show()
+    false
   }
 
   private fun canExecute(executor: CommitExecutor): Boolean = workflow.canExecute(executor, getIncludedChanges())
-  private fun doExecuteCustom(executor: CommitExecutor, session: CommitSession) = workflow.executeCustom(executor, session)
+  private fun doExecuteCustom(executor: CommitExecutor, session: CommitSession): Boolean = workflow.executeCustom(executor, session)
 
   private fun checkEmptyCommitMessage(): Boolean =
     getCommitMessage().isNotEmpty() || !vcsConfiguration.FORCE_NON_EMPTY_COMMENT || ui.confirmCommitWithEmptyMessage()

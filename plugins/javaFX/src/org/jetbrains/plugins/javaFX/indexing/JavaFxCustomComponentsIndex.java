@@ -6,7 +6,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.util.Function;
 import com.intellij.util.indexing.*;
-import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.EnumeratorStringDescriptor;
 import com.intellij.util.io.KeyDescriptor;
 import com.intellij.util.xml.NanoXmlBuilder;
@@ -15,19 +14,17 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.javaFX.fxml.FxmlConstants;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-public class JavaFxCustomComponentsIndex extends FileBasedIndexExtension<String, Set<String>> {
+public class JavaFxCustomComponentsIndex extends ScalarIndexExtension<String> {
 
-  @NonNls public static final ID<String, Set<String>> KEY = ID.create("javafx.custom.component");
+  @NonNls public static final ID<String, Void> KEY = ID.create("javafx.custom.component");
 
   private final FileBasedIndex.InputFilter myInputFilter = new JavaFxControllerClassIndex.MyInputFilter();
   private final FxmlDataIndexer myDataIndexer = new FxmlDataIndexer() {
     @Override
-    protected IXMLBuilder createParseHandler(final String path, final Map<String, Set<String>> map) {
+    protected IXMLBuilder createParseHandler(@NotNull Map<String, Void> map) {
       return new NanoXmlBuilder() {
         public boolean myFxRootUsed = false;
 
@@ -37,12 +34,7 @@ public class JavaFxCustomComponentsIndex extends FileBasedIndexExtension<String,
             throw new StopException();
           }
           if (value != null && FxmlConstants.TYPE.equals(key)) {
-            Set<String> paths = map.get(value);
-            if (paths == null) {
-              paths = new HashSet<>();
-              map.put(value, paths);
-            }
-            paths.add(path);
+            map.put(value, null);
           }
         }
 
@@ -58,18 +50,11 @@ public class JavaFxCustomComponentsIndex extends FileBasedIndexExtension<String,
       };
     }
   };
-  private final FxmlDataExternalizer myDataExternalizer = new FxmlDataExternalizer();
 
   @NotNull
   @Override
-  public DataIndexer<String, Set<String>, FileContent> getIndexer() {
+  public DataIndexer<String, Void, FileContent> getIndexer() {
     return myDataIndexer;
-  }
-
-  @NotNull
-  @Override
-  public DataExternalizer<Set<String>> getValueExternalizer() {
-    return myDataExternalizer;
   }
 
   @NotNull
@@ -80,7 +65,7 @@ public class JavaFxCustomComponentsIndex extends FileBasedIndexExtension<String,
 
   @NotNull
   @Override
-  public ID<String, Set<String>> getName() {
+  public ID<String, Void> getName() {
     return KEY;
   }
 
@@ -97,7 +82,7 @@ public class JavaFxCustomComponentsIndex extends FileBasedIndexExtension<String,
 
   @Override
   public int getVersion() {
-    return 1;
+    return 2;
   }
 
   public static <T> List<T> findCustomFxml(final Project project,

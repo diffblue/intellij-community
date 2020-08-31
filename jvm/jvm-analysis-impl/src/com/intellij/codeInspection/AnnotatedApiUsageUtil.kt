@@ -39,6 +39,16 @@ data class AnnotatedContainingDeclaration(
 
   val containingDeclarationType: String
     get() = LanguageFindUsages.getType(containingDeclaration)
+
+  val presentableAnnotationName: String?
+    get() {
+      val qualifiedName = psiAnnotation.qualifiedName ?: return null
+      return qualifiedName.split('.')
+               .takeLastWhile { it.isNotEmpty() && it.first().isUpperCase() }
+               .joinToString(separator = ".")
+               .takeIf { it.isNotEmpty() }
+             ?: qualifiedName
+    }
 }
 
 /**
@@ -46,6 +56,13 @@ data class AnnotatedContainingDeclaration(
  */
 @ApiStatus.Internal
 internal object AnnotatedApiUsageUtil {
+
+  /**
+   * Returns `true` iff the annotation with qualified name [annotationFqn] can be referenced from file [psiFile].
+   * It may be used to check whether it is necessary to run for the given file an inspection that checks usages of some annotations.
+   */
+  fun canAnnotationBeUsedInFile(annotationFqn: String, psiFile: PsiFile): Boolean =
+    JavaPsiFacade.getInstance(psiFile.project).findClass(annotationFqn, psiFile.resolveScope) != null
 
   /**
    * Searches for an annotation on a [target] or its enclosing declaration (containing class or package).

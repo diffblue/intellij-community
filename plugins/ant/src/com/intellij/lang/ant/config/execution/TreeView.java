@@ -1,21 +1,6 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.ant.config.execution;
 
-import com.intellij.ide.DataManager;
 import com.intellij.ide.OccurenceNavigator;
 import com.intellij.ide.OccurenceNavigatorSupport;
 import com.intellij.ide.TextCopyProvider;
@@ -27,7 +12,6 @@ import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
@@ -35,7 +19,7 @@ import com.intellij.ui.AutoScrollToSourceHandler;
 import com.intellij.ui.PopupHandler;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.EditSourceOnDoubleClickHandler;
-import com.intellij.util.OpenSourceUtil;
+import com.intellij.util.EditSourceOnEnterKeyHandler;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.tree.TreeUtil;
 import org.jetbrains.annotations.NonNls;
@@ -45,8 +29,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.tree.*;
 import java.awt.*;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.util.*;
 
 public final class TreeView implements AntOutputView, OccurenceNavigator {
@@ -103,15 +85,6 @@ public final class TreeView implements AntOutputView, OccurenceNavigator {
     myTree.updateUI();
     myTree.setLargeModel(true);
 
-    myTree.addKeyListener(new KeyAdapter() {
-      @Override
-      public void keyPressed(KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-          OpenSourceUtil.openSourcesFrom(DataManager.getInstance().getDataContext(myTree), false);
-        }
-      }
-    });
-
     myTree.addMouseListener(new PopupHandler() {
       @Override
       public void invokePopup(Component comp, int x, int y) {
@@ -120,6 +93,7 @@ public final class TreeView implements AntOutputView, OccurenceNavigator {
     });
 
     EditSourceOnDoubleClickHandler.install(myTree);
+    EditSourceOnEnterKeyHandler.install(myTree);
 
     myAutoScrollToSourceHandler.install(myTree);
 
@@ -550,13 +524,13 @@ public final class TreeView implements AntOutputView, OccurenceNavigator {
         MessageNode messageNode = (MessageNode)node;
         String[] text = messageNode.getText();
         if (text.length == 0) continue;
-        if (Comparing.equal(treeSelection.mySelectedTarget, text[0])) {
+        if (Objects.equals(treeSelection.mySelectedTarget, text[0])) {
           TreePath pathToSelect = new TreePath(messageNode.getPath());
           for (Enumeration enumeration = messageNode.children(); enumeration.hasMoreElements();) {
             Object o = enumeration.nextElement();
             if (o instanceof MessageNode) {
               messageNode = (MessageNode)o;
-              if (Comparing.equal(treeSelection.mySelectedTask, text[0])) {
+              if (Objects.equals(treeSelection.mySelectedTask, text[0])) {
                 pathToSelect = new TreePath(messageNode.getPath());
                 break;
               }

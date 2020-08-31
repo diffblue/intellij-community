@@ -7,6 +7,9 @@ plugins {
   id "com.jetbrains.python.envs" version "0.0.30"
 }
 
+boolean isWindows = Os.isFamily(Os.FAMILY_WINDOWS)
+boolean isUnix = Os.isFamily(Os.FAMILY_UNIX)
+
 /**
  * Installs python interpreters for env. tests using conda or CPython.
  * Utilizes following env variables:
@@ -30,6 +33,12 @@ plugins {
  */
 
 envs {
+  String python27version = "2.7.18"
+  String python36version = "3.6.8"
+  String python37version = "3.7.8"
+  String python38version = "3.8.5"
+  String python39version = isWindows ? "3.9.0b4" : "3.9-dev"
+
   bootstrapDirectory = new File(System.getenv().getOrDefault("PYCHARM_PYTHONS", new File(buildDir, 'pythons').path))
   envsDirectory = new File(System.getenv().getOrDefault("PYCHARM_PYTHON_VIRTUAL_ENVS", new File(buildDir, 'envs').path))
 
@@ -37,7 +46,7 @@ envs {
 
   if (System.getenv().containsKey("PYCHARM_ZIP_REPOSITORY")) {
     zipRepository = new URL(System.getenv().get("PYCHARM_ZIP_REPOSITORY"))
-    shouldUseZipsFromRepository = Os.isFamily(Os.FAMILY_WINDOWS)
+    shouldUseZipsFromRepository = isWindows
   }
   Boolean shouldUseCondaInterpreters = System.getenv().getOrDefault("PYCHARM_USE_CONDA", false)
 
@@ -64,16 +73,20 @@ envs {
         if (tags) new File(pythonDirectory, "tags.txt").write(tags)
 
         if (createLink) {
-          String linkName = "python${version.split(/\./)[0..1].join(".")}"
+          String versionMajor = version.split(/\./)[0]
+          String versionMinor = version.split(/\./)[1]
+          versionMinor = versionMinor.endsWith("-dev") ? versionMinor.substring(0, versionMinor.indexOf("-dev"))
+                                                       : versionMinor
+          String linkName = "python$versionMajor.$versionMinor"
 
           Closure createLinkClosure = { java.nio.file.Path link, java.nio.file.Path existing ->
             if (!link.toFile().exists()) Files.createLink(link, existing)
           }
 
-          if (Os.isFamily(Os.FAMILY_UNIX) && !shouldUseCondaInterpreters) {
+          if (isUnix && !shouldUseCondaInterpreters) {
             createLinkClosure(Paths.get(pythonDirectory.toString(), linkName),
                               Paths.get(pythonDirectory.toString(), "bin/$linkName"))
-          } else if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+          } else if (isWindows) {
             createLinkClosure(Paths.get(pythonDirectory.toString(), "${linkName}.exe"),
                               Paths.get(pythonDirectory.toString(), "python.exe"))
           }
@@ -83,74 +96,72 @@ envs {
   }
 
 
-  createPython("django_latest", "3.5.4", ["django", "behave-django", "behave", "pytest", "untangle"],
-               "python3.5\ndjango\ndjango20\nbehave\nbehave-django\ndjango2\npytest\nuntangle", true)
+  createPython("django_latest", python36version, ["django", "behave-django", "behave", "pytest", "untangle"],
+               "python3.6\ndjango\ndjango20\nbehave\nbehave-django\ndjango2\npytest\nuntangle", true)
    if (djangoTrunkOnly) {
      return
    }
 
-  createPython("py2_django11_full",
-               "2.7.15",
-               ["django==1.11", "tox>=3.8.3", "nose", "pytest", "Twisted", "behave", "lettuce>=0.2.22", "unittest2", "teamcity-messages", "django-nose", "untangle"]
-                + ( Os.isFamily(Os.FAMILY_WINDOWS) ? ['pypiwin32'] : []  ), //win32api is required for pypiwin32
-               "python2.7\ndjango\nnose\npytest\nbehave\nlettuce\npackaging\ntox\nunittest2\ntwisted\ndjango-nose\nuntangle",
+  createPython("py27_django11_full",
+               python27version,
+               ["django==1.11", "tox>=3.8.3", "nose", "pytest", "Twisted", "behave",  "teamcity-messages", "django-nose",
+                "untangle"] + ( isWindows ? ['pypiwin32'] : []  ), //win32api is required for pypiwin32
+               "python2.7\ndjango\nnose\npytest\nbehave\nnpackaging\ntox\ntwisted\ndjango-nose\nuntangle\nmessages",
                true)
 
-  createPython("py35_django22_full",
-               "3.5.4",
-               ["ipython==2.1", "django==2.2", "behave", "jinja2", "tox>=2.0", "nose", "pytest", "django-nose", "behave-django", "pytest-xdist", "untangle"],
-               "python3.4\npython3\nipython\nipython200\nskeletons\ndjango\nbehave\ntox\njinja2\npython34\npackaging\npytest\nnose\ndjango-nose\nbehave-django\ndjango2\n" +
-               "xdist\nuntangle",
+  createPython("py38_django22_full",
+               python38version,
+               // The version of Jinja2 is fixes due to a bug in recent versions which breaks the debugging.
+               // See: https://github.com/pallets/jinja/pull/1178.
+               ["ipython==7.8", "django==2.2", "behave", "jinja2==2.10.2", "tox>=2.0", "nose", "pytest", "django-nose", "behave-django",
+                "pytest-xdist", "untangle", "pandas"],
+               "python3.8\npython3\nipython\nipython780\nskeletons\ndjango\nbehave\nbehave-django\ntox\njinja2\npackaging" +
+               "\npytest\nnose\ndjango-nose\nbehave-django\ndjango2\nxdist\nuntangle\npandas",
                true)
 
-  createPython("py36_django2_1",
-               "3.6.8",
-               ["django==2.1", "jinja2", "pandas", "pytest", "untangle"],
-               "python3.6\npython3\ndjango\njinja2\npython34\npython36\npandas\npytest\nuntangle",
-                true)
+  createPython("python3.9",
+               python39version,
+               ["pytest", "pytest-xdist"],
+               "python3.9\npython3\npytest\nxdist",
+               true)
 
   // For tox
   createPython("py36",
-               "3.6.8",
+               python36version,
                [],
                "python3.6",
                true)
 
   createPython("py37",
-               "3.7.2",
+               python37version,
                [],
                "python3.7",
                true)
 
   // For TensorFlow
-  createPython("py37_tensorflow1",
-               "3.7.3",
-               ["tensorflow < 2"],
-               "python3.7\npython3\ntensorflow1",
+  createPython("py37_tensorflow1_oldpaths",
+               python37version,
+               ["tensorflow < 1.15.0rc0"],
+               "tensorflow1\ntensorflow_oldpaths",
                true)
-  createPython("py37_tensorflow2",
-               "3.7.3",
-               ["tensorflow ~= 2.0.0b1"],
-               "python3.7\npython3\ntensorflow2",
+  createPython("py37_tensorflow1_newpaths",
+               python37version,
+               ["tensorflow >= 1.15.0rc0, < 2.0.0a0"],
+               "tensorflow1\ntensorflow_newpaths",
+               true)
+  createPython("py37_tensorflow2_oldpaths",
+               python37version,
+               ["tensorflow >= 2.0.0a0, < 2.0.0rc0"],
+               "tensorflow2\ntensorflow_oldpaths",
+               true)
+  createPython("py37_tensorflow2_newpaths",
+               python37version,
+               ["tensorflow >= 2.0.0rc0"],
+               "tensorflow2\ntensorflow_newpaths",
                true)
 
-  if (Os.isFamily(Os.FAMILY_UNIX)) {
-    createPython("qt_env", "3.7.2", ["pyqt5==5.12", "PySide2==5.12.1"], "qt", true)
-  }
-
-  if (Os.isFamily(Os.FAMILY_WINDOWS)) { // Only windows needs ironPython
-
-    ironpython "ironpython"
-
-    project.tasks.create("Misc for ironpython") { //"Misc" will be launched by "build"
-      shouldRunAfter 'build_envs'
-
-      doLast {
-        def file = Paths.get(bootstrapDirectory.toString(), "ironpython", "tags.txt").toFile()
-        file.createNewFile()
-        file.write("iron")
-      }
-    }
+  if (isUnix) {
+    createPython("qt_env", python37version, ["pyqt5==5.12", "PySide2==5.12.1"], "qt", true)
   }
 }
 
@@ -159,7 +170,7 @@ envs {
  * Works on Win7+.
  */
 task killPythonWindows(type: Exec) {
-  onlyIf { Os.isFamily(Os.FAMILY_WINDOWS) }
+  onlyIf { isWindows }
 
   commandLine 'powershell', '"Get-Process | where {$_.Name -ieq \\"python\\"} | Stop-Process"'
 }

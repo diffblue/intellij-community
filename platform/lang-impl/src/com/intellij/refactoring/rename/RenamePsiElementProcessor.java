@@ -8,14 +8,17 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Pass;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiFileSystemItem;
+import com.intellij.psi.PsiReference;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.PsiSearchHelper;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.refactoring.RefactoringSettings;
 import com.intellij.refactoring.listeners.RefactoringElementListener;
-import com.intellij.refactoring.util.MoveRenameUsageInfo;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.containers.MultiMap;
@@ -49,7 +52,7 @@ public abstract class RenamePsiElementProcessor {
 
   public void renameElement(@NotNull PsiElement element,
                             @NotNull String newName,
-                            @NotNull UsageInfo[] usages,
+                            UsageInfo @NotNull [] usages,
                             @Nullable RefactoringElementListener listener) throws IncorrectOperationException {
     RenameUtil.doRenameGenericNamedElement(element, newName, usages, listener);
   }
@@ -109,7 +112,7 @@ public abstract class RenamePsiElementProcessor {
    * @param allRenames the map (from element to its new name) into which all additional elements to be renamed should be stored.
    */
   public void prepareRenaming(@NotNull PsiElement element, @NotNull String newName, @NotNull Map<PsiElement, String> allRenames) {
-    prepareRenaming(element, newName, allRenames, element.getUseScope());
+    prepareRenaming(element, newName, allRenames, PsiSearchHelper.getInstance(element.getProject()).getUseScope(element));
   }
 
   public void prepareRenaming(@NotNull PsiElement element,
@@ -250,11 +253,7 @@ public abstract class RenamePsiElementProcessor {
 
   @NotNull
   public UsageInfo createUsageInfo(@NotNull PsiElement element, @NotNull PsiReference ref, @NotNull PsiElement referenceElement) {
-    return new MoveRenameUsageInfo(referenceElement, ref,
-                                   ref.getRangeInElement().getStartOffset(),
-                                   ref.getRangeInElement().getEndOffset(),
-                                   element,
-                                   ref.resolve() == null && !(ref instanceof PsiPolyVariantReference && ((PsiPolyVariantReference)ref).multiResolve(true).length > 0));
+    return RenameUtilBase.createMoveRenameUsageInfo(element, ref, referenceElement);
   }
 
   final boolean myOldFindMethodsImplemented;

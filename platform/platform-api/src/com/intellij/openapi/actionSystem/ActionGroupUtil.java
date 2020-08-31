@@ -1,104 +1,54 @@
-/*
- * Copyright 2000-2019 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.actionSystem;
 
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
+import com.intellij.util.containers.JBTreeTraverser;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-public class ActionGroupUtil {
-  private static Presentation getPresentation(AnAction action, Map<AnAction, Presentation> action2presentation) {
-    return action2presentation.computeIfAbsent(action, k -> action.getTemplatePresentation().clone());
-  }
+public final class ActionGroupUtil {
 
   /**
    * @deprecated use {@link #isGroupEmpty(ActionGroup, AnActionEvent, boolean)} instead
    */
   @Deprecated
   public static boolean isGroupEmpty(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent e) {
-    return isGroupEmpty(actionGroup, e, new HashMap<>(), false);
+    return isGroupEmpty(actionGroup, e, false);
   }
 
   public static boolean isGroupEmpty(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent e, boolean isInModalContext) {
-    return isGroupEmpty(actionGroup, e, new HashMap<>(), isInModalContext);
-  }
-
-  private static boolean isGroupEmpty(@NotNull ActionGroup actionGroup,
-                                                   @NotNull AnActionEvent e,
-                                                   @NotNull Map<AnAction, Presentation> action2presentation,
-                                                   boolean inModalContext) {
-    AnAction[] actions = actionGroup.getChildren(e);
-    for (AnAction action : actions) {
-      if (action instanceof Separator) continue;
-      if (isActionEnabledAndVisible(action, e, inModalContext, action2presentation)) {
-        if (action instanceof ActionGroup) {
-          if (!isGroupEmpty((ActionGroup)action, e, action2presentation, inModalContext)) {
-            return false;
-          }
-          // else continue for-loop
-        }
-        else {
-          return false;
-        }
-      }
-    }
-    return true;
+    return activeActionTraverser(actionGroup, e, isInModalContext).traverse().isEmpty();
   }
 
   @Nullable
   public static AnAction getSingleActiveAction(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent e, boolean isInModalContext) {
-    List<AnAction> children = getEnabledChildren(actionGroup, e, new HashMap<>(), isInModalContext);
-    if (children.size() == 1) {
-      return children.get(0);
-    }
-    return null;
+    return activeActionTraverser(actionGroup, e, isInModalContext).traverse().single();
   }
 
-  private static List<AnAction> getEnabledChildren(@NotNull ActionGroup actionGroup,
-                                                   @NotNull AnActionEvent e,
-                                                   @NotNull Map<AnAction, Presentation> action2presentation,
-                                                   boolean isInModalContext) {
-    List<AnAction> result = new ArrayList<>();
-    AnAction[] actions = actionGroup.getChildren(e);
-    for (AnAction action : actions) {
-      if (action instanceof ActionGroup) {
-        if (isActionEnabledAndVisible(action, e, isInModalContext, action2presentation)) {
-          result.addAll(getEnabledChildren((ActionGroup)action, e, action2presentation, isInModalContext));
-        }
-      }
-      else if (!(action instanceof Separator)) {
-        if (isActionEnabledAndVisible(action, e, isInModalContext, action2presentation)) {
-          result.add(action);
-        }
-      }
-    }
-    return result;
+  @NotNull
+  public static JBTreeTraverser<AnAction> activeActionTraverser(@NotNull ActionGroup actionGroup,
+                                                                @NotNull AnActionEvent e,
+                                                                boolean isInModalContext) {
+    Map<AnAction, Presentation> action2presentation = new HashMap<>();
+    return JBTreeTraverser.<AnAction>of(
+      o -> o instanceof ActionGroup &&
+           isActionEnabledAndVisible(o, e, isInModalContext, action2presentation) &&
+           !((ActionGroup)o).isPopup() &&
+           !((ActionGroup)o).canBePerformed(e.getDataContext()) ? ((ActionGroup)o).getChildren(e) : null)
+      .withRoots(actionGroup.getChildren(e))
+      .filter(o -> !(o instanceof Separator) &&
+                   (o instanceof ActionGroup || isActionEnabledAndVisible(o, e, isInModalContext, action2presentation)));
   }
 
   private static boolean isActionEnabledAndVisible(@NotNull AnAction action,
                                                    @NotNull AnActionEvent e,
                                                    boolean isInModalContext,
-                                                   @NotNull Map<AnAction, Presentation> action2presentation) {
-    Presentation presentation = getPresentation(action, action2presentation);
+                                                   @NotNull Map<AnAction, Presentation> presentationMap) {
+    Presentation presentation = presentationMap.computeIfAbsent(action, k -> action.getTemplatePresentation().clone());
     return isActionEnabledAndVisible(action, e, isInModalContext, presentation);
   }
 

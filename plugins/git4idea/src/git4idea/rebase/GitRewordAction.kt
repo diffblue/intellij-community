@@ -1,168 +1,66 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package git4idea.rebase
 
-import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.editor.impl.EditorImpl
-import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.dvcs.repo.Repository
 import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.ui.ValidationInfo
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vcs.VcsException
-import com.intellij.openapi.vcs.VcsNotifier
-import com.intellij.openapi.vcs.ui.CommitMessage
-import com.intellij.ui.components.JBLabel
-import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil.DEFAULT_HGAP
-import com.intellij.util.ui.UIUtil.DEFAULT_VGAP
+import com.intellij.openapi.vcs.changes.ChangeListManagerImpl
 import com.intellij.vcs.log.VcsCommitMetadata
-import com.intellij.vcs.log.VcsShortCommitDetails
-import com.intellij.vcs.log.data.VcsLogData
-import com.intellij.vcs.log.impl.VcsCommitMetadataImpl
-import com.intellij.vcs.log.util.VcsLogUtil
 import com.intellij.vcs.log.util.VcsUserUtil.getShortPresentation
-import git4idea.findProtectedRemoteBranch
+import git4idea.i18n.GitBundle
+import git4idea.rebase.log.GitCommitEditingOperationResult
+import git4idea.rebase.log.GitNewCommitMessageActionDialog
+import git4idea.rebase.log.getOrLoadDetails
+import git4idea.rebase.log.notifySuccess
 import git4idea.repo.GitRepository
 
-private val LOG: Logger = logger<GitRewordAction>()
+internal class GitRewordAction : GitSingleCommitEditingAction() {
+  override val prohibitRebaseDuringRebasePolicy = ProhibitRebaseDuringRebasePolicy.Prohibit(
+    GitBundle.getString("rebase.log.action.operation.reword.name")
+  )
 
-class GitRewordAction : GitCommitEditingAction() {
-  override fun update(e: AnActionEvent) {
-    super.update(e)
-    prohibitRebaseDuringRebase(e, "reword", true)
+  override fun actionPerformedAfterChecks(commitEditingData: SingleCommitEditingData) {
+    val details = getOrLoadDetails(commitEditingData.project, commitEditingData.logData, listOf(commitEditingData.selectedCommit))
+    val commit = details.first()
+    val dialog = GitNewCommitMessageActionDialog(
+      commitEditingData,
+      originMessage = commit.fullMessage,
+      title = GitBundle.getString("rebase.log.reword.dialog.title"),
+      dialogLabel = GitBundle.message(
+        "rebase.log.reword.dialog.description.label",
+        commit.id.toShortString(),
+        getShortPresentation(commit.author)
+      )
+    )
+    dialog.show { newMessage ->
+      rewordInBackground(commitEditingData.project, commit, commitEditingData.repository, newMessage)
+    }
   }
 
-  override fun actionPerformedAfterChecks(e: AnActionEvent) {
-    val commit = getSelectedCommit(e)
-    val project = e.project!!
-    val repository = getRepository(e)
-    val details = getOrLoadDetails(project, getLogData(e), commit)
-
-    RewordDialog(project, getLogData(e), details, repository).show()
-  }
-
-  private fun getOrLoadDetails(project: Project, data: VcsLogData, commit: VcsShortCommitDetails): VcsCommitMetadata {
-    return commit as? VcsCommitMetadata
-           ?: getCommitDataFromCache(data, commit)
-           ?: loadCommitData(project, data, commit)
-           ?: throw ProcessCanceledException()
-  }
-
-  override fun getFailureTitle(): String = "Couldn't Reword Commit"
-
-  private fun getCommitDataFromCache(data: VcsLogData, commit: VcsShortCommitDetails): VcsCommitMetadata? {
-    val commitIndex = data.getCommitIndex(commit.id, commit.root)
-    val commitData = data.commitDetailsGetter.getCommitDataIfAvailable(commitIndex)
-    if (commitData != null) return commitData
-
-    val message = data.index.dataGetter?.getFullMessage(commitIndex)
-    if (message != null) return VcsCommitMetadataImpl(commit.id, commit.parents, commit.commitTime, commit.root, commit.subject,
-                                                      commit.author, message, commit.committer, commit.authorTime)
-    return null
-  }
-
-  private fun loadCommitData(project: Project, data: VcsLogData, commit: VcsShortCommitDetails): VcsCommitMetadata? {
-    var commitData: VcsCommitMetadata? = null
-    ProgressManager.getInstance().runProcessWithProgressSynchronously(
-      {
-        try {
-          commitData = VcsLogUtil.getDetails(data, commit.root, commit.id)
-        }
-        catch (e: VcsException) {
-          val error = "Couldn't load changes of " + commit.id.asString()
-          LOG.warn(error, e)
-          val notification = VcsNotifier.STANDARD_NOTIFICATION.createNotification(
-            "", error, NotificationType.ERROR, null)
-          VcsNotifier.getInstance(project).notify(notification)
-        }
-      }, "Loading Commit Message...", true, project)
-    return commitData
-  }
+  override fun getFailureTitle(): String = GitBundle.getString("rebase.log.reword.action.failure.title")
 
   private fun rewordInBackground(project: Project, commit: VcsCommitMetadata, repository: GitRepository, newMessage: String) {
-    object : Task.Backgroundable(project, "Rewording") {
+    object : Task.Backgroundable(project, GitBundle.getString("rebase.log.reword.action.progress.indicator.title")) {
       override fun run(indicator: ProgressIndicator) {
-        GitRewordOperation(repository, commit, newMessage).execute()
+        val operationResult = GitRewordOperation(repository, commit, newMessage).execute()
+        if (operationResult is GitCommitEditingOperationResult.Complete) {
+          operationResult.notifySuccess(
+            GitBundle.getString("rebase.log.reword.action.notification.successful.title"),
+            GitBundle.getString("rebase.log.reword.action.progress.indicator.undo.title"),
+            GitBundle.getString("rebase.log.reword.action.notification.undo.not.allowed.title"),
+            GitBundle.getString("rebase.log.reword.action.notification.undo.failed.title")
+          )
+          ChangeListManagerImpl.getInstanceImpl(project).replaceCommitMessage(commit.fullMessage, newMessage)
+        }
       }
     }.queue()
   }
 
-  private inner class RewordDialog(val project: Project, val data: VcsLogData, val commit: VcsCommitMetadata, val repository: GitRepository)
-    : DialogWrapper(project, true) {
-
-    val originalHEAD = repository.info.currentRevision
-    val commitEditor = createCommitEditor()
-
-    init {
-      Disposer.register(disposable, commitEditor)
-
-      init()
-      isModal = false
-      title = "Reword Commit"
-    }
-
-    override fun createCenterPanel() =
-      JBUI.Panels.simplePanel(DEFAULT_HGAP, DEFAULT_VGAP)
-        .addToTop(JBLabel("Edit message for commit ${commit.id.toShortString()} by ${getShortPresentation(commit.author)}"))
-        .addToCenter(commitEditor)
-
-    override fun getPreferredFocusedComponent() = commitEditor.editorField
-
-    override fun getDimensionServiceKey() = "GitRewordDialog"
-
-    private fun createCommitEditor(): CommitMessage {
-      val editor = CommitMessage(project, false, false, true)
-      editor.setText(commit.fullMessage)
-      editor.editorField.setCaretPosition(0)
-      editor.editorField.addSettingsProvider { editor ->
-        // display at least several rows for one-line messages
-        val MIN_ROWS = 3
-        if ((editor as EditorImpl).visibleLineCount < MIN_ROWS) {
-          verticalStretch = 1.5F
-        }
-      }
-      return editor
-    }
-
-    override fun doValidate(): ValidationInfo? {
-      if (repository.info.currentRevision != originalHEAD ||
-          Disposer.isDisposed(data)) {
-        return ValidationInfo("Can't reword commit: repository state was changed")
-      }
-
-      val branches = findContainingBranches(data, commit.root, commit.id)
-      val protectedBranch = findProtectedRemoteBranch(repository, branches)
-      if (protectedBranch != null) {
-        return ValidationInfo("Can't reword commit: " + commitPushedToProtectedBranchError(protectedBranch))
-      }
-
+  override fun getProhibitedStateMessage(commitEditingData: SingleCommitEditingData, operation: String): String? {
+    if (commitEditingData.repository.state == Repository.State.REBASING && commitEditingData.isHeadCommit) {
       return null
     }
-
-    override fun doOKAction() {
-      super.doOKAction()
-
-      rewordInBackground(project, commit, repository, commitEditor.comment)
-    }
+    return super.getProhibitedStateMessage(commitEditingData, operation)
   }
 }

@@ -164,4 +164,10 @@ final class ImageFileEditorImpl extends UserDataHolderBase implements ImageFileE
   public ImageEditor getImageEditor() {
     return imageEditor;
   }
+
+  @NotNull
+  @Override
+  public VirtualFile getFile() {
+    return imageEditor.getFile();
+  }
 }

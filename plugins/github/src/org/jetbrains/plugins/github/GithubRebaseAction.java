@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github;
 
 import com.intellij.dvcs.DvcsUtil;
@@ -6,15 +6,17 @@ import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
 import git4idea.GitUtil;
-import git4idea.actions.BasicAction;
 import git4idea.commands.*;
+import git4idea.config.GitSaveChangesPolicy;
 import git4idea.config.GitVcsSettings;
+import git4idea.i18n.GitBundle;
 import git4idea.rebase.GitRebaseProblemDetector;
 import git4idea.rebase.GitRebaser;
 import git4idea.repo.GitRemote;
@@ -28,10 +30,8 @@ import org.jetbrains.plugins.github.api.*;
 import org.jetbrains.plugins.github.api.data.GithubRepo;
 import org.jetbrains.plugins.github.api.data.GithubRepoDetailed;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
-import org.jetbrains.plugins.github.util.GithubGitHelper;
-import org.jetbrains.plugins.github.util.GithubNotifications;
-import org.jetbrains.plugins.github.util.GithubUrlUtil;
-import org.jetbrains.plugins.github.util.GithubUtil;
+import org.jetbrains.plugins.github.i18n.GithubBundle;
+import org.jetbrains.plugins.github.util.*;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -40,32 +40,28 @@ import java.util.List;
 import static git4idea.commands.GitLocalChangesWouldBeOverwrittenDetector.Operation.CHECKOUT;
 import static git4idea.fetch.GitFetchSupport.fetchSupport;
 
-public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
+public class GithubRebaseAction extends AbstractAuthenticatingGithubUrlGroupingAction {
   private static final Logger LOG = GithubUtil.LOG;
-  private static final String CANNOT_PERFORM_GITHUB_REBASE = "Can't perform GitHub rebase";
   private static final String UPSTREAM_REMOTE = "upstream";
 
   public GithubRebaseAction() {
-    super("Rebase my GitHub fork", "Rebase your GitHub forked repository relative to the origin", AllIcons.Vcs.Vendors.Github);
+    super(GithubBundle.messagePointer("rebase.action"),
+          GithubBundle.messagePointer("rebase.action.description"),
+          AllIcons.Vcs.Vendors.Github);
   }
 
   @Override
   public void actionPerformed(@NotNull AnActionEvent e,
                               @NotNull Project project,
-                              @NotNull GitRepository repository,
-                              @NotNull GitRemote remote,
-                              @NotNull String remoteUrl,
+                              @NotNull GHGitRepositoryMapping repository,
                               @NotNull GithubAccount account) {
-    BasicAction.saveAll();
+    FileDocumentManager.getInstance().saveAllDocuments();
     GithubApiRequestExecutor executor = GithubApiRequestExecutorManager.getInstance().getExecutor(account, project);
     if (executor == null) return;
 
-    GHRepositoryPath repoPath = GithubUrlUtil.getUserAndRepositoryFromRemoteUrl(remoteUrl);
-    if (repoPath == null) {
-      GithubNotifications.showError(project, CANNOT_PERFORM_GITHUB_REBASE, "Invalid Github remote: " + remoteUrl);
-      return;
-    }
-    new RebaseTask(project, executor, Git.getInstance(), account.getServer(), repository, repoPath).queue();
+    new RebaseTask(project, executor, Git.getInstance(), account.getServer(),
+                   repository.getGitRemote().getRepository(),
+                   repository.getRepository().getRepositoryPath()).queue();
   }
 
   private static class RebaseTask extends Task.Backgroundable {
@@ -81,7 +77,7 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
                @NotNull GithubServerPath server,
                @NotNull GitRepository repository,
                @NotNull GHRepositoryPath repoPath) {
-      super(project, "Rebasing GitHub Fork...");
+      super(project, GithubBundle.message("rebase.process"));
       myRequestExecutor = requestExecutor;
       myGit = git;
       myServer = server;
@@ -94,19 +90,20 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
       myRepository.update();
       String upstreamRemoteUrl = findUpstreamRemoteUrl();
       if (upstreamRemoteUrl == null) {
-        indicator.setText("Configuring upstream remote...");
+        indicator.setText(GithubBundle.message("rebase.process.configuring.upstream.remote"));
         LOG.info("Configuring upstream remote");
         if ((upstreamRemoteUrl = configureUpstreamRemote(indicator)) == null) return;
       }
 
       GHRepositoryPath userAndRepo = GithubUrlUtil.getUserAndRepositoryFromRemoteUrl(upstreamRemoteUrl);
       if (userAndRepo == null) {
-        GithubNotifications.showError(myProject, CANNOT_PERFORM_GITHUB_REBASE, "Can't validate upstream remote: " + upstreamRemoteUrl);
+        GithubNotifications.showError(myProject, GithubBundle.message("rebase.error"),
+                                      GithubBundle.message("cannot.validate.upstream", upstreamRemoteUrl));
         return;
       }
       if (isUpstreamWithSameUsername(indicator, userAndRepo)) {
-        GithubNotifications.showError(myProject, CANNOT_PERFORM_GITHUB_REBASE,
-                                      "Configured upstream seems to be your own repository: " + upstreamRemoteUrl);
+        GithubNotifications.showError(myProject, GithubBundle.message("rebase.error"),
+                                      GithubBundle.message("rebase.error.upstream.is.own.repo", upstreamRemoteUrl));
         return;
       }
       String name = getDefaultBranchName(indicator, userAndRepo);
@@ -116,13 +113,13 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
       String onto = UPSTREAM_REMOTE + "/" + name;
 
       LOG.info("Fetching upstream");
-      indicator.setText("Fetching upstream...");
+      indicator.setText(GithubBundle.message("rebase.process.fetching.upstream"));
       if (!fetchParent()) {
         return;
       }
 
       LOG.info("Rebasing current branch");
-      indicator.setText("Rebasing current branch onto " + onto + "...");
+      indicator.setText(GithubBundle.message("rebase.process.rebasing.branch.onto", onto));
       rebaseCurrentBranch(indicator, onto);
     }
 
@@ -142,7 +139,8 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
         return userAndRepo.getOwner().equals(username);
       }
       catch (IOException e) {
-        GithubNotifications.showError(myProject, CANNOT_PERFORM_GITHUB_REBASE, "Can't get user information");
+        GithubNotifications
+          .showError(myProject, GithubBundle.message("rebase.error"), GithubBundle.message("cannot.get.user.info"));
         return true;
       }
     }
@@ -153,14 +151,16 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
         GithubRepo repo = myRequestExecutor.execute(indicator,
                                                     GithubApiRequests.Repos.get(myServer, userAndRepo.getOwner(), userAndRepo.getRepository()));
         if (repo == null) {
-          GithubNotifications.showError(myProject, CANNOT_PERFORM_GITHUB_REBASE, "Can't retrieve upstream information for " + userAndRepo);
+          GithubNotifications.showError(myProject, GithubBundle.message("rebase.error"),
+                                        GithubBundle.message("cannot.retrieve.upstream.info", userAndRepo));
           return null;
         }
         return repo.getDefaultBranch();
       }
       catch (IOException e) {
         GithubNotifications
-          .showError(myProject, CANNOT_PERFORM_GITHUB_REBASE, "Can't retrieve upstream information for " + userAndRepo, e.getMessage());
+          .showError(myProject, GithubBundle.message("rebase.error"),
+                     GithubBundle.message("cannot.retrieve.upstream.info", userAndRepo), e.getMessage());
         return null;
       }
     }
@@ -174,21 +174,23 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
 
       if (!repositoryInfo.isFork() || repositoryInfo.getParent() == null) {
         GithubNotifications
-          .showWarningURL(myProject, CANNOT_PERFORM_GITHUB_REBASE, "GitHub repository ", "'" + repositoryInfo.getName() + "'",
-                          " is not a fork", repositoryInfo.getHtmlUrl());
+          .showWarningURL(myProject, GithubBundle.message("rebase.error"),
+                          "GitHub repository ", "'" + repositoryInfo.getName() + "'", " is not a fork",
+                          repositoryInfo.getHtmlUrl());
         return null;
       }
 
       String parentRepoUrl = GithubGitHelper.getInstance().getRemoteUrl(myServer, repositoryInfo.getParent().getFullPath());
 
       LOG.info("Adding GitHub parent as a remote host");
-      indicator.setText("Adding GitHub parent as a remote host...");
+      indicator.setText(GithubBundle.message("rebase.process.adding.github.parent.as.remote.host"));
       try {
         myGit.addRemote(myRepository, UPSTREAM_REMOTE, parentRepoUrl).throwOnError();
       }
       catch (VcsException e) {
         GithubNotifications
-          .showError(myProject, CANNOT_PERFORM_GITHUB_REBASE, "Could not configure \"" + UPSTREAM_REMOTE + "\" remote:\n" + e.getMessage());
+          .showError(myProject, GithubBundle.message("rebase.error"),
+                     GithubBundle.message("cannot.configure.remote", UPSTREAM_REMOTE, e.getMessage()));
         return null;
       }
       myRepository.update();
@@ -200,11 +202,13 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
       try {
         GithubRepoDetailed repo =
           myRequestExecutor.execute(indicator, GithubApiRequests.Repos.get(myServer, fullPath.getOwner(), fullPath.getRepository()));
-        if (repo == null) GithubNotifications.showError(myProject, "Repository " + fullPath.toString() + " was not found", "");
+        if (repo == null) {
+          GithubNotifications.showError(myProject, GithubBundle.message("rebase.error.repo.not.found", fullPath.toString()), "");
+        }
         return repo;
       }
       catch (IOException e) {
-        GithubNotifications.showError(myProject, "Can't load repository info", e);
+        GithubNotifications.showError(myProject, GithubBundle.message("cannot.load.repo.info"), e);
         return null;
       }
     }
@@ -219,12 +223,13 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
     }
 
     private void rebaseCurrentBranch(@NotNull ProgressIndicator indicator, String onto) {
-      try (AccessToken ignore = DvcsUtil.workingTreeChangeStarted(myProject, "Rebase")) {
+      try (AccessToken ignore = DvcsUtil.workingTreeChangeStarted(myProject, GitBundle.message("rebase.git.operation.name"))) {
         List<VirtualFile> rootsToSave = Collections.singletonList(myRepository.getRoot());
-        GitVcsSettings.UpdateChangesPolicy saveMethod = GitVcsSettings.getInstance(myProject).updateChangesPolicy();
-        GitPreservingProcess process = new GitPreservingProcess(myProject, myGit, rootsToSave, "Rebasing", onto,
-                                                                saveMethod, indicator,
-                                                                () -> doRebaseCurrentBranch(indicator, onto));
+        GitSaveChangesPolicy saveMethod = GitVcsSettings.getInstance(myProject).getSaveChangesPolicy();
+        GitPreservingProcess process =
+          new GitPreservingProcess(myProject, myGit, rootsToSave, GithubBundle.message("rebase.process.operation.title"), onto,
+                                   saveMethod, indicator,
+                                   () -> doRebaseCurrentBranch(indicator, onto));
         process.execute();
       }
     }
@@ -249,13 +254,13 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
       handler.addLineListener(GitStandardProgressAnalyzer.createListener(indicator));
 
       String oldText = indicator.getText();
-      indicator.setText("Rebasing onto " + onto + "...");
+      indicator.setText(GithubBundle.message("rebase.process.rebasing.onto", onto));
       GitCommandResult rebaseResult = myGit.runCommand(handler);
       indicator.setText(oldText);
       repositoryManager.updateRepository(root);
       if (rebaseResult.success()) {
         root.refresh(false, true);
-        GithubNotifications.showInfo(myProject, "Success", "Successfully rebased GitHub fork");
+        GithubNotifications.showInfo(myProject, GithubBundle.message("rebase.process.success"), "");
       }
       else {
         GitUpdateResult result = rebaser.handleRebaseFailure(handler, root, rebaseResult, rebaseConflictDetector,
@@ -263,7 +268,7 @@ public class GithubRebaseAction extends AbstractGithubUrlGroupingAction {
         if (result == GitUpdateResult.NOTHING_TO_UPDATE ||
             result == GitUpdateResult.SUCCESS ||
             result == GitUpdateResult.SUCCESS_WITH_RESOLVED_CONFLICTS) {
-          GithubNotifications.showInfo(myProject, "Success", "Successfully rebased GitHub fork");
+          GithubNotifications.showInfo(myProject, GithubBundle.message("rebase.process.success"), "");
         }
       }
     }

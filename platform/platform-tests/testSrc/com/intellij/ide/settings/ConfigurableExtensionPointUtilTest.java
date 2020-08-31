@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.settings;
 
 import com.intellij.configurationStore.XmlSerializer;
@@ -22,7 +22,6 @@ import java.util.*;
 
 /**
  * @author Nikolay Matveev
- * @author Sergey.Malenkov
  */
 public class ConfigurableExtensionPointUtilTest extends LightPlatformTestCase {
 
@@ -368,8 +367,6 @@ public class ConfigurableExtensionPointUtilTest extends LightPlatformTestCase {
       wrapConfigurable("editor.3", "parentId:editor", "groupWeight:-1"),
       wrapConfigurable("editor.2", "parentId:editor"),
       wrapConfigurable("editor.1", "parentId:editor"),
-      wrapConfigurable("build.tools.raven", "parentId:build.tools"),
-      wrapConfigurable("build.tools.maven", "parentId:build.tools"),
       wrapConfigurable("build.center", "parentId:build"),
       wrapConfigurable("build.upper", "parentId:build", "groupWeight:1000000"),
       wrapConfigurable("build.lower", "parentId:build", "groupWeight:-1000000"),
@@ -396,9 +393,6 @@ public class ConfigurableExtensionPointUtilTest extends LightPlatformTestCase {
                            node("editor.4")),
                       node("configurable.group.build",
                            node("build.upper"),
-                           node("configurable.group.build.tools",
-                                node("build.tools.maven"),
-                                node("build.tools.raven")),
                            node("build.center"),
                            node("build.lower")),
                       node("configurable.group.tools",

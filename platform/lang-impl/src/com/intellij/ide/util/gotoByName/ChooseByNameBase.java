@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ide.util.gotoByName;
 
@@ -15,6 +15,7 @@ import com.intellij.ide.actions.CopyReferenceAction;
 import com.intellij.ide.actions.GotoFileAction;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextBorder;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextFieldUI;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.MnemonicHelper;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
@@ -86,7 +87,7 @@ import java.util.*;
 public abstract class ChooseByNameBase implements ChooseByNameViewModel {
   public static final String TEMPORARILY_FOCUSABLE_COMPONENT_KEY = "ChooseByNameBase.TemporarilyFocusableComponent";
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.util.gotoByName.ChooseByNameBase");
+  private static final Logger LOG = Logger.getInstance(ChooseByNameBase.class);
 
   @Nullable
   protected final Project myProject;
@@ -157,7 +158,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
     }
   }
 
-  private void setNamesSync(boolean checkboxState, @Nullable String[] value) {
+  private void setNamesSync(boolean checkboxState, String @Nullable [] value) {
     synchronized (myNames) {
       myNames[checkboxState ? 1 : 0] = value;
     }
@@ -409,9 +410,8 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
     final DefaultActionGroup group = new DefaultActionGroup();
     group.add(new ShowFindUsagesAction() {
-      @NotNull
       @Override
-      public PsiElement[] getElements() {
+      public PsiElement @NotNull [] getElements() {
         List<Object> objects = myListModel.getItems();
         List<PsiElement> elements = new ArrayList<>(objects.size());
         for (Object object : objects) {
@@ -452,7 +452,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
     if (checkBoxName != null) {
       if (myCheckBoxShortcut != null) {
-        new DumbAwareAction("change goto check box", null, null) {
+        new DumbAwareAction(IdeBundle.messagePointer("action.AnActionButton.text.change.goto.check.box")) {
           @Override
           public void actionPerformed(@NotNull AnActionEvent e) {
             myCheckBox.setSelected(!myCheckBox.isSelected());
@@ -660,7 +660,8 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
     if (component == null || myProject == null || myProject.isDisposed()) return false;
 
     ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
-    ToolWindow toolWindow = toolWindowManager.getToolWindow(toolWindowManager.getActiveToolWindowId());
+    String activeToolWindowId = toolWindowManager.getActiveToolWindowId();
+    ToolWindow toolWindow = activeToolWindowId == null ? null : toolWindowManager.getToolWindow(activeToolWindowId);
     JComponent toolWindowComponent = toolWindow != null ? toolWindow.getComponent() : null;
     return toolWindowComponent != null &&
            toolWindowComponent.getClientProperty(TEMPORARILY_FOCUSABLE_COMPONENT_KEY) != null &&
@@ -757,8 +758,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
     return StringUtil.trimLeading(StringUtil.notNullize(myTextField.getText()));
   }
 
-  @NotNull
-  private synchronized String[] ensureNamesLoaded(boolean checkboxState) {
+  private synchronized String @NotNull [] ensureNamesLoaded(boolean checkboxState) {
     String[] cached = getNamesSync(checkboxState);
     if (cached != null) return cached;
 
@@ -780,8 +780,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
     return result;
   }
 
-  @NotNull
-  public String[] getNames(boolean checkboxState) {
+  public String @NotNull [] getNames(boolean checkboxState) {
     setNamesSync(checkboxState, null);
     return ensureNamesLoaded(checkboxState);
   }
@@ -977,7 +976,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
   }
 
   @VisibleForTesting
-  public int calcSelectedIndex(@NotNull Object[] modelElements, @NotNull String trimmedText) {
+  public int calcSelectedIndex(Object @NotNull [] modelElements, @NotNull String trimmedText) {
     if (myModel instanceof Comparator) {
       return 0;
     }
@@ -1533,7 +1532,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
       final UsageViewPresentation presentation = new UsageViewPresentation();
       final String text = getTrimmedText();
-      final String prefixPattern = myFindUsagesTitle + " \'" + text + "\'";
+      final String prefixPattern = myFindUsagesTitle + " '" + text + "'";
       presentation.setCodeUsagesString(prefixPattern);
       presentation.setUsagesInGeneratedCodeString(prefixPattern + " in generated code");
       presentation.setTabName(prefixPattern);
@@ -1559,8 +1558,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
               protected boolean isOverflow(@NotNull Set<Object> elementsArray) {
                 tooManyUsagesStatus.pauseProcessingIfTooManyUsages();
                 if (elementsArray.size() > UsageLimitUtil.USAGES_LIMIT - myMaximumListSizeLimit && tooManyUsagesStatus.switchTooManyUsagesStatus()) {
-                  int usageCount = elementsArray.size() + myMaximumListSizeLimit;
-                  UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, indicator, presentation, usageCount, null);
+                  UsageViewManagerImpl.showTooManyUsagesWarningLater(getProject(), tooManyUsagesStatus, indicator, null);
                 }
                 return false;
               }
@@ -1569,7 +1567,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
             ApplicationManager.getApplication().runReadAction(() -> {
               myCalcUsagesThread.addElementsByPattern(text, collected, indicator, everywhere);
 
-              indicator.setText("Prepare...");
+              indicator.setText(LangBundle.message("progress.text.prepare"));
               fillUsages(collected, usages, targets);
             });
           }
@@ -1631,8 +1629,7 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
       e.getPresentation().setEnabled(elements.length > 0);
     }
 
-    @NotNull
-    public abstract PsiElement[] getElements();
+    public abstract PsiElement @NotNull [] getElements();
   }
 
   private static class MyUsageInfo2UsageAdapter extends UsageInfo2UsageAdapter {

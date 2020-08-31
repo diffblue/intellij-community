@@ -12,7 +12,6 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.ProjectLevelVcsManager;
@@ -24,7 +23,6 @@ import com.intellij.openapi.vcs.update.AbstractCommonUpdateAction;
 import com.intellij.openapi.vcs.update.ActionInfo;
 import com.intellij.openapi.vcs.update.UpdateInfoTree;
 import com.intellij.openapi.vcs.update.UpdatedFiles;
-import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.GuiUtils;
 import com.intellij.vcs.ViewUpdateInfoNotification;
@@ -34,8 +32,8 @@ import git4idea.GitUtil;
 import git4idea.GitVcs;
 import git4idea.branch.GitBranchPair;
 import git4idea.commands.*;
+import git4idea.i18n.GitBundle;
 import git4idea.merge.GitConflictResolver;
-import git4idea.merge.GitMergeCommittingConflictResolver;
 import git4idea.merge.GitMerger;
 import git4idea.merge.MergeChangeCollector;
 import git4idea.rebase.GitHandlerRebaseEditorManager;
@@ -53,6 +51,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static com.intellij.notification.NotificationType.INFORMATION;
 import static git4idea.commands.GitLocalChangesWouldBeOverwrittenDetector.Operation.MERGE;
@@ -67,17 +66,23 @@ abstract class GitMergeAction extends GitRepositoryAction {
   protected static class DialogState {
     final VirtualFile selectedRoot;
     final String progressTitle;
-    final Computable<GitLineHandler> handlerProvider;
-    @NotNull private final List<String> selectedBranches;
+    final Supplier<GitLineHandler> handlerProvider;
+    @NotNull final List<String> selectedBranches;
+    final boolean commitAfterMerge;
+    @NotNull final List<String> selectedOptions;
 
     DialogState(@NotNull VirtualFile root,
                 @NotNull String title,
-                @NotNull Computable<GitLineHandler> provider,
-                @NotNull List<String> selectedBranches) {
+                @NotNull Supplier<GitLineHandler> provider,
+                @NotNull List<String> selectedBranches,
+                boolean commitAfterMerge,
+                @NotNull List<String> selectedOptions) {
       selectedRoot = root;
       progressTitle = title;
       handlerProvider = provider;
       this.selectedBranches = selectedBranches;
+      this.selectedOptions = selectedOptions;
+      this.commitAfterMerge = commitAfterMerge;
     }
   }
 
@@ -86,13 +91,17 @@ abstract class GitMergeAction extends GitRepositoryAction {
                                                @NotNull VirtualFile defaultRoot);
 
   @Override
-  protected void perform(@NotNull Project project, @NotNull List<VirtualFile> gitRoots, @NotNull VirtualFile defaultRoot) {
+  protected final void perform(@NotNull Project project, @NotNull List<VirtualFile> gitRoots, @NotNull VirtualFile defaultRoot) {
     DialogState dialogState = displayDialog(project, gitRoots, defaultRoot);
     if (dialogState == null) {
       return;
     }
+    perform(dialogState, project);
+  }
+
+  protected void perform(@NotNull DialogState dialogState, @NotNull Project project) {
     VirtualFile selectedRoot = dialogState.selectedRoot;
-    Computable<GitLineHandler> handlerProvider = dialogState.handlerProvider;
+    Supplier<GitLineHandler> handlerProvider = dialogState.handlerProvider;
     Label beforeLabel = LocalHistory.getInstance().putSystemLabel(project, "Before update");
 
     new Task.Backgroundable(project, dialogState.progressTitle, true) {
@@ -127,7 +136,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
         Ref<GitHandlerRebaseEditorManager> rebaseEditorManager = Ref.create();
         try (AccessToken ignore = DvcsUtil.workingTreeChangeStarted(project, getActionName())) {
           GitCommandResult result = git.runCommand(() -> {
-            GitLineHandler handler = handlerProvider.compute();
+            GitLineHandler handler = handlerProvider.get();
 
             if (setupRebaseEditor) {
               if (!rebaseEditorManager.isNull()) {
@@ -146,7 +155,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
           if (beforeRevision != null) {
             GitRevisionNumber currentRev = new GitRevisionNumber(beforeRevision);
             handleResult(result, project, mergeConflict, localChangesDetector, untrackedFilesDetector, repository, currentRev, beforeLabel,
-                         updatedRanges);
+                         updatedRanges, dialogState.commitAfterMerge);
           }
         }
         finally {
@@ -170,28 +179,40 @@ abstract class GitMergeAction extends GitRepositoryAction {
                             @NotNull GitRepository repository,
                             @NotNull GitRevisionNumber currentRev,
                             @NotNull Label beforeLabel,
-                            @Nullable GitUpdatedRanges updatedRanges) {
+                            @Nullable GitUpdatedRanges updatedRanges,
+                            boolean commitAfterMerge) {
     VirtualFile root = repository.getRoot();
 
     if (mergeConflictDetector.hasHappened()) {
-      new GitMergeCommittingConflictResolver(project, Git.getInstance(), new GitMerger(project), singletonList(root),
-                                             new GitConflictResolver.Params(project), true).merge();
+      GitMerger merger = new GitMerger(project);
+      new GitConflictResolver(project, singletonList(root), new GitConflictResolver.Params(project)) {
+        @Override
+        protected boolean proceedAfterAllMerged() throws VcsException {
+          if (commitAfterMerge) {
+            merger.mergeCommit(root);
+          }
+          return true;
+        }
+      }.merge();
     }
 
     if (result.success() || mergeConflictDetector.hasHappened()) {
-      VfsUtil.markDirtyAndRefresh(false, true, false, root);
+      GitUtil.refreshVfsInRoot(root);
       repository.update();
-      if (updatedRanges != null && AbstractCommonUpdateAction.showsCustomNotification(singletonList(GitVcs.getInstance(project)))) {
+      if (updatedRanges != null &&
+          AbstractCommonUpdateAction.showsCustomNotification(singletonList(GitVcs.getInstance(project))) &&
+          commitAfterMerge) {
         Map<GitRepository, HashRange> ranges = updatedRanges.calcCurrentPositions();
         GitUpdateInfoAsLog.NotificationData notificationData = new GitUpdateInfoAsLog(project, ranges).calculateDataAndCreateLogTab();
 
         Notification notification;
         if (notificationData != null) {
           String title = getTitleForUpdateNotification(notificationData.getUpdatedFilesCount(), notificationData.getReceivedCommitsCount());
-          String content = getBodyForUpdateNotification(notificationData.getUpdatedFilesCount(), notificationData.getReceivedCommitsCount(),
-                                                        notificationData.getFilteredCommitsCount());
+          String content = getBodyForUpdateNotification(notificationData.getFilteredCommitsCount());
           notification = VcsNotifier.STANDARD_NOTIFICATION.createNotification(title, content, INFORMATION, null);
-          notification.addAction(NotificationAction.createSimple("View Commits", notificationData.getViewCommitAction()));
+          notification.addAction(NotificationAction.createSimple(GitBundle.messagePointer(
+            "action.NotificationAction.GitMergeAction.text.view.commits"),
+                                                                 notificationData.getViewCommitAction()));
         }
         else {
           notification = VcsNotifier.STANDARD_NOTIFICATION.createNotification(VcsBundle.message("message.text.all.files.are.up.to.date"),
@@ -200,7 +221,7 @@ abstract class GitMergeAction extends GitRepositoryAction {
         VcsNotifier.getInstance(project).notify(notification);
       }
       else {
-        showUpdates(project, root, currentRev, beforeLabel, getActionName());
+        showUpdates(project, repository, currentRev, beforeLabel, getActionName());
       }
     }
     else if (localChangesDetector.wasMessageDetected()) {
@@ -218,13 +239,13 @@ abstract class GitMergeAction extends GitRepositoryAction {
   }
 
   private static void showUpdates(@NotNull Project project,
-                                  @NotNull VirtualFile root,
+                                  @NotNull GitRepository repository,
                                   @NotNull GitRevisionNumber currentRev,
                                   @NotNull Label beforeLabel,
                                   @NotNull String actionName) {
     try {
       UpdatedFiles files = UpdatedFiles.create();
-      MergeChangeCollector collector = new MergeChangeCollector(project, root, currentRev);
+      MergeChangeCollector collector = new MergeChangeCollector(project, repository, currentRev);
       collector.collect(files);
 
       GuiUtils.invokeLaterIfNeeded(() -> {

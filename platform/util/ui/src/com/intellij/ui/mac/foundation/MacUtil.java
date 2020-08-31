@@ -1,9 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.mac.foundation;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
@@ -19,6 +18,7 @@ import java.awt.event.AWTEventListener;
 import java.awt.event.KeyEvent;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -27,7 +27,7 @@ import static com.intellij.ui.mac.foundation.Foundation.*;
 /**
  * @author pegov
  */
-public class MacUtil {
+public final class MacUtil {
   private static final Logger LOG = Logger.getInstance("#com.intellij.ui.mac.foundation.MacUtil");
   public static final String MAC_NATIVE_WINDOW_SHOWING = "MAC_NATIVE_WINDOW_SHOWING";
 
@@ -53,7 +53,7 @@ public class MacUtil {
         final ID windowTitle = invoke(window, "title");
         if (windowTitle != null && windowTitle.intValue() != 0) {
           final String titleString = toStringViaUTF8(windowTitle);
-          if (Comparing.equal(titleString, title)) {
+          if (Objects.equals(titleString, title)) {
             focusedWindow = window;
             break;
           }

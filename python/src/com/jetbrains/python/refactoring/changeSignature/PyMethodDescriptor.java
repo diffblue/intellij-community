@@ -21,6 +21,8 @@ import com.jetbrains.python.psi.PyExpression;
 import com.jetbrains.python.psi.PyFunction;
 import com.jetbrains.python.psi.PyNamedParameter;
 import com.jetbrains.python.psi.PyParameter;
+import com.jetbrains.python.psi.impl.ParamHelper;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +34,7 @@ import java.util.List;
 public class PyMethodDescriptor implements MethodDescriptor<PyParameterInfo, String> {
   private final PyFunction myFunction;
 
-  public PyMethodDescriptor(PyFunction function) {
+  public PyMethodDescriptor(@NotNull PyFunction function) {
     myFunction = function;
   }
 
@@ -42,7 +44,7 @@ public class PyMethodDescriptor implements MethodDescriptor<PyParameterInfo, Str
   }
 
   @Override
-  public List<PyParameterInfo> getParameters() {
+  public @NotNull List<PyParameterInfo> getParameters() {
     List<PyParameterInfo> parameterInfos = new ArrayList<>();
     PyParameter[] parameters = myFunction.getParameterList().getParameters();
     for (int i = 0; i < parameters.length; i++) {
@@ -50,15 +52,7 @@ public class PyMethodDescriptor implements MethodDescriptor<PyParameterInfo, Str
       final PyExpression defaultValue = parameter.getDefaultValue();
       final String name;
       if (parameter instanceof PyNamedParameter) {
-        if (((PyNamedParameter)parameter).isPositionalContainer()) {
-          name = "*" + parameter.getName();
-        }
-        else if (((PyNamedParameter)parameter).isKeywordContainer()) {
-          name = "**" + parameter.getName();
-        }
-        else {
-          name = parameter.getName();
-        }
+        name = ParamHelper.getNameInSignature((PyNamedParameter)parameter);
       }
       else {
         name = parameter.getText();
@@ -75,11 +69,12 @@ public class PyMethodDescriptor implements MethodDescriptor<PyParameterInfo, Str
   }
 
   @Override
-  public String getVisibility() {
+  public @NotNull String getVisibility() {
     return "";
   }
 
   @Override
+  @NotNull
   public PyFunction getMethod() {
     return myFunction;
   }
@@ -100,7 +95,7 @@ public class PyMethodDescriptor implements MethodDescriptor<PyParameterInfo, Str
   }
 
   @Override
-  public ReadWriteOption canChangeReturnType() {
+  public @NotNull ReadWriteOption canChangeReturnType() {
     return ReadWriteOption.None;
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.model.serialization;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -9,7 +9,7 @@ import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
-import gnu.trove.THashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,6 +33,7 @@ import org.jetbrains.jps.model.serialization.module.JpsModulePropertiesSerialize
 import org.jetbrains.jps.model.serialization.module.JpsModuleRootModelSerializer;
 import org.jetbrains.jps.model.serialization.runConfigurations.JpsRunConfigurationSerializer;
 import org.jetbrains.jps.service.SharedThreadPool;
+import org.jetbrains.jps.util.JpsPathUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,12 +44,16 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.stream.Stream;
 
-/**
- * @author nik
- */
-public class JpsProjectLoader extends JpsLoaderBase {
+import static org.jetbrains.jps.model.serialization.java.compiler.JpsJavaCompilerConfigurationSerializer.BYTECODE_TARGET_LEVEL;
+
+public final class JpsProjectLoader extends JpsLoaderBase {
+  public static final String MODULE_MANAGER_COMPONENT = "ProjectModuleManager";
+  public static final String MODULES_TAG = "modules";
+  public static final String MODULE_TAG = "module";
+  public static final String FILE_PATH_ATTRIBUTE = "filepath";
+  public static final String FILE_URL_ATTRIBUTE = "fileurl";
+  public static final String GROUP_ATTRIBUTE = "group";
   public static final String CLASSPATH_ATTRIBUTE = "classpath";
   public static final String CLASSPATH_DIR_ATTRIBUTE = "classpath-dir";
 
@@ -101,20 +106,8 @@ public class JpsProjectLoader extends JpsLoaderBase {
 
   @NotNull
   public static String getDirectoryBaseProjectName(@NotNull Path dir) {
-    try (Stream<String> stream = Files.lines(dir.resolve(".name"))) {
-      String value = stream.findFirst().map(String::trim).orElse(null);
-      if (value != null) {
-        return value;
-      }
-    }
-    catch (IOException ignored) { }
-    return dir.getParent().getFileName().toString();
-  }
-
-  @Nullable
-  @Override
-  protected Element loadRootElement(@NotNull Path file) {
-    return super.loadRootElement(file);
+    String name = JpsPathUtil.readProjectName(dir);
+    return name != null ? name : JpsPathUtil.getDefaultProjectName(dir);
   }
 
   @Nullable
@@ -137,12 +130,14 @@ public class JpsProjectLoader extends JpsLoaderBase {
         break;
       }
     }
-    if (data == null) {
-      return externalData;
-    }
-    else if (externalData != null) {
-      return JDOMUtil.deepMerge(data, externalData);
-    }
+    return deepMergeCompilerConfigurations(data, externalData);
+  }
+
+  private static @Nullable Element deepMergeCompilerConfigurations(@Nullable Element data, @Nullable Element externalData) {
+    if (data == null) return externalData;
+    if (externalData == null) return data;
+    JDOMUtil.deepMerge(data, externalData);
+    JDOMUtil.reduceChildren(BYTECODE_TARGET_LEVEL, data);
     return data;
   }
 
@@ -161,7 +156,7 @@ public class JpsProjectLoader extends JpsLoaderBase {
       LOG.info("External project config dir is used: " + externalConfigDir);
     }
 
-    Element moduleData = JDomSerializationUtil.findComponent(loadRootElement(dir.resolve("modules.xml")), "ProjectModuleManager");
+    Element moduleData = JDomSerializationUtil.findComponent(loadRootElement(dir.resolve("modules.xml")), MODULE_MANAGER_COMPONENT);
     Element externalModuleData;
     if (externalConfigDir == null) {
       externalModuleData = null;
@@ -315,10 +310,10 @@ public class JpsProjectLoader extends JpsLoaderBase {
       }
     }
 
-    final Set<Path> foundFiles = new THashSet<>();
+    final Set<Path> foundFiles = new ObjectOpenHashSet<>();
     final List<Path> moduleFiles = new ArrayList<>();
-    for (Element moduleElement : JDOMUtil.getChildren(componentElement.getChild("modules"), "module")) {
-      final String path = moduleElement.getAttributeValue("filepath");
+    for (Element moduleElement : JDOMUtil.getChildren(componentElement.getChild(MODULES_TAG), MODULE_TAG)) {
+      final String path = moduleElement.getAttributeValue(FILE_PATH_ATTRIBUTE);
       if (path != null) {
         final Path file = Paths.get(path);
         if (foundFiles.add(file) && !unloadedModules.contains(getModuleName(file))) {
@@ -445,7 +440,7 @@ public class JpsProjectLoader extends JpsLoaderBase {
         }
       }
     }
-    Element facetsTag = JDomSerializationUtil.findComponent(moduleRoot, "FacetManager");
+    Element facetsTag = JDomSerializationUtil.findComponent(moduleRoot, JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME);
     Element externalFacetsTag = JDomSerializationUtil.findComponent(moduleRoot, "ExternalFacetManager");
     Element mergedFacetsTag;
     if (facetsTag == null) {

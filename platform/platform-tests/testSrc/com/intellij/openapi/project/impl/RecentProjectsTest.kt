@@ -1,24 +1,23 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.project.impl
 
 import com.intellij.ide.*
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.project.ex.ProjectManagerEx
-import com.intellij.openapi.util.Disposer
-import com.intellij.testFramework.*
+import com.intellij.project.stateStore
+import com.intellij.testFramework.ApplicationRule
+import com.intellij.testFramework.EdtRule
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.TemporaryDirectory
 import com.intellij.testFramework.assertions.Assertions.assertThat
 import com.intellij.util.PathUtil
-import com.intellij.util.containers.ContainerUtil
-import org.jdom.JDOMException
+import com.intellij.util.messages.SimpleMessageBusConnection
 import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
-import java.io.IOException
+import java.nio.file.Path
 
-@RunsInEdt
 class RecentProjectsTest {
   companion object {
     @ClassRule
@@ -32,7 +31,7 @@ class RecentProjectsTest {
 
   @Rule
   @JvmField
-  val busConnection = RecentProjectManagerListenerRule()
+  internal val busConnection = RecentProjectManagerListenerRule()
 
   @Rule
   @JvmField
@@ -64,9 +63,9 @@ class RecentProjectsTest {
     manager.addGroup(g1)
     manager.addGroup(g2)
 
-    g1.addProject(p1)
-    g1.addProject(p2)
-    g2.addProject(p3)
+    g1.addProject(p1.toString())
+    g1.addProject(p2.toString())
+    g2.addProject(p3.toString())
 
     checkGroups(listOf("g2", "g1"))
 
@@ -76,91 +75,87 @@ class RecentProjectsTest {
   }
 
   @Test
-  fun testTimestampForOpenProjectUpdatesWhenGetStateCalled() {
-    var project: Project? = null
+  fun timestampForOpenProjectUpdatesWhenGetStateCalled() {
+    val path = tempDir.newPath("z1")
+    var project = PlatformTestUtil.loadAndOpenProject(path)
     try {
-      val path = tempDir.newPath("z1")
-      project = HeavyPlatformTestCase.createProject(path)
-      ProjectOpeningTest.closeProject(project)
-      project = ProjectManagerEx.getInstanceEx().loadAndOpenProject(path)
+      PlatformTestUtil.forceCloseProjectWithoutSaving(project)
+      project = PlatformTestUtil.loadAndOpenProject(path)
       val timestamp = getProjectOpenTimestamp("z1")
       RecentProjectsManagerBase.instanceEx.updateLastProjectPath()
       // "Timestamp for opened project has not been updated"
       assertThat(getProjectOpenTimestamp("z1")).isGreaterThan(timestamp)
     }
     finally {
-      ProjectOpeningTest.closeProject(project)
+      PlatformTestUtil.forceCloseProjectWithoutSaving(project)
     }
   }
 
-  private fun getProjectOpenTimestamp(projectName: String): Long {
-    val additionalInfo = RecentProjectsManagerBase.instanceEx.state!!.additionalInfo
+  private fun getProjectOpenTimestamp(@Suppress("SameParameterValue") projectName: String): Long {
+    val additionalInfo = RecentProjectsManagerBase.instanceEx.state.additionalInfo
     for (s in additionalInfo.keys) {
-      if (s.endsWith(projectName)) {
+      if (s.endsWith(projectName) || s.substringBeforeLast('_').endsWith(projectName)) {
         return additionalInfo.get(s)!!.projectOpenTimestamp
       }
     }
     return -1
   }
 
-  @Throws(IOException::class, JDOMException::class)
-  private fun doReopenCloseAndCheck(projectPath: String, vararg results: String) {
-    val project = ProjectManager.getInstance().loadAndOpenProject(projectPath)
-    ProjectOpeningTest.closeProject(project)
+  private fun doReopenCloseAndCheck(projectPath: Path, vararg results: String) {
+    val project = PlatformTestUtil.loadAndOpenProject(projectPath)
+    PlatformTestUtil.forceCloseProjectWithoutSaving(project)
     checkRecents(*results)
   }
 
-  @Throws(IOException::class, JDOMException::class)
-  private fun doReopenCloseAndCheckGroups(projectPath: String, results: List<String>) {
-    val project = ProjectManager.getInstance().loadAndOpenProject(projectPath)
-    ProjectOpeningTest.closeProject(project)
+  private fun doReopenCloseAndCheckGroups(projectPath: Path, results: List<String>) {
+    val project = PlatformTestUtil.loadAndOpenProject(projectPath)
+    PlatformTestUtil.forceCloseProjectWithoutSaving(project)
     checkGroups(results)
   }
 
   private fun checkRecents(vararg recents: String) {
     val recentProjects = listOf(*recents)
     val state = (RecentProjectsManager.getInstance() as RecentProjectsManagerBase).state
-    val projects = state!!.additionalInfo.keys.asSequence()
-      .map { s -> PathUtil.getFileName(s).substringAfterLast("_") }
+    val projects = state.additionalInfo.keys.asSequence()
+      .map { s -> PathUtil.getFileName(s).substringAfter('_').substringBeforeLast('_') }
       .filter { recentProjects.contains(it) }
       .toList()
-    assertThat(ContainerUtil.reverse(projects)).isEqualTo(recentProjects)
+    assertThat(projects.reversed()).isEqualTo(recentProjects)
   }
 
   private fun checkGroups(groups: List<String>) {
-    val recentGroups = RecentProjectsManager.getInstance().getRecentProjectsActions(false, true).asSequence()
+    val recentGroups = RecentProjectListActionProvider.getInstance().getActions(false, true).asSequence()
       .filter { a -> a is ProjectGroupActionGroup }
       .map { a -> (a as ProjectGroupActionGroup).group.name }
       .toList()
     assertThat(recentGroups).isEqualTo(groups)
   }
 
-  private fun createAndOpenProject(name: String): String {
-    var project: Project? = null
+  private fun createAndOpenProject(name: String): Path {
+    val path = tempDir.newPath(name)
+    var project = PlatformTestUtil.loadAndOpenProject(path)
     try {
-      val path = tempDir.newPath(name)
-      project = HeavyPlatformTestCase.createProject(path)
-      PlatformTestUtil.saveProject(project)
-      ProjectOpeningTest.closeProject(project)
-      project = ProjectManagerEx.getInstanceEx().loadAndOpenProject(path)
-      return project!!.basePath!!
+      project.stateStore.saveComponent(RecentProjectsManager.getInstance() as RecentProjectsManagerBase)
+      PlatformTestUtil.forceCloseProjectWithoutSaving(project)
+      project = PlatformTestUtil.loadAndOpenProject(path)
+      return path
     }
     finally {
-      ProjectOpeningTest.closeProject(project)
+      PlatformTestUtil.forceCloseProjectWithoutSaving(project)
     }
   }
 }
 
-class RecentProjectManagerListenerRule : ExternalResource() {
-  private val disposable = Disposer.newDisposable()
+internal class RecentProjectManagerListenerRule : ExternalResource() {
+  private var connection: SimpleMessageBusConnection? = null
 
   override fun before() {
-    val connection = ApplicationManager.getApplication().messageBus.connect()
-    connection.subscribe(ProjectManager.TOPIC, RecentProjectsManagerBase.MyProjectListener())
-    connection.subscribe(AppLifecycleListener.TOPIC, RecentProjectsManagerBase.MyAppLifecycleListener())
+    connection = ApplicationManager.getApplication().messageBus.simpleConnect()
+    connection!!.subscribe(ProjectManager.TOPIC, RecentProjectsManagerBase.MyProjectListener())
+    connection!!.subscribe(AppLifecycleListener.TOPIC, RecentProjectsManagerBase.MyAppLifecycleListener())
   }
 
   override fun after() {
-    Disposer.dispose(disposable)
+    connection?.disconnect()
   }
 }

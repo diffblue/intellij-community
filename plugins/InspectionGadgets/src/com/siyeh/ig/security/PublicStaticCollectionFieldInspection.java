@@ -28,7 +28,6 @@ import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.psiutils.CollectionUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.MethodMatcher;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.ui.UiUtils;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
@@ -59,12 +58,6 @@ public class PublicStaticCollectionFieldInspection extends BaseInspection {
       InspectionGadgetsBundle.message("result.of.method.call.ignored.class.column.title"),
       InspectionGadgetsBundle.message("result.of.method.call.ignored.method.column.title")));
     return UiUtils.createAddRemoveTreeClassChooserPanel(table, "Choose class");
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("public.static.collection.field.display.name");
   }
 
   @Override
@@ -109,7 +102,7 @@ public class PublicStaticCollectionFieldInspection extends BaseInspection {
       if (!field.hasModifierProperty(PsiModifier.FINAL)) {
         return false;
       }
-      final PsiExpression initializer = ParenthesesUtils.stripParentheses(field.getInitializer());
+      final PsiExpression initializer = PsiUtil.skipParenthesizedExprDown(field.getInitializer());
       if (ExpressionUtils.isNullLiteral(initializer)) {
         return true;
       }

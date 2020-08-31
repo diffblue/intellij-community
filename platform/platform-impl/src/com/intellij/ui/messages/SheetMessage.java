@@ -49,7 +49,8 @@ final class SheetMessage implements Disposable {
 
     maximizeIfNeeded(owner);
 
-    myWindow = new JDialog(owner, "This should not be shown", Dialog.ModalityType.APPLICATION_MODAL);
+    // the actual title will be taken from a sheet panel, not from this dialog
+    myWindow = new JDialog(owner, title, Dialog.ModalityType.APPLICATION_MODAL);
     myWindow.getRootPane().putClientProperty("apple.awt.draggableWindowBackground", Boolean.FALSE);
 
     //Sometimes we cannot find the owner from the project. For instance, WelcomeScreen could be showing without a
@@ -140,7 +141,7 @@ final class SheetMessage implements Disposable {
     Component focusCandidate = beforeShowFocusOwner.get();
 
     if (focusCandidate == null) {
-      focusCandidate = getGlobalInstance().getLastFocusedFor(getGlobalInstance().getLastFocusedFrame());
+      focusCandidate = getGlobalInstance().getLastFocusedFor(getGlobalInstance().getLastFocusedIdeWindow());
     }
 
     final Component finalFocusCandidate = focusCandidate;

@@ -1,17 +1,18 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.psi.impl.source.codeStyle;
 
 import com.intellij.application.options.CodeStyle;
+import com.intellij.application.options.codeStyle.cache.CodeStyleCachingService;
 import com.intellij.diagnostic.PluginException;
 import com.intellij.formatting.*;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.lang.*;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
-import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -30,9 +31,11 @@ import com.intellij.psi.impl.source.codeStyle.lineIndent.FormatterBasedIndentAdj
 import com.intellij.psi.impl.source.tree.FileElement;
 import com.intellij.psi.impl.source.tree.RecursiveTreeElementWalkingVisitor;
 import com.intellij.psi.impl.source.tree.TreeElement;
-import com.intellij.psi.util.PsiUtilBase;
+import com.intellij.psi.util.PsiEditorUtil;
+import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.CharTable;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.MathUtil;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.text.CharArrayUtil;
 import org.jetbrains.annotations.NonNls;
@@ -164,27 +167,28 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   public void reformatTextWithContext(@NotNull PsiFile file,
                                       @NotNull ChangedRangesInfo info) throws IncorrectOperationException
   {
-    FormatTextRanges formatRanges = new FormatTextRanges(info);
-    reformatText(file, formatRanges, null, true);
+    ensureDocumentCommitted(file);
+    FormatTextRanges formatRanges = new FormatTextRanges(info, ChangedRangesUtil.processChangedRanges(file, info));
+    formatRanges.setExtendToContext(true);
+    reformatText(file, formatRanges, null);
   }
+
+
 
   public void reformatText(@NotNull PsiFile file, @NotNull Collection<? extends TextRange> ranges, @Nullable Editor editor) throws IncorrectOperationException {
     FormatTextRanges formatRanges = new FormatTextRanges();
     ranges.forEach((range) -> formatRanges.add(range, true));
-    reformatText(file, formatRanges, editor, false);
+    reformatText(file, formatRanges, editor);
   }
 
   private void reformatText(@NotNull PsiFile file,
                             @NotNull FormatTextRanges ranges,
-                            @Nullable Editor editor,
-                            boolean reformatContext) throws IncorrectOperationException
+                            @Nullable Editor editor) throws IncorrectOperationException
   {
     if (ranges.isEmpty()) {
       return;
     }
-    boolean isFullReformat = ranges.isFullReformat(file);
-    ApplicationManager.getApplication().assertWriteAccessAllowed();
-    PsiDocumentManager.getInstance(getProject()).commitAllDocuments();
+    ensureDocumentCommitted(file);
 
     CheckUtil.checkWritable(file);
     if (!SourceTreeToPsiMap.hasTreeElement(file)) {
@@ -197,7 +201,7 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
     LOG.assertTrue(file.isValid(), "File name: " + file.getName() + " , class: " + file.getClass().getSimpleName());
 
     if (editor == null) {
-      editor = PsiUtilBase.findEditor(file);
+      editor = PsiEditorUtil.findEditor(file);
     }
 
     CaretPositionKeeper caretKeeper = null;
@@ -214,16 +218,19 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
                  ? null  // do nothing, delegate the external formatting activity to post-processor
                  : () -> {
                    final CodeFormatterFacade codeFormatter = new CodeFormatterFacade(getSettings(file), file.getLanguage());
-                   codeFormatter.setReformatContext(reformatContext);
                    codeFormatter.processText(file, ranges, true);
                  });
 
     if (caretKeeper != null) {
       caretKeeper.restoreCaretPosition();
     }
-    if (editor instanceof EditorEx && isFullReformat) {
-      //TODO<rv> Move to another place
-      //CodeStyleSettingsManager.getInstance(myProject).fireCodeStyleSettingsChanged(file);
+  }
+
+  private void ensureDocumentCommitted(@NotNull PsiFile file) {
+    final PsiDocumentManager documentManager = PsiDocumentManager.getInstance(myProject);
+    Document document = documentManager.getDocument(file);
+    if (document != null) {
+      documentManager.commitDocument(document);
     }
   }
 
@@ -510,10 +517,9 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
    * </ol>
    * </pre>
    * <p/>
-   * This method inserts that dummy comment (fallback to identifier {@code xxx}, see {@link CodeStyleManagerImpl#createDummy(PsiFile)})
+   * This method inserts that dummy comment (fallback to identifier {@code xxx}, see {@link CodeStyleManagerImpl#createMarker(PsiFile, int)})
    * if necessary.
    * <p/>
-
    * <b>Note:</b> it's expected that the whole white space region that contains given offset is processed in a way that all
    * {@link RangeMarker range markers} registered for the given offset are expanded to the whole white space region.
    * E.g. there is a possible case that particular range marker serves for defining formatting range, hence, its start/end offsets
@@ -546,18 +552,26 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
       }
     }
 
-    setSequentialProcessingAllowed(false);
-    String dummy = createDummy(file);
-    document.insertString(offset, dummy);
-    return new TextRange(offset, offset + dummy.length());
+    String marker = createMarker(file, offset);
+    document.insertString(offset, marker);
+    return new TextRange(offset, offset + marker.length());
   }
 
-  @NotNull
-  private static String createDummy(@NotNull PsiFile file) {
-    Language language = file.getLanguage();
+  private static @NotNull String createMarker(@NotNull PsiFile file, int offset) {
+    Project project = file.getProject();
+    PsiElement injectedElement = InjectedLanguageManager.getInstance(project).findInjectedElementAt(file, offset);
+    Language language = injectedElement != null ? injectedElement.getLanguage() : PsiUtilCore.getLanguageAtOffset(file, offset);
+
+    setSequentialProcessingAllowed(false);
+    NewLineIndentMarkerProvider markerProvider = NewLineIndentMarkerProvider.EP.forLanguage(language);
+    String marker = markerProvider == null ? null : markerProvider.createMarker(file, offset);
+    if (marker != null) {
+      return marker;
+    }
+
     PsiComment comment = null;
     try {
-      comment = PsiParserFacade.SERVICE.getInstance(file.getProject()).createLineOrBlockCommentFromText(language, "");
+      comment = PsiParserFacade.SERVICE.getInstance(project).createLineOrBlockCommentFromText(language, "");
     }
     catch (Throwable ignored) {
     }
@@ -732,13 +746,13 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   }
 
   private static class RangeFormatInfo{
-    private final SmartPsiElementPointer startPointer;
-    private final SmartPsiElementPointer endPointer;
-    private final boolean                fromStart;
-    private final boolean                toEnd;
+    private final SmartPsiElementPointer<?> startPointer;
+    private final SmartPsiElementPointer<?> endPointer;
+    private final boolean                   fromStart;
+    private final boolean                   toEnd;
 
-    RangeFormatInfo(@Nullable SmartPsiElementPointer startPointer,
-                    @Nullable SmartPsiElementPointer endPointer,
+    RangeFormatInfo(@Nullable SmartPsiElementPointer<?> startPointer,
+                    @Nullable SmartPsiElementPointer<?> endPointer,
                     boolean fromStart,
                     boolean toEnd)
     {
@@ -773,7 +787,7 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
       int caretOffset = getCaretOffset();
       int lineStartOffset = getLineStartOffsetByTotalOffset(caretOffset);
       int lineEndOffset = getLineEndOffsetByTotalOffset(caretOffset);
-      boolean shouldFixCaretPosition = rangeHasWhiteSpaceSymbolsOnly(myDocument.getCharsSequence(), lineStartOffset, lineEndOffset);
+      boolean shouldFixCaretPosition = CharArrayUtil.isEmptyOrSpaces(myDocument.getCharsSequence(), lineStartOffset, lineEndOffset);
 
       if (shouldFixCaretPosition) {
         initRestoreInfo(caretOffset);
@@ -846,15 +860,6 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
       myDocument.replaceString(lineToInsertStartOffset, caretLineOffset, myCaretIndentToRestore);
     }
 
-    private static boolean rangeHasWhiteSpaceSymbolsOnly(CharSequence text, int lineStartOffset, int lineEndOffset) {
-      for (int i = lineStartOffset; i < lineEndOffset; i++) {
-        char c = text.charAt(i);
-        if (c != ' ' && c != '\t' && c != '\n') {
-          return false;
-        }
-      }
-      return true;
-    }
 
     private boolean isVirtualSpaceEnabled() {
       return myEditor.getSettings().isVirtualSpace();
@@ -872,14 +877,14 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
 
     private int getCaretOffset() {
       int caretOffset = myCaretModel.getOffset();
-      caretOffset = Math.max(Math.min(caretOffset, myDocument.getTextLength() - 1), 0);
+      caretOffset = MathUtil.clamp(caretOffset, 0, myDocument.getTextLength() - 1);
       return caretOffset;
     }
 
     private boolean lineContainsWhiteSpaceSymbolsOnly(int lineNumber) {
       int startOffset = myDocument.getLineStartOffset(lineNumber);
       int endOffset = myDocument.getLineEndOffset(lineNumber);
-      return rangeHasWhiteSpaceSymbolsOnly(myDocument.getCharsSequence(), startOffset, endOffset);
+      return CharArrayUtil.isEmptyOrSpaces(myDocument.getCharsSequence(), startOffset, endOffset);
     }
 
     private int getCurrentCaretLine() {
@@ -955,5 +960,26 @@ public class CodeStyleManagerImpl extends CodeStyleManager implements Formatting
   @Override
   public void scheduleIndentAdjustment(@NotNull Document document, int offset) {
     FormatterBasedIndentAdjuster.scheduleIndentAdjustment(myProject, document, offset);
+  }
+
+  @Override
+  public void scheduleReformatWhenSettingsComputed(@NotNull PsiFile file) {
+    final Project project = file.getProject();
+    CodeStyleCachingService.getInstance(project).scheduleWhenSettingsComputed(
+      file,
+      () -> CommandProcessor.getInstance().executeCommand(
+        project,
+        () -> {
+          ApplicationManager.getApplication().runWriteAction(() -> {
+            PostprocessReformattingAspect.getInstance(project).disablePostprocessFormattingInside(
+              () -> {
+                CodeStyleManager.getInstance(project).reformat(file);
+              }
+            );
+          });
+        },
+        "reformat", null
+      )
+    );
   }
 }

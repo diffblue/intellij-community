@@ -14,7 +14,6 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.Consumer;
-import java.util.HashSet;
 import icons.JetgroovyIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -52,6 +51,7 @@ import org.jetbrains.plugins.groovy.lang.resolve.processors.SubstitutorComputer;
 
 import java.util.*;
 
+import static org.jetbrains.plugins.groovy.ext.newify.NewifyMemberContributor.NewifiedConstructor;
 import static org.jetbrains.plugins.groovy.lang.resolve.ReferencesKt.resolvePackageFqn;
 import static org.jetbrains.plugins.groovy.lang.resolve.processors.ClassHint.RESOLVE_CONTEXT;
 
@@ -416,7 +416,9 @@ public class CompleteReferenceExpression {
 
     @Override
     public boolean execute(@NotNull PsiElement element, @NotNull ResolveState state) {
-      if (element instanceof PsiMethod && ((PsiMethod)element).isConstructor()) return true;
+      if (element instanceof PsiMethod && ((PsiMethod)element).isConstructor() && !(element instanceof NewifiedConstructor)) {
+        return true;
+      }
       if (element instanceof PsiNamedElement) {
 
         PsiNamedElement namedElement = (PsiNamedElement)element;
@@ -537,15 +539,14 @@ public class CompleteReferenceExpression {
       }
     }
 
-    @NotNull
     @Override
-    public GroovyResolveResult[] getCandidates() {
+    public GroovyResolveResult @NotNull [] getCandidates() {
       if (!hasCandidates()) return GroovyResolveResult.EMPTY_ARRAY;
       final GroovyResolveResult[] results = ResolveUtil.filterSameSignatureCandidates(getCandidatesInternal());
       List<GroovyResolveResult> list = new ArrayList<>(results.length);
       myPropertyNames.removeAll(myPreferredFieldNames);
 
-      Set<String> usedFields = new java.util.HashSet<>();
+      Set<String> usedFields = new HashSet<>();
       for (GroovyResolveResult result : results) {
         final PsiElement element = result.getElement();
         if (element instanceof PsiField) {

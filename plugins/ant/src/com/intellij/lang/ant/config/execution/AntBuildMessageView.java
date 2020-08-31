@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.ant.config.execution;
 
 import com.intellij.ide.CommonActionsManager;
@@ -53,7 +53,7 @@ import java.util.Collections;
 import java.util.List;
 
 public final class AntBuildMessageView extends JPanel implements DataProvider, OccurenceNavigator {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ant.execution.AntBuildMessageView");
+  private static final Logger LOG = Logger.getInstance(AntBuildMessageView.class);
 
   public enum MessageType {
     BUILD,
@@ -64,7 +64,6 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   }
 
   private static final Key<AntBuildMessageView> KEY = Key.create("BuildMessageView.KEY");
-  private static final String BUILD_CONTENT_NAME = AntBundle.message("ant.build.tab.content.title");
 
   public static final int PRIORITY_ERR = org.apache.tools.ant.Project.MSG_ERR;
   public static final int PRIORITY_WARN = org.apache.tools.ant.Project.MSG_WARN;
@@ -272,7 +271,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
     final AntBuildMessageView messageView = new AntBuildMessageView(project, buildFile, targets, additionalProperties);
     String contentName = buildFile.getPresentableName();
-    contentName = BUILD_CONTENT_NAME + " (" + contentName + ")";
+    contentName = getBuildContentName() + " (" + contentName + ")";
 
     final Content content = ContentFactory.SERVICE.getInstance().createContent(messageView.getComponent(), contentName, true);
     content.putUserData(KEY, messageView);
@@ -413,7 +412,10 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     final AntMessage message = createErrorMessage(priority, error);
     addCommand(new AddMessageCommand(message));
     WolfTheProblemSolver wolf = WolfTheProblemSolver.getInstance(myProject);
-    wolf.queue(message.getFile());
+    VirtualFile file = message.getFile();
+    if (file != null) {
+      wolf.queue(file);
+    }
   }
 
   void outputException(String exception) {
@@ -421,7 +423,10 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     AntMessage message = createErrorMessage(PRIORITY_ERR, exception);
     addCommand(new AddExceptionCommand(message));
     WolfTheProblemSolver wolf = WolfTheProblemSolver.getInstance(myProject);
-    wolf.queue(message.getFile());
+    VirtualFile file = message.getFile();
+    if (file != null) {
+      wolf.queue(file);
+    }
   }
 
 
@@ -495,7 +500,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     updateErrorAndWarningCounters(priority);
     final AntMessage message = new AntMessage(type, priority, text, file, line, column);
     addCommand(new AddJavacMessageCommand(message, url));
-    if (type == MessageType.ERROR) {
+    if (type == MessageType.ERROR && file != null) {
       WolfTheProblemSolver wolf = WolfTheProblemSolver.getInstance(myProject);
       wolf.queue(file);
     }
@@ -522,7 +527,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     myTreeView.expandAll();
   }
 
-  private static final class CloseListener extends ContentManagerAdapter implements VetoableProjectManagerListener {
+  private static final class CloseListener implements VetoableProjectManagerListener, ContentManagerListener {
     private Content myContent;
     private boolean myCloseAllowed;
     private final ContentManager myContentManager;
@@ -967,5 +972,9 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   void setBuildCommandLine(String commandLine) {
     myPlainTextView.setBuildCommandLine(commandLine);
+  }
+
+  static String getBuildContentName() {
+    return AntBundle.message("ant.build.tab.content.title");
   }
 }

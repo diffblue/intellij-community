@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.settingsRepository
 
 import com.intellij.notification.NotificationType
@@ -11,7 +11,6 @@ import com.intellij.ui.components.DialogManager
 import com.intellij.util.text.nullize
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.settingsRepository.actions.NOTIFICATION_GROUP
-import org.jetbrains.settingsRepository.org.jetbrains.settingsRepository.IcsActionsLogger
 import java.awt.event.ActionEvent
 import javax.swing.AbstractAction
 import javax.swing.Action
@@ -93,7 +92,9 @@ private class SyncAction(private val syncType: SyncType,
       LOG.warn(e)
 
       if (!upstreamSet || e is NoRemoteRepositoryException) {
-        return listOf(createError(icsMessage("set.upstream.failed.message", e.message)))
+        val message = e.message?.let { icsMessage("set.upstream.failed.message", it) } ?:
+                      icsMessage("set.upstream.failed.message.without.details")
+        return listOf(createError(message))
       }
       else {
         return listOf(createError(e.message ?: "Internal error"))

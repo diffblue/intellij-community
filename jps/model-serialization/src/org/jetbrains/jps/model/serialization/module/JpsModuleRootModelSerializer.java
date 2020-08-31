@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2012 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.jps.model.serialization.module;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -31,7 +17,6 @@ import org.jetbrains.jps.model.library.sdk.JpsSdkType;
 import org.jetbrains.jps.model.module.*;
 import org.jetbrains.jps.model.serialization.JpsModelSerializerExtension;
 import org.jetbrains.jps.model.serialization.impl.JpsSerializationFormatException;
-import org.jetbrains.jps.model.serialization.java.JpsJavaModelSerializerExtension;
 import org.jetbrains.jps.model.serialization.library.JpsLibraryTableSerializer;
 import org.jetbrains.jps.model.serialization.library.JpsSdkTableSerializer;
 
@@ -41,10 +26,7 @@ import java.util.List;
 
 import static com.intellij.openapi.util.JDOMUtil.getChildren;
 
-/**
- * @author nik
- */
-public class JpsModuleRootModelSerializer {
+public final class JpsModuleRootModelSerializer {
   private static final Logger LOG = Logger.getInstance(JpsModuleRootModelSerializer.class);
   public static final String URL_ATTRIBUTE = "url";
   public static final String CONTENT_TAG = "content";
@@ -171,7 +153,7 @@ public class JpsModuleRootModelSerializer {
     return createSourceRoot(sourceUrl, serializer, sourceElement);
   }
 
-  @NotNull 
+  @NotNull
   private static <P extends JpsElement> JpsModuleSourceRoot createSourceRoot(@NotNull String url,
                                                                              @NotNull JpsModuleSourceRootPropertiesSerializer<P> serializer,
                                                                              @NotNull Element sourceElement) {
@@ -182,7 +164,7 @@ public class JpsModuleRootModelSerializer {
   private static JpsModuleSourceRootPropertiesSerializer<?> getSourceRootPropertiesSerializer(@NotNull Element sourceElement) {
     String typeAttribute = sourceElement.getAttributeValue(SOURCE_ROOT_TYPE_ATTRIBUTE);
     if (typeAttribute == null) {
-      typeAttribute = Boolean.parseBoolean(sourceElement.getAttributeValue(IS_TEST_SOURCE_ATTRIBUTE)) ? JAVA_TEST_ROOT_TYPE_ID : JAVA_SOURCE_ROOT_TYPE_ID;
+      typeAttribute = Boolean.parseBoolean(sourceElement.getAttributeValue(IS_TEST_SOURCE_ATTRIBUTE))? JAVA_TEST_ROOT_TYPE_ID : JAVA_SOURCE_ROOT_TYPE_ID;
     }
     for (JpsModelSerializerExtension extension : JpsModelSerializerExtension.getExtensions()) {
       for (JpsModuleSourceRootPropertiesSerializer<?> serializer : extension.getModuleSourceRootPropertiesSerializers()) {
@@ -192,7 +174,7 @@ public class JpsModuleRootModelSerializer {
       }
     }
     LOG.warn("Unknown module source root type " + typeAttribute);
-    return JpsJavaModelSerializerExtension.JAVA_SOURCE_ROOT_PROPERTIES_SERIALIZER;
+    return UnknownSourceRootPropertiesSerializer.forType(UnknownSourceRootType.getInstance(typeAttribute));
   }
 
   public static void saveRootModel(JpsModule module, Element rootModelElement) {
@@ -290,6 +272,9 @@ public class JpsModuleRootModelSerializer {
 
   @Nullable
   private static <P extends JpsElement> JpsModuleSourceRootPropertiesSerializer<P> getSerializer(JpsModuleSourceRootType<P> type) {
+    if (type instanceof UnknownSourceRootType) {
+      return (JpsModuleSourceRootPropertiesSerializer<P>)UnknownSourceRootPropertiesSerializer.forType((UnknownSourceRootType)type);
+    }
     for (JpsModelSerializerExtension extension : JpsModelSerializerExtension.getExtensions()) {
       for (JpsModuleSourceRootPropertiesSerializer<?> serializer : extension.getModuleSourceRootPropertiesSerializers()) {
         if (serializer.getType().equals(type)) {

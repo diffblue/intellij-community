@@ -1,6 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.svn;
 
 import com.intellij.ide.FrameStateListener;
@@ -11,8 +9,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.options.Configurable;
-import com.intellij.openapi.progress.ProcessCanceledException;
-import com.intellij.openapi.project.DumbAwareRunnable;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Disposer;
@@ -34,7 +30,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import com.intellij.util.Consumer;
 import com.intellij.util.ThreeState;
-import com.intellij.util.messages.MessageBus;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.messages.Topic;
 import one.util.streamex.EntryStream;
@@ -42,8 +37,8 @@ import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.idea.svn.actions.CleanupWorker;
+import org.jetbrains.idea.svn.actions.ExclusiveBackgroundVcsAction;
 import org.jetbrains.idea.svn.actions.SvnMergeProvider;
 import org.jetbrains.idea.svn.annotate.SvnAnnotationProvider;
 import org.jetbrains.idea.svn.api.*;
@@ -76,26 +71,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
+import static com.intellij.openapi.vcs.changes.ChangesUtil.getAfterPath;
+import static com.intellij.openapi.vcs.changes.ChangesUtil.getBeforePath;
 import static com.intellij.openapi.vfs.VfsUtilCore.virtualToIoFile;
 import static com.intellij.util.containers.ContainerUtil.*;
 import static com.intellij.vcsUtil.VcsUtil.getFilePath;
+import static com.intellij.vcsUtil.VcsUtil.isFileForVcs;
 import static java.util.Collections.emptyList;
 import static java.util.function.Function.identity;
 
-public class SvnVcs extends AbstractVcs {
+public final class SvnVcs extends AbstractVcs {
+  private static final Logger LOG = wrapLogger(Logger.getInstance(SvnVcs.class));
+
   private static final String DO_NOT_LISTEN_TO_WC_DB = "svn.do.not.listen.to.wc.db";
   private static final Logger REFRESH_LOG = Logger.getInstance("#svn_refresh");
   public static boolean ourListenToWcDb = !Boolean.getBoolean(DO_NOT_LISTEN_TO_WC_DB);
 
-  private static final Logger LOG = wrapLogger(Logger.getInstance("org.jetbrains.idea.svn.SvnVcs"));
   @NonNls public static final String VCS_NAME = "svn";
   public static final String VCS_DISPLAY_NAME = "Subversion";
 
   private static final VcsKey ourKey = createKey(VCS_NAME);
   public static final Topic<Runnable> WC_CONVERTED = new Topic<>("WC_CONVERTED", Runnable.class);
 
-  @NotNull private final SvnConfiguration myConfiguration;
   private final SvnEntriesFileListener myEntriesFileListener;
+  private SvnFileSystemListener myFileOperationsHandler;
 
   private CheckinEnvironment myCheckinEnvironment;
   private RollbackEnvironment myRollbackEnvironment;
@@ -114,36 +113,20 @@ public class SvnVcs extends AbstractVcs {
 
   private final SvnChangelistListener myChangeListListener;
 
-  private SvnCopiesRefreshManager myCopiesRefreshManager;
-  private SvnFileUrlMappingImpl myMapping;
-
   private Disposable myFrameStateListenerDisposable;
 
   //Consumer<Boolean>
   public static final Topic<Consumer> ROOTS_RELOADED = new Topic<>("ROOTS_RELOADED", Consumer.class);
-  private VcsListener myVcsListener;
 
   private SvnBranchPointsCalculator mySvnBranchPointsCalculator;
-
-  private final RootsToWorkingCopies myRootsToWorkingCopies;
-  private final SvnAuthenticationNotifier myAuthNotifier;
-  private final SvnLoadedBranchesStorage myLoadedBranchesStorage;
-
-  private final SvnExecutableChecker myChecker;
-
   private SvnCheckoutProvider myCheckoutProvider;
 
   @NotNull private final ClientFactory cmdClientFactory;
 
   private final boolean myLogExceptions;
 
-  public SvnVcs(@NotNull Project project, MessageBus bus, SvnConfiguration svnConfiguration, final SvnLoadedBranchesStorage storage) {
+  public SvnVcs(@NotNull Project project) {
     super(project, VCS_NAME);
-
-    myLoadedBranchesStorage = storage;
-    myRootsToWorkingCopies = new RootsToWorkingCopies(this);
-    myConfiguration = svnConfiguration;
-    myAuthNotifier = new SvnAuthenticationNotifier(this);
 
     cmdClientFactory = new CmdClientFactory(this);
 
@@ -158,26 +141,20 @@ public class SvnVcs extends AbstractVcs {
     }
     else {
       myEntriesFileListener = new SvnEntriesFileListener(project);
-      upgradeIfNeeded(bus);
-
       myChangeListListener = new SvnChangelistListener(this);
-
-      myVcsListener = () -> invokeRefreshSvnRoots();
     }
-
-    myChecker = new SvnExecutableChecker(this);
 
     Application app = ApplicationManager.getApplication();
     myLogExceptions = app != null && (app.isInternal() || app.isUnitTestMode());
   }
 
-  public void postStartup() {
+  private void postStartup() {
     if (myProject.isDefault()) return;
-    myCopiesRefreshManager = new SvnCopiesRefreshManager((SvnFileUrlMappingImpl)getSvnFileUrlMapping());
-    if (!myConfiguration.isCleanupRun()) {
+
+    if (!getSvnConfiguration().isCleanupRun()) {
       ApplicationManager.getApplication().invokeLater(() -> {
         cleanup17copies();
-        myConfiguration.setCleanupRun(true);
+        getSvnConfiguration().setCleanupRun(true);
       }, ModalityState.NON_MODAL, myProject.getDisposed());
     }
     else {
@@ -210,88 +187,50 @@ public class SvnVcs extends AbstractVcs {
       }.execute();
     };
 
-    myCopiesRefreshManager.waitRefresh(() -> ApplicationManager.getApplication().invokeLater(callCleanupWorker));
+    getSvnFileUrlMappingImpl().scheduleRefresh(() -> ApplicationManager.getApplication().invokeLater(callCleanupWorker));
   }
 
   public boolean checkCommandLineVersion() {
-    return getFactory() != cmdClientFactory || myChecker.checkExecutableAndNotifyIfNeeded();
+    return myProject.getService(SvnExecutableChecker.class).checkExecutableAndNotifyIfNeeded();
   }
 
   public void invokeRefreshSvnRoots() {
     if (REFRESH_LOG.isDebugEnabled()) {
       REFRESH_LOG.debug("refresh: ", new Throwable());
     }
-    if (myCopiesRefreshManager != null) {
-      myCopiesRefreshManager.asynchRequest();
+    getSvnFileUrlMappingImpl().scheduleRefresh();
+  }
+
+  private void setupChangeLists() {
+    ChangeListManager.getInstance(myProject).setReadOnly(LocalChangeList.getDefaultName(), true);
+
+    if (!getSvnConfiguration().changeListsSynchronized()) {
+      List<LocalChangeList> changeLists = ChangeListManager.getInstance(myProject).getChangeLists();
+      ExclusiveBackgroundVcsAction.run(myProject, () -> synchronizeToNativeChangeLists(changeLists));
+    }
+    getSvnConfiguration().upgrade();
+  }
+
+  public void synchronizeToNativeChangeLists(@NotNull List<? extends LocalChangeList> lists) {
+    for (LocalChangeList list : lists) {
+      if (list.isDefault()) continue;
+
+      for (Change change : list.getChanges()) {
+        setNativeChangeList(getBeforePath(change), list.getName());
+        setNativeChangeList(getAfterPath(change), list.getName());
+      }
     }
   }
 
-  @TestOnly
-  SvnCopiesRefreshManager getCopiesRefreshManager() {
-    return myCopiesRefreshManager;
-  }
+  private void setNativeChangeList(@Nullable FilePath path, @NotNull String changeListName) {
+    if (path == null) return;
+    if (!isFileForVcs(path, myProject, this)) return;
 
-  private void upgradeIfNeeded(final MessageBus bus) {
-    final MessageBusConnection connection = bus.connect();
-    connection.subscribe(ChangeListManagerImpl.LISTS_LOADED, lists -> {
-      if (lists.isEmpty()) return;
-      try {
-        ChangeListManager.getInstance(myProject).setReadOnly(LocalChangeList.DEFAULT_NAME, true);
-
-        if (!myConfiguration.changeListsSynchronized()) {
-          processChangeLists(lists);
-        }
-      }
-      catch (ProcessCanceledException e) {
-        //
-      }
-      finally {
-        myConfiguration.upgrade();
-      }
-
-      connection.disconnect();
-    });
-  }
-
-  public void processChangeLists(final List<? extends LocalChangeList> lists) {
-    final ProjectLevelVcsManager plVcsManager = ProjectLevelVcsManager.getInstanceChecked(myProject);
-    plVcsManager.startBackgroundVcsOperation();
     try {
-      for (LocalChangeList list : lists) {
-        if (!list.isDefault()) {
-          final Collection<Change> changes = list.getChanges();
-          for (Change change : changes) {
-            correctListForRevision(plVcsManager, change.getBeforeRevision(), list.getName());
-            correctListForRevision(plVcsManager, change.getAfterRevision(), list.getName());
-          }
-        }
-      }
+      getFactory(path.getIOFile()).createChangeListClient().add(changeListName, path.getIOFile(), null);
     }
-    finally {
-      final Application appManager = ApplicationManager.getApplication();
-      if (appManager.isDispatchThread()) {
-        appManager.executeOnPooledThread(() -> plVcsManager.stopBackgroundVcsOperation());
-      }
-      else {
-        plVcsManager.stopBackgroundVcsOperation();
-      }
-    }
-  }
-
-  private void correctListForRevision(@NotNull final ProjectLevelVcsManager plVcsManager,
-                                      @Nullable final ContentRevision revision,
-                                      @NotNull final String name) {
-    if (revision != null) {
-      final FilePath path = revision.getFile();
-      final AbstractVcs vcs = plVcsManager.getVcsFor(path);
-      if (vcs != null && VCS_NAME.equals(vcs.getName())) {
-        try {
-          getFactory(path.getIOFile()).createChangeListClient().add(name, path.getIOFile(), null);
-        }
-        catch (VcsException e) {
-          // left in default list
-        }
-      }
+    catch (VcsException e) {
+      // left in default list
     }
   }
 
@@ -299,17 +238,11 @@ public class SvnVcs extends AbstractVcs {
   public void activate() {
     MessageBusConnection busConnection = myProject.getMessageBus().connect();
     if (!myProject.isDefault()) {
-      ChangeListManager.getInstance(myProject).addChangeListListener(myChangeListListener);
-      busConnection.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, new VcsListener() {
-        @Override
-        public void directoryMappingChanged() {
-          myVcsListener.directoryMappingChanged();
-          myRootsToWorkingCopies.directoryMappingChanged();
-        }
-      });
+      busConnection.subscribe(ChangeListListener.TOPIC, myChangeListListener);
+      busConnection.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, () -> invokeRefreshSvnRoots());
     }
 
-    SvnApplicationSettings.getInstance().svnActivated();
+    myFileOperationsHandler = new SvnFileSystemListener(this);
     if (myEntriesFileListener != null) {
       VirtualFileManager.getInstance().addVirtualFileListener(myEntriesFileListener);
     }
@@ -321,15 +254,15 @@ public class SvnVcs extends AbstractVcs {
                                                                                  VcsDirtyScopeManager.getInstance(myProject)));
     }
 
-    myAuthNotifier.init();
     mySvnBranchPointsCalculator = new SvnBranchPointsCalculator(this);
 
     if (!ApplicationManager.getApplication().isHeadlessEnvironment()) {
       checkCommandLineVersion();
     }
 
-    // do one time after project loaded
-    StartupManager.getInstance(myProject).runWhenProjectIsInitialized((DumbAwareRunnable)() -> {
+    RootsToWorkingCopies.getInstance(myProject);
+    ProjectLevelVcsManager.getInstance(myProject).runAfterInitialization(() -> setupChangeLists());
+    StartupManager.getInstance(myProject).runAfterOpened(() -> {
       postStartup();
 
       // for IDEA, it takes 2 minutes - and anyway this can be done in background, no sense...
@@ -346,24 +279,11 @@ public class SvnVcs extends AbstractVcs {
       }, SvnBundle.message("refreshing.working.copies.roots.progress.text"), true, myProject);*/
     });
 
-    // not allowed to subscribe to the same topic several times, see subscribing above
-    if (myProject.isDefault()) {
-      busConnection.subscribe(ProjectLevelVcsManager.VCS_CONFIGURATION_CHANGED, myRootsToWorkingCopies);
-    }
-
-    myLoadedBranchesStorage.activate();
+    SvnLoadedBranchesStorage.getInstance(myProject).activate();
   }
 
   public static Logger wrapLogger(final Logger logger) {
     return RareLogger.wrap(logger, Boolean.getBoolean("svn.logger.fairsynch"), new SvnExceptionLogFilter());
-  }
-
-  public RootsToWorkingCopies getRootsToWorkingCopies() {
-    return myRootsToWorkingCopies;
-  }
-
-  public SvnAuthenticationNotifier getAuthNotifier() {
-    return myAuthNotifier;
   }
 
   @Override
@@ -377,21 +297,19 @@ public class SvnVcs extends AbstractVcs {
     if (myEntriesFileListener != null) {
       VirtualFileManager.getInstance().removeVirtualFileListener(myEntriesFileListener);
     }
-    SvnApplicationSettings.getInstance().svnDeactivated();
+    if (myFileOperationsHandler != null) {
+      Disposer.dispose(myFileOperationsHandler);
+      myFileOperationsHandler = null;
+    }
     if (myCommittedChangesProvider != null) {
       myCommittedChangesProvider.deactivate();
     }
-    if (myChangeListListener != null && !myProject.isDefault()) {
-      ChangeListManager.getInstance(myProject).removeChangeListListener(myChangeListListener);
-    }
-    myRootsToWorkingCopies.clear();
-
-    myAuthNotifier.stop();
-    myAuthNotifier.clear();
+    RootsToWorkingCopies.getInstance(myProject).clear();
+    SvnAuthenticationNotifier.getInstance(myProject).clear();
 
     mySvnBranchPointsCalculator.deactivate();
     mySvnBranchPointsCalculator = null;
-    myLoadedBranchesStorage.deactivate();
+    SvnLoadedBranchesStorage.getInstance(myProject).deactivate();
   }
 
   public VcsShowConfirmationOption getAddConfirmation() {
@@ -458,7 +376,7 @@ public class SvnVcs extends AbstractVcs {
 
   @NotNull
   public SvnConfiguration getSvnConfiguration() {
-    return myConfiguration;
+    return SvnConfiguration.getInstance(myProject);
   }
 
   public static SvnVcs getInstance(@NotNull Project project) {
@@ -627,7 +545,7 @@ public class SvnVcs extends AbstractVcs {
   public boolean isWcRoot(@NotNull FilePath filePath) {
     boolean isWcRoot = false;
     VirtualFile file = filePath.getVirtualFile();
-    WorkingCopy wcRoot = file != null ? myRootsToWorkingCopies.getWcRoot(file) : null;
+    WorkingCopy wcRoot = file != null ? RootsToWorkingCopies.getInstance(myProject).getWcRoot(file) : null;
     if (wcRoot != null) {
       isWcRoot = wcRoot.getFile().getAbsolutePath().equals(filePath.getPath());
     }
@@ -673,10 +591,12 @@ public class SvnVcs extends AbstractVcs {
 
   @NotNull
   public SvnFileUrlMapping getSvnFileUrlMapping() {
-    if (myMapping == null) {
-      myMapping = SvnFileUrlMappingImpl.getInstance(myProject);
-    }
-    return myMapping;
+    return myProject.getService(SvnFileUrlMapping.class);
+  }
+
+  @NotNull
+  SvnFileUrlMappingImpl getSvnFileUrlMappingImpl() {
+    return ((SvnFileUrlMappingImpl)getSvnFileUrlMapping());
   }
 
   /**
@@ -842,7 +762,9 @@ public class SvnVcs extends AbstractVcs {
   public boolean isVcsBackgroundOperationsAllowed(@NotNull VirtualFile root) {
     ClientFactory factory = getFactory(virtualToIoFile(root));
 
-    return ThreeState.YES.equals(myAuthNotifier.isAuthenticatedFor(root, factory == cmdClientFactory ? factory : null));
+    ThreeState authResult =
+      SvnAuthenticationNotifier.getInstance(myProject).isAuthenticatedFor(root, factory == cmdClientFactory ? factory : null);
+    return ThreeState.YES.equals(authResult);
   }
 
   public SvnBranchPointsCalculator getSvnBranchPointsCalculator() {

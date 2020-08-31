@@ -1,35 +1,13 @@
-/*
- * Copyright 2000-2014 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source.xml;
 
 import com.intellij.lang.ASTFactory;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.pom.PomManager;
-import com.intellij.pom.PomModel;
-import com.intellij.pom.event.PomModelEvent;
-import com.intellij.pom.impl.PomTransactionBase;
-import com.intellij.pom.xml.XmlAspect;
-import com.intellij.pom.xml.events.XmlChange;
-import com.intellij.pom.xml.impl.XmlAspectChangeSetImpl;
-import com.intellij.pom.xml.impl.events.XmlTagChildAddImpl;
-import com.intellij.pom.xml.impl.events.XmlTextChangedImpl;
 import com.intellij.psi.*;
 import com.intellij.psi.html.HtmlTag;
+import com.intellij.psi.impl.DebugUtil;
 import com.intellij.psi.impl.source.DummyHolderFactory;
 import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.psi.impl.source.codeStyle.CodeEditUtil;
@@ -42,16 +20,16 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.xml.*;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.xml.util.HtmlUtil;
 import com.intellij.xml.util.XmlUtil;
-import gnu.trove.TIntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 
 public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageInjectionHost {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.xml.XmlTextImpl");
+  private static final Logger LOG = Logger.getInstance(XmlTextImpl.class);
   private volatile String myDisplayText;
   private volatile int[] myGapDisplayStarts;
   private volatile int[] myGapPhysicalStarts;
@@ -87,8 +65,8 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
     if (displayText != null) return displayText;
     StringBuilder buffer = new StringBuilder();
     ASTNode child = getFirstChildNode();
-    final TIntArrayList gapsStarts = new TIntArrayList();
-    final TIntArrayList gapsShifts = new TIntArrayList();
+    final IntList gapsStarts = new IntArrayList();
+    final IntList gapsShifts = new IntArrayList();
     while (child != null) {
       final int start = buffer.length();
       IElementType elementType = child.getElementType();
@@ -98,7 +76,6 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
       }
       else if (elementType == XmlTokenType.XML_CHAR_ENTITY_REF) {
         String text = child.getText();
-        LOG.assertTrue(text != null, child);
         buffer.append(XmlUtil.getCharFromEntityRef(text));
       }
       else if (elementType == XmlTokenType.XML_WHITE_SPACE ||
@@ -127,8 +104,8 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
     int[] gapPhysicalStarts = ArrayUtil.newIntArray(gapsShifts.size());
     int currentGapsSum = 0;
     for (int i = 0; i < gapDisplayStarts.length; i++) {
-      currentGapsSum += gapsShifts.get(i);
-      gapDisplayStarts[i] = gapsStarts.get(i);
+      currentGapsSum += gapsShifts.getInt(i);
+      gapDisplayStarts[i] = gapsStarts.getInt(i);
       gapPhysicalStarts[i] = gapDisplayStarts[i] + currentGapsSum;
     }
     myGapDisplayStarts = gapDisplayStarts;
@@ -183,22 +160,13 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
   }
 
   public void doSetValue(final String s, final XmlPsiPolicy policy) throws IncorrectOperationException {
-    final PomModel model = PomManager.getModel(getProject());
-    final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
-    model.runTransaction(new PomTransactionBase(this, aspect) {
-      @Override
-      public PomModelEvent runInner() {
-        final String oldText = getText();
-        final ASTNode firstEncodedElement = policy.encodeXmlTextContents(s, XmlTextImpl.this);
-        if (firstEncodedElement == null) {
-          delete();
-        } else {
-          replaceAllChildrenToChildrenOf(firstEncodedElement.getTreeParent());
-        }
-        clearCaches();
-        return XmlTextChangedImpl.createXmlTextChanged(model, XmlTextImpl.this, oldText);
-      }
-    });
+    final ASTNode firstEncodedElement = policy.encodeXmlTextContents(s, this);
+    if (firstEncodedElement == null) {
+      delete();
+    } else {
+      replaceAllChildrenToChildrenOf(firstEncodedElement.getTreeParent());
+    }
+    clearCaches();
   }
 
   @Override
@@ -207,25 +175,16 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
       insertText(((XmlText)element).getValue(), displayOffset);
     }
     else {
-      final PomModel model = PomManager.getModel(getProject());
-      final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
-      model.runTransaction(new PomTransactionBase(getParent(), aspect) {
-        @Override
-        public PomModelEvent runInner() throws IncorrectOperationException {
-          final XmlTag tag = getParentTag();
-          assert tag != null;
+      final XmlTag tag = getParentTag();
+      assert tag != null;
 
-          final XmlText rightPart = _splitText(displayOffset);
-          PsiElement result;
-          if (rightPart != null) {
-            result = tag.addBefore(element, rightPart);
-          }
-          else {
-            result = tag.addAfter(element, XmlTextImpl.this);
-          }
-          return createEvent(new XmlTagChildAddImpl(tag, (XmlTagChild)result));
-        }
-      });
+      final XmlText rightPart = _splitText(displayOffset);
+      if (rightPart != null) {
+        tag.addBefore(element, rightPart);
+      }
+      else {
+        tag.addAfter(element, this);
+      }
     }
 
     return this;
@@ -250,28 +209,18 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
       final String oldElementText = psiElement.getText();
       final String newElementText = oldElementText.substring(0, insertOffset) + text + oldElementText.substring(insertOffset);
 
-      final PomModel model = PomManager.getModel(getProject());
-      final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
-      model.runTransaction(new PomTransactionBase(this, aspect) {
-        @Override
-        public PomModelEvent runInner() {
-          final String oldText = getText();
+      final ASTNode e =
+        getPolicy().encodeXmlTextContents(newElementText, this);
 
-          final ASTNode e =
-            getPolicy().encodeXmlTextContents(newElementText, XmlTextImpl.this);
+      final ASTNode node = psiElement.getNode();
+      final ASTNode treeNext = node.getTreeNext();
 
-          final ASTNode node = psiElement.getNode();
-          final ASTNode treeNext = node.getTreeNext();
+      addChildren(e, null, treeNext);
 
-          addChildren(e, null, treeNext);
-
-          deleteChildInternal(node);
+      deleteChildInternal(node);
 
 
-          clearCaches();
-          return XmlTextChangedImpl.createXmlTextChanged(model, XmlTextImpl.this, oldText);
-        }
-      });
+      clearCaches();
     }
     else {
       setValue(new StringBuffer(getValue()).insert(displayOffset, text).toString());
@@ -302,27 +251,16 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
           final String oldElementText = psiElement.getText();
           final String newElementText = oldElementText.substring(0, removeStart) + oldElementText.substring(removeEnd);
 
-          final PomModel model = PomManager.getModel(getProject());
-          final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
-          model.runTransaction(new PomTransactionBase(this, aspect) {
-            @Override
-            public PomModelEvent runInner() throws IncorrectOperationException {
-              final String oldText = getText();
+          if (!newElementText.isEmpty()) {
+            final ASTNode e =
+              getPolicy().encodeXmlTextContents(newElementText, this);
+            replaceChild(psiElement.getNode(), e);
+          }
+          else {
+            psiElement.delete();
+          }
 
-              if (!newElementText.isEmpty()) {
-                final ASTNode e =
-                  getPolicy().encodeXmlTextContents(newElementText, XmlTextImpl.this);
-                replaceChild(psiElement.getNode(), e);
-              }
-              else {
-                psiElement.delete();
-              }
-
-              clearCaches();
-              return XmlTextChangedImpl.createXmlTextChanged(model, XmlTextImpl.this, oldText);
-            }
-          });
-
+          clearCaches();
           return;
         }
       }
@@ -428,112 +366,75 @@ public class XmlTextImpl extends XmlElementImpl implements XmlText, PsiLanguageI
       return null;
     }
 
-    final PomModel model = PomManager.getModel(xmlTag.getProject());
-    final XmlAspect aspect = model.getModelAspect(XmlAspect.class);
+    XmlTextImpl result;
 
-    class MyTransaction extends PomTransactionBase {
-      private XmlTextImpl myRight;
+    final int physicalOffset = displayToPhysical(displayOffset);
+    PsiElement childElement = findElementAt(physicalOffset);
 
-      MyTransaction() {
-        super(xmlTag, aspect);
+    if (childElement != null && childElement.getNode().getElementType() == XmlTokenType.XML_DATA_CHARACTERS) {
+      FileElement holder = DummyHolderFactory.createHolder(getManager(), null).getTreeElement();
+
+      int splitOffset = physicalOffset - childElement.getStartOffsetInParent();
+      result = (XmlTextImpl)ASTFactory.composite(XmlElementType.XML_TEXT);
+      CodeEditUtil.setNodeGenerated(result, true);
+      holder.rawAddChildren(result);
+
+      PsiElement e = childElement;
+      while (e != null) {
+        CodeEditUtil.setNodeGenerated(e.getNode(), true);
+        e = e.getNextSibling();
       }
 
-      @Override
-      @Nullable
-      public PomModelEvent runInner() throws IncorrectOperationException {
-        final String oldText = getValue();
-        final int physicalOffset = displayToPhysical(displayOffset);
-        PsiElement childElement = findElementAt(physicalOffset);
-
-        if (childElement != null && childElement.getNode().getElementType() == XmlTokenType.XML_DATA_CHARACTERS) {
-          FileElement holder = DummyHolderFactory.createHolder(getManager(), null).getTreeElement();
-
-          int splitOffset = physicalOffset - childElement.getStartOffsetInParent();
-          myRight = (XmlTextImpl)ASTFactory.composite(XmlElementType.XML_TEXT);
-          CodeEditUtil.setNodeGenerated(myRight, true);
-          holder.rawAddChildren(myRight);
-
-          PsiElement e = childElement;
-          while (e != null) {
-            CodeEditUtil.setNodeGenerated(e.getNode(), true);
-            e = e.getNextSibling();
-          }
-
-          String leftText = childElement.getText().substring(0, splitOffset);
-          String rightText = childElement.getText().substring(splitOffset);
+      String leftText = childElement.getText().substring(0, splitOffset);
+      String rightText = childElement.getText().substring(splitOffset);
 
 
-          LeafElement rightElement =
-            ASTFactory.leaf(XmlTokenType.XML_DATA_CHARACTERS, holder.getCharTable().intern(rightText));
-          CodeEditUtil.setNodeGenerated(rightElement, true);
+      LeafElement rightElement =
+        ASTFactory.leaf(XmlTokenType.XML_DATA_CHARACTERS, holder.getCharTable().intern(rightText));
+      CodeEditUtil.setNodeGenerated(rightElement, true);
 
-          LeafElement leftElement = ASTFactory.leaf(XmlTokenType.XML_DATA_CHARACTERS, holder.getCharTable().intern(leftText));
-          CodeEditUtil.setNodeGenerated(leftElement, true);
+      LeafElement leftElement = ASTFactory.leaf(XmlTokenType.XML_DATA_CHARACTERS, holder.getCharTable().intern(leftText));
+      CodeEditUtil.setNodeGenerated(leftElement, true);
 
-          rawInsertAfterMe(myRight);
+      rawInsertAfterMe(result);
 
-          myRight.rawAddChildren(rightElement);
-          if (childElement.getNextSibling() != null) {
-            myRight.rawAddChildren((TreeElement)childElement.getNextSibling());
-          }
-          ((TreeElement)childElement).rawRemove();
-          XmlTextImpl.this.rawAddChildren(leftElement);
-        }
-        else {
-          final PsiFile containingFile = xmlTag.getContainingFile();
-          final FileElement holder = DummyHolderFactory
-            .createHolder(containingFile.getManager(), null, ((PsiFileImpl)containingFile).getTreeElement().getCharTable()).getTreeElement();
-          final XmlTextImpl rightText = (XmlTextImpl)ASTFactory.composite(XmlElementType.XML_TEXT);
-          CodeEditUtil.setNodeGenerated(rightText, true);
-
-          holder.rawAddChildren(rightText);
-
-          ((ASTNode)xmlTag).addChild(rightText, getTreeNext());
-
-          final String value = getValue();
-
-          setValue(value.substring(0, displayOffset));
-          rightText.setValue(value.substring(displayOffset));
-
-          CodeEditUtil.setNodeGenerated(rightText, true);
-
-          myRight = rightText;
-        }
-
-        clearCaches();
-        myRight.clearCaches();
-        return createEvent(new XmlTextChangedImpl(XmlTextImpl.this, oldText), new XmlTagChildAddImpl(xmlTag, myRight));
+      result.rawAddChildren(rightElement);
+      if (childElement.getNextSibling() != null) {
+        result.rawAddChildren((TreeElement)childElement.getNextSibling());
       }
-
-      public XmlText getResult() {
-        return myRight;
-      }
+      DebugUtil.performPsiModification("xmlText split",  () -> ((TreeElement)childElement).rawRemove());
+      this.rawAddChildren(leftElement);
     }
-    final MyTransaction transaction = new MyTransaction();
-    model.runTransaction(transaction);
+    else {
+      final PsiFile containingFile = xmlTag.getContainingFile();
+      final FileElement holder = DummyHolderFactory
+        .createHolder(containingFile.getManager(), null, ((PsiFileImpl)containingFile).getTreeElement().getCharTable()).getTreeElement();
+      final XmlTextImpl rightText = (XmlTextImpl)ASTFactory.composite(XmlElementType.XML_TEXT);
+      CodeEditUtil.setNodeGenerated(rightText, true);
 
-    return transaction.getResult();
-  }
+      holder.rawAddChildren(rightText);
 
-  private PomModelEvent createEvent(final XmlChange...events) {
-    final PomModelEvent event = new PomModelEvent(PomManager.getModel(getProject()));
+      ((ASTNode)xmlTag).addChild(rightText, getTreeNext());
 
-    final XmlAspectChangeSetImpl xmlAspectChangeSet = new XmlAspectChangeSetImpl(PomManager.getModel(getProject()), (XmlFile)getContainingFile());
+      final String value = getValue();
 
-    for (XmlChange xmlChange : events) {
-      xmlAspectChangeSet.add(xmlChange);
+      setValue(value.substring(0, displayOffset));
+      rightText.setValue(value.substring(displayOffset));
+
+      CodeEditUtil.setNodeGenerated(rightText, true);
+
+      result = rightText;
     }
 
-    event.registerChangeSet(PomManager.getModel(getProject()).getModelAspect(XmlAspect.class), xmlAspectChangeSet);
-
-    return event;
+    clearCaches();
+    result.clearCaches();
+    return result;
   }
 
   @Override
   @NotNull
   public LiteralTextEscaper<XmlTextImpl> createLiteralTextEscaper() {
-    XmlTag tag = getParentTag();
-    return tag instanceof HtmlTag && HtmlUtil.isScriptTag(tag) ?
+    return getParentTag() instanceof HtmlTag ?
            LiteralTextEscaper.createSimple(this) :
            new XmlTextLiteralEscaper(this);
   }

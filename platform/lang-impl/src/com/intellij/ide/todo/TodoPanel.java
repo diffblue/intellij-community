@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.todo;
 
 import com.intellij.find.FindModel;
@@ -16,10 +16,10 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.RangeMarker;
-import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.openapi.ui.Splitter;
@@ -39,7 +39,7 @@ import com.intellij.usageView.UsageInfo;
 import com.intellij.usages.impl.UsagePreviewPanel;
 import com.intellij.util.Alarm;
 import com.intellij.util.EditSourceOnDoubleClickHandler;
-import com.intellij.util.OpenSourceUtil;
+import com.intellij.util.EditSourceOnEnterKeyHandler;
 import com.intellij.util.PlatformIcons;
 import com.intellij.util.ui.tree.TreeModelAdapter;
 import com.intellij.util.ui.tree.TreeUtil;
@@ -54,14 +54,12 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavigator, DataProvider, Disposable {
+public abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavigator, DataProvider, Disposable {
   protected static final Logger LOG = Logger.getInstance(TodoPanel.class);
 
   protected Project myProject;
@@ -70,7 +68,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
   private final Content myContent;
 
   private final Tree myTree;
-  private final MyTreeExpander myTreeExpander;
+  private final TreeExpander myTreeExpander;
   private final MyOccurenceNavigator myOccurenceNavigator;
   protected final TodoTreeBuilder myTodoTreeBuilder;
   private MyVisibilityWatcher myVisibilityWatcher;
@@ -93,7 +91,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
 
     DefaultTreeModel model = new DefaultTreeModel(new DefaultMutableTreeNode());
     myTree = new Tree(model);
-    myTreeExpander = new MyTreeExpander();
+    myTreeExpander = new DefaultTreeExpander(myTree);
     myOccurenceNavigator = new MyOccurenceNavigator();
     initUI();
     myTodoTreeBuilder = setupTreeStructure();
@@ -108,8 +106,9 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
 
   private TodoTreeBuilder setupTreeStructure() {
     TodoTreeBuilder todoTreeBuilder = createTreeBuilder(myTree, myProject);
+    Disposer.register(this, todoTreeBuilder);
     TodoTreeStructure structure = todoTreeBuilder.getTodoTreeStructure();
-    StructureTreeModel structureTreeModel = new StructureTreeModel<>(structure, TodoTreeBuilder.NODE_DESCRIPTOR_COMPARATOR, myProject);
+    StructureTreeModel<TodoTreeStructure> structureTreeModel = new StructureTreeModel<>(structure, TodoTreeBuilder.NODE_DESCRIPTOR_COMPARATOR, myProject);
     AsyncTreeModel asyncTreeModel = new AsyncTreeModel(structureTreeModel, myProject);
     myTree.setModel(asyncTreeModel);
     asyncTreeModel.addTreeModelListener(new MyExpandListener(todoTreeBuilder));
@@ -121,19 +120,17 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
     return todoTreeBuilder;
   }
 
-    public static class GroupByActionGroup extends DefaultActionGroup {
-    {
-      getTemplatePresentation().setIcon(AllIcons.Actions.GroupBy);
-      getTemplatePresentation().setText(IdeBundle.message("group.group.by"));
-      setPopup(true);
-    }
-
+  public static class GroupByActionGroup extends DefaultActionGroup {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
         JBPopupFactory.getInstance()
           .createActionGroupPopup(null, this, e.getDataContext(), JBPopupFactory.ActionSelectionAid.SPEEDSEARCH, true)
           .showUnderneathOf(e.getInputEvent().getComponent());
       }
+  }
+
+  protected Tree getTree() {
+    return myTree;
   }
 
   private class MyExpandListener extends TreeModelAdapter {
@@ -170,6 +167,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
     myTree.setRowHeight(0); // enable variable-height rows
     myTree.setCellRenderer(new TodoCompositeRenderer());
     EditSourceOnDoubleClickHandler.install(myTree);
+    EditSourceOnEnterKeyHandler.install(myTree);
     new TreeSpeedSearch(myTree);
 
     DefaultActionGroup group = new DefaultActionGroup();
@@ -180,26 +178,6 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
     group.addSeparator();
     group.add(ActionManager.getInstance().getAction(IdeActions.GROUP_VERSION_CONTROLS));
     PopupHandler.installPopupHandler(myTree, group, ActionPlaces.TODO_VIEW_POPUP, ActionManager.getInstance());
-
-    myTree.addKeyListener(
-      new KeyAdapter() {
-        @Override
-        public void keyPressed(KeyEvent e) {
-          if (!e.isConsumed() && KeyEvent.VK_ENTER == e.getKeyCode()) {
-            TreePath path = myTree.getSelectionPath();
-            if (path == null) {
-              return;
-            }
-            final Object userObject = ((DefaultMutableTreeNode)path.getLastPathComponent()).getUserObject();
-            if (!((userObject instanceof NodeDescriptor ? (NodeDescriptor)userObject : null) instanceof TodoItemNode)) {
-              return;
-            }
-            OpenSourceUtil.openSourcesFrom(DataManager.getInstance().getDataContext(TodoPanel.this), false);
-          }
-        }
-      }
-    );
-
 
     myUsagePreviewPanel = new UsagePreviewPanel(myProject, FindInProjectUtil.setupViewPresentation(false, new FindModel()));
     Disposer.register(this, myUsagePreviewPanel);
@@ -414,7 +392,6 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
       }
     }
     else if (PlatformDataKeys.HELP_ID.is(dataId)) {
-      //noinspection HardCodedStringLiteral
       return "find.todoList";
     }
     else if (TODO_PANEL_DATA_KEY.is(dataId)) {
@@ -460,47 +437,20 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
   protected void rebuildWithAlarm(final Alarm alarm) {
     alarm.cancelAllRequests();
     alarm.addRequest(() -> {
-      final Set<VirtualFile> files = new HashSet<>();
-      DumbService.getInstance(myProject).runReadActionInSmartMode(() -> {
+      ReadAction.nonBlocking(() -> {
+        final Set<VirtualFile> files = new HashSet<>();
         if (myTodoTreeBuilder.isDisposed()) return;
         myTodoTreeBuilder.collectFiles(virtualFile -> {
           files.add(virtualFile);
           return true;
         });
-        final Runnable runnable = () -> {
+        ApplicationManager.getApplication().invokeLater(() -> {
           if (myTodoTreeBuilder.isDisposed()) return;
           myTodoTreeBuilder.rebuildCache(files);
           updateTree();
-        };
-        ApplicationManager.getApplication().invokeLater(runnable);
-      });
+        });
+      }).executeSynchronously();
     }, 300);
-  }
-
-  TreeExpander getTreeExpander() {
-    return myTreeExpander;
-  }
-  
-  private final class MyTreeExpander implements TreeExpander {
-    @Override
-    public boolean canCollapse() {
-      return true;
-    }
-
-    @Override
-    public boolean canExpand() {
-      return true;
-    }
-
-    @Override
-    public void collapseAll() {
-      TreeUtil.collapseAll(myTree, 0);
-    }
-
-    @Override
-    public void expandAll() {
-      TreeUtil.expandAll(myTree);
-    }
   }
 
   /**
@@ -648,7 +598,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
 
   public static final class MyShowPackagesAction extends ToggleAction {
     public MyShowPackagesAction() {
-      super(IdeBundle.message("action.group.by.packages"), null, PlatformIcons.GROUP_BY_PACKAGES);
+      super(IdeBundle.messagePointer("action.group.by.packages"), PlatformIcons.GROUP_BY_PACKAGES);
     }
 
     @Override
@@ -675,7 +625,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
 
   public static final class MyShowModulesAction extends ToggleAction {
     public MyShowModulesAction() {
-      super(IdeBundle.message("action.group.by.modules"), null, AllIcons.Actions.GroupByModule);
+      super(IdeBundle.messagePointer("action.group.by.modules"), AllIcons.Actions.GroupByModule);
     }
 
     @Override
@@ -703,7 +653,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
 
   public static final class MyFlattenPackagesAction extends ToggleAction {
     public MyFlattenPackagesAction() {
-      super(IdeBundle.message("action.flatten.view"), null, PlatformIcons.FLATTEN_PACKAGES_ICON);
+      super(IdeBundle.messagePointer("action.flatten.view"), PlatformIcons.FLATTEN_PACKAGES_ICON);
     }
 
     @Override
@@ -743,7 +693,7 @@ abstract class TodoPanel extends SimpleToolWindowPanel implements OccurenceNavig
   private final class MyPreviewAction extends ToggleAction {
 
     MyPreviewAction() {
-      super("Preview Source", null, AllIcons.Actions.PreviewDetails);
+      super(IdeBundle.messagePointer("todo.panel.preview.source.action.text"), Presentation.NULL_STRING, AllIcons.Actions.PreviewDetails);
     }
 
     @Override

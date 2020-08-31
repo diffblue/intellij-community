@@ -24,6 +24,7 @@ import com.jetbrains.python.PyTokenTypes;
 import com.jetbrains.python.highlighting.PyHighlighter;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.impl.PyBuiltinCache;
+import org.jetbrains.annotations.NotNull;
 
 import static com.jetbrains.python.psi.PyUtil.as;
 
@@ -82,6 +83,7 @@ public class HighlightingAnnotator extends PyAnnotator {
 
   @Override
   public void visitPyCallExpression(PyCallExpression node) {
+    if (node.getParent() instanceof PyDecorator) return; //if it's in decorator, then we've already highlighted it as a decorator
     final PyReferenceExpression callee = as(node.getCallee(), PyReferenceExpression.class);
     if (callee != null) {
       if (!callee.isQualified() && PyBuiltinCache.isInBuiltins(callee)) {
@@ -104,7 +106,7 @@ public class HighlightingAnnotator extends PyAnnotator {
   }
 
   @Override
-  public void visitElement(PsiElement element) {
+  public void visitElement(@NotNull PsiElement element) {
     // Highlight None, True and False as keywords once again inside annotations after PyHighlighter
     // to keep their original color
     if (PyTokenTypes.EXPRESSION_KEYWORDS.contains(element.getNode().getElementType()) &&

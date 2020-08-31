@@ -72,12 +72,13 @@ public interface ShTypes {
   IElementType PARENTHESES_CONDITION = new ShCompositeElementType("PARENTHESES_CONDITION");
   IElementType PARENTHESES_EXPRESSION = new ShCompositeElementType("PARENTHESES_EXPRESSION");
   IElementType PATTERN = new ShCompositeElementType("PATTERN");
-  IElementType PIPELINE = new ShCompositeElementType("PIPELINE");
   IElementType PIPELINE_COMMAND = new ShCompositeElementType("PIPELINE_COMMAND");
   IElementType POST_EXPRESSION = new ShCompositeElementType("POST_EXPRESSION");
   IElementType PRE_EXPRESSION = new ShCompositeElementType("PRE_EXPRESSION");
   IElementType PROCESS_SUBSTITUTION = new ShCompositeElementType("PROCESS_SUBSTITUTION");
   IElementType REDIRECTION = new ShCompositeElementType("REDIRECTION");
+  IElementType REGEX_CONDITION = new ShCompositeElementType("REGEX_CONDITION");
+  IElementType REGEX_PATTERN = new ShCompositeElementType("REGEX_PATTERN");
   IElementType SELECT_COMMAND = new ShCompositeElementType("SELECT_COMMAND");
   IElementType SHELL_COMMAND = new ShCompositeElementType("SHELL_COMMAND");
   IElementType SHELL_PARAMETER_EXPANSION = new ShCompositeElementType("SHELL_PARAMETER_EXPANSION");
@@ -160,7 +161,7 @@ public interface ShTypes {
   IElementType OPEN_QUOTE = new ShTokenType("OPEN_QUOTE");
   IElementType OR_OR = new ShTokenType("||");
   IElementType OUTPUT_PROCESS_SUBSTITUTION = new ShTokenType(">(");
-  IElementType PARAMETER_EXPANSION_BODY = new ShTokenType("parameter_expansion_body");
+  IElementType PARAM_SEPARATOR = new ShTokenType("param_separator");
   IElementType PIPE = new ShTokenType("|");
   IElementType PIPE_AMP = new ShTokenType("|&");
   IElementType PLUS = new ShTokenType("+");
@@ -374,9 +375,6 @@ public interface ShTypes {
       else if (type == PATTERN) {
         return new ShPatternImpl(node);
       }
-      else if (type == PIPELINE) {
-        return new ShPipelineImpl(node);
-      }
       else if (type == PIPELINE_COMMAND) {
         return new ShPipelineCommandImpl(node);
       }
@@ -391,6 +389,12 @@ public interface ShTypes {
       }
       else if (type == REDIRECTION) {
         return new ShRedirectionImpl(node);
+      }
+      else if (type == REGEX_CONDITION) {
+        return new ShRegexConditionImpl(node);
+      }
+      else if (type == REGEX_PATTERN) {
+        return new ShRegexPatternImpl(node);
       }
       else if (type == SELECT_COMMAND) {
         return new ShSelectCommandImpl(node);

@@ -1,25 +1,11 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.packageDependencies;
 
-import com.intellij.analysis.AnalysisScopeBundle;
-import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.util.ProgressIndicatorUtils;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -28,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class FindDependencyUtil {
+public final class FindDependencyUtil {
   private FindDependencyUtil() {}
 
   public static UsageInfo[] findDependencies(@Nullable final List<? extends DependenciesBuilder> builders, Set<? extends PsiFile> searchIn, Set<? extends PsiFile> searchFor) {
@@ -37,7 +23,7 @@ public class FindDependencyUtil {
     int totalCount = searchIn.size();
     int count = 0;
 
-    nextFile: for (final PsiFile psiFile : searchIn) {
+    for (final PsiFile psiFile : searchIn) {
       count = updateIndicator(indicator, totalCount, count, psiFile);
 
       if (!psiFile.isValid()) continue;
@@ -53,7 +39,7 @@ public class FindDependencyUtil {
         }
         precomputedDeps = new HashSet<>(depsByFile);
         precomputedDeps.retainAll(searchFor);
-        if (precomputedDeps.isEmpty()) continue nextFile;
+        if (precomputedDeps.isEmpty()) continue;
       }
       else {
         precomputedDeps = Collections.unmodifiableSet(searchFor);
@@ -94,30 +80,27 @@ public class FindDependencyUtil {
   }
 
   private static void analyzeFileDependencies(PsiFile psiFile, final Set<? extends PsiFile> searchFor, final List<? super UsageInfo> result) {
-    DependenciesBuilder.analyzeFileDependencies(psiFile, new DependenciesBuilder.DependencyProcessor() {
-      @Override
-      public void process(PsiElement place, PsiElement dependency) {
-        PsiFile dependencyFile = dependency.getContainingFile();
-        if (dependencyFile != null) {
-          final PsiElement navigationElement = dependencyFile.getNavigationElement();
-          if (navigationElement instanceof PsiFile) {
-            dependencyFile = (PsiFile)navigationElement;
-          }
+    DependenciesBuilder.analyzeFileDependencies(psiFile, (place, dependency) -> {
+      PsiFile dependencyFile = dependency.getContainingFile();
+      if (dependencyFile != null) {
+        final PsiElement navigationElement = dependencyFile.getNavigationElement();
+        if (navigationElement instanceof PsiFile) {
+          dependencyFile = (PsiFile)navigationElement;
         }
-        if (searchFor.contains(dependencyFile)) {
-          result.add(new UsageInfo(place));
-        }
+      }
+      if (searchFor.contains(dependencyFile)) {
+        result.add(new UsageInfo(place));
       }
     });
   }
 
   private static int updateIndicator(final ProgressIndicator indicator, final int totalCount, int count, final PsiFile psiFile) {
     if (indicator != null) {
-      if (indicator.isCanceled()) throw new ProcessCanceledException();
+      ProgressIndicatorUtils.checkCancelledEvenWithPCEDisabled(indicator);
       indicator.setFraction(((double)++count) / totalCount);
       final VirtualFile virtualFile = psiFile.getVirtualFile();
       if (virtualFile != null) {
-        indicator.setText(AnalysisScopeBundle.message("find.dependencies.progress.text", virtualFile.getPresentableUrl()));
+        indicator.setText(CodeInsightBundle.message("find.dependencies.progress.text", virtualFile.getPresentableUrl()));
       }
     }
     return count;

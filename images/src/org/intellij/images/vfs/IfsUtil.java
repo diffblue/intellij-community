@@ -11,8 +11,6 @@ import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.reference.SoftReference;
 import com.intellij.ui.scale.ScaleContext;
-import com.intellij.util.LogicalRoot;
-import com.intellij.util.LogicalRootsManager;
 import com.intellij.util.SVGLoader;
 import org.apache.commons.imaging.ImageReadException;
 import org.apache.commons.imaging.common.bytesource.ByteSourceArray;
@@ -59,7 +57,7 @@ public final class IfsUtil {
    *
    * @param file File
    * @return true if file image is loaded.
-   * @throws java.io.IOException if image can not be loaded
+   * @throws IOException if image can not be loaded
    */
   private static boolean refresh(@NotNull VirtualFile file) throws IOException {
     Long loadedTimeStamp = file.getUserData(TIMESTAMP_KEY);
@@ -179,11 +177,6 @@ public final class IfsUtil {
   }
 
   public static String getReferencePath(Project project, VirtualFile file) {
-    final LogicalRoot logicalRoot = LogicalRootsManager.getLogicalRootsManager(project).findLogicalRoot(file);
-    if (logicalRoot != null) {
-      return getRelativePath(file, logicalRoot.getVirtualFile());
-    }
-
     ProjectFileIndex fileIndex = ProjectRootManager.getInstance(project).getFileIndex();
     VirtualFile sourceRoot = fileIndex.getSourceRootForFile(file);
     if (sourceRoot != null) {

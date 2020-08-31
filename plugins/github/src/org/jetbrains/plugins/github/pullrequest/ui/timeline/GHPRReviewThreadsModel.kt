@@ -1,15 +1,23 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
 import com.intellij.ui.CollectionListModel
 import com.intellij.util.containers.SortedList
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReviewThread
 import org.jetbrains.plugins.github.pullrequest.comment.ui.GHPRReviewThreadModel
+import org.jetbrains.plugins.github.pullrequest.comment.ui.GHPRReviewThreadModelImpl
 
-class GHPRReviewThreadsModel(list: List<GHPullRequestReviewThread>)
-  : CollectionListModel<GHPRReviewThreadModel>(createSortedList(list), true) {
+class GHPRReviewThreadsModel
+  : CollectionListModel<GHPRReviewThreadModel>(SortedList<GHPRReviewThreadModel>(compareBy { it.createdAt }), true) {
+
+  var loaded = false
+    private set
 
   fun update(list: List<GHPullRequestReviewThread>) {
+    loaded = true
+    //easier then creating another event type and doesn't break JList
+    fireContentsChanged(this, -1, -1)
+
     val threadsById = list.associateBy { it.id }.toMutableMap()
     val removals = mutableListOf<GHPRReviewThreadModel>()
     for (item in items) {
@@ -21,17 +29,7 @@ class GHPRReviewThreadsModel(list: List<GHPullRequestReviewThread>)
       remove(model)
     }
     for (thread in threadsById.values) {
-      add(GHPRReviewThreadModel(thread))
-    }
-  }
-
-  companion object {
-    private fun createSortedList(list: List<GHPullRequestReviewThread>): SortedList<GHPRReviewThreadModel> {
-      val sorted = SortedList<GHPRReviewThreadModel>(compareBy { it.createdAt })
-      for (thread in list) {
-        sorted.add(GHPRReviewThreadModel(thread))
-      }
-      return sorted
+      add(GHPRReviewThreadModelImpl(thread))
     }
   }
 }

@@ -1,29 +1,25 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.application.options;
 
 import com.intellij.openapi.application.PathMacroFilter;
 import com.intellij.openapi.components.CompositePathMacroFilter;
 import com.intellij.openapi.components.PathMacroMap;
 import com.intellij.openapi.extensions.ExtensionPointName;
-import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.util.containers.SmartHashSet;
+import com.intellij.openapi.util.text.Strings;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * @author Eugene Zhuravlev
  */
-public class PathMacrosCollector extends PathMacroMap {
+public final class PathMacrosCollector extends PathMacroMap {
   public static final ExtensionPointName<PathMacroFilter> MACRO_FILTER_EXTENSION_POINT_NAME = ExtensionPointName.create("com.intellij.pathMacroFilter");
-  public static final Pattern MACRO_PATTERN = Pattern.compile("\\$([\\w\\-\\.]+?)\\$");
+  public static final Pattern MACRO_PATTERN = Pattern.compile("\\$([\\w\\-.]+?)\\$");
 
   private final Matcher myMatcher;
   private final Map<String, String> myMacroMap = new LinkedHashMap<>();
@@ -47,18 +43,18 @@ public class PathMacrosCollector extends PathMacroMap {
       return Collections.emptySet();
     }
 
-    Set<String> result = new SmartHashSet<>(preResult);
+    Set<String> result = new HashSet<>(preResult);
     result.removeAll(pathMacros.getSystemMacroNames());
     result.removeAll(pathMacros.getLegacyMacroNames());
-    result.removeAll(pathMacros.getToolMacroNames());
+    pathMacros.removeToolMacroNames(result);
     result.removeAll(pathMacros.getIgnoredMacroNames());
     return result;
   }
 
   @NotNull
   @Override
-  public String substituteRecursively(@NotNull String text, boolean caseSensitive) {
-    if (StringUtil.isEmpty(text)) {
+  public CharSequence substituteRecursively(@NotNull String text, boolean caseSensitive) {
+    if (Strings.isEmpty(text)) {
       return text;
     }
 
@@ -73,7 +69,7 @@ public class PathMacrosCollector extends PathMacroMap {
   @NotNull
   @Override
   public String substitute(@NotNull String text, boolean caseSensitive) {
-    if (StringUtil.isEmpty(text)) {
+    if (Strings.isEmpty(text)) {
       return text;
     }
 

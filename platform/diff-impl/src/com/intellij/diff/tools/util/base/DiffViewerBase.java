@@ -31,8 +31,9 @@ import com.intellij.openapi.util.Disposer;
 import com.intellij.pom.Navigatable;
 import com.intellij.util.Alarm;
 import com.intellij.util.SmartList;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.update.Activatable;
+import com.intellij.util.ui.update.UiNotifyConnector;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
@@ -61,7 +62,8 @@ public abstract class DiffViewerBase implements DiffViewer, DataProvider {
   @NotNull
   @Override
   public final FrameDiffTool.ToolbarComponents init() {
-    if (LOG.isDebugEnabled() && (getComponent().getWidth() <= 0 || getComponent().getHeight() <= 0)) {
+    if (LOG.isDebugEnabled() && !ApplicationManager.getApplication().isHeadlessEnvironment() &&
+        (getComponent().getWidth() <= 0 || getComponent().getHeight() <= 0)) {
       LOG.warn("Diff shown for a hidden component, initial scroll position might be invalid", new Throwable());
     }
 
@@ -75,7 +77,21 @@ public abstract class DiffViewerBase implements DiffViewer, DataProvider {
 
     fireEvent(EventType.INIT);
 
-    rediff(true);
+    new UiNotifyConnector(getComponent(), new Activatable() {
+      private boolean wasNotShownYet = true;
+
+      @Override
+      public void showNotify() {
+        rediff(wasNotShownYet);
+        wasNotShownYet = false;
+      }
+
+      @Override
+      public void hideNotify() {
+        abortRediff();
+      }
+    });
+
     return components;
   }
 
@@ -111,7 +127,10 @@ public abstract class DiffViewerBase implements DiffViewer, DataProvider {
     if (isDisposed()) return;
 
     abortRediff();
-    myTaskAlarm.addRequest(this::rediff, ProgressWindow.DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS);
+
+    if (getComponent().isShowing()) {
+      myTaskAlarm.addRequest(this::rediff, ProgressWindow.DEFAULT_PROGRESS_DIALOG_POSTPONE_TIME_MILLIS);
+    }
   }
 
   @CalledInAwt
@@ -191,13 +210,13 @@ public abstract class DiffViewerBase implements DiffViewer, DataProvider {
 
   protected List<AnAction> createToolbarActions() {
     List<AnAction> group = new ArrayList<>();
-    ContainerUtil.addAll(group, ((ActionGroup)ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_TOOLBAR)).getChildren(null));
+    group.add(ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_TOOLBAR));
     return group;
   }
 
   protected List<AnAction> createPopupActions() {
     List<AnAction> group = new ArrayList<>();
-    ContainerUtil.addAll(group, ((ActionGroup)ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_POPUP)).getChildren(null));
+    group.add(ActionManager.getInstance().getAction(IdeActions.DIFF_VIEWER_POPUP));
     return group;
   }
 

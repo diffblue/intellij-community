@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.troubleshooting;
 
 import com.intellij.ide.IdeBundle;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.application.ex.ApplicationInfoEx;
 import com.intellij.openapi.application.impl.ApplicationInfoImpl;
 import com.intellij.openapi.project.Project;
@@ -10,20 +11,22 @@ import com.intellij.troubleshooting.GeneralTroubleInfoCollector;
 import com.intellij.util.text.DateFormatUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.io.IOException;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Properties;
 
-public class AboutTroubleInfoCollector implements GeneralTroubleInfoCollector {
-  @NotNull
+final class AboutTroubleInfoCollector implements GeneralTroubleInfoCollector {
   @Override
-  public String getTitle() {
+  public @NotNull String getTitle() {
     return "About";
   }
 
-  @NotNull
   @Override
-  public String collectInfo(@NotNull Project project) {
+  public @NotNull String collectInfo(@NotNull Project project) {
     ApplicationInfoImpl appInfo = (ApplicationInfoImpl)ApplicationInfoEx.getInstanceEx();
     Calendar cal = appInfo.getBuildDate();
 
@@ -52,7 +55,31 @@ public class AboutTroubleInfoCollector implements GeneralTroubleInfoCollector {
     output += "JVM version: ";
     output += properties.getProperty("java.vm.name", "unknown");
     output += ' ' + properties.getProperty("java.vendor", "unknown");
+    output += '\n';
+
+    output += PathManager.PROPERTY_CONFIG_PATH + "=" + logPath(PathManager.getConfigPath()) + '\n';
+    output += PathManager.PROPERTY_SYSTEM_PATH + "=" + logPath(PathManager.getSystemPath()) + '\n';
+    output += PathManager.PROPERTY_PLUGINS_PATH + "=" + logPath(PathManager.getPluginsPath()) + '\n';
+    output += PathManager.PROPERTY_LOG_PATH + "=" + logPath(PathManager.getLogPath()) + '\n';
+
+    output += logEnvVar("_JAVA_OPTIONS");
+    output += logEnvVar("JDK_JAVA_OPTIONS");
+    output += logEnvVar("JAVA_TOOL_OPTIONS");
 
     return output;
+  }
+
+  private static String logPath(String path) {
+    try {
+      Path configured = Paths.get(path), real = configured.toRealPath();
+      if (!configured.equals(real)) return path + " -> " + real;
+    }
+    catch (IOException | InvalidPathException ignored) { }
+    return path;
+  }
+
+  private static String logEnvVar(String var) {
+    String value = System.getenv(var);
+    return value != null ? var + '=' + value + '\n' : "";
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.template.impl;
 
@@ -8,10 +8,7 @@ import com.intellij.codeInsight.completion.PlainPrefixMatcher;
 import com.intellij.codeInsight.hint.HintManager;
 import com.intellij.codeInsight.lookup.*;
 import com.intellij.codeInsight.lookup.impl.LookupImpl;
-import com.intellij.codeInsight.template.CustomLiveTemplate;
-import com.intellij.codeInsight.template.CustomLiveTemplateBase;
-import com.intellij.codeInsight.template.CustomTemplateCallback;
-import com.intellij.codeInsight.template.TemplateManager;
+import com.intellij.codeInsight.template.*;
 import com.intellij.diagnostic.AttachmentFactory;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.openapi.application.ApplicationManager;
@@ -44,7 +41,8 @@ public class ListTemplatesHandler implements CodeInsightActionHandler {
 
     PsiDocumentManager.getInstance(project).commitDocument(editor.getDocument());
     int offset = editor.getCaretModel().getOffset();
-    List<TemplateImpl> applicableTemplates = TemplateManagerImpl.listApplicableTemplateWithInsertingDummyIdentifier(editor, file, false);
+    List<TemplateImpl> applicableTemplates = TemplateManagerImpl.listApplicableTemplateWithInsertingDummyIdentifier(
+      TemplateActionContext.expanding(file, editor));
 
     Map<TemplateImpl, String> matchingTemplates = filterTemplatesByPrefix(applicableTemplates, editor, offset, false, true);
     MultiMap<String, CustomLiveTemplateLookupElement> customTemplatesLookupElements = getCustomTemplatesLookupItems(editor, file, offset);
@@ -142,9 +140,11 @@ public class ListTemplatesHandler implements CodeInsightActionHandler {
                                                                                                 int offset) {
     final MultiMap<String, CustomLiveTemplateLookupElement> result = MultiMap.create();
     CustomTemplateCallback customTemplateCallback = new CustomTemplateCallback(editor, file);
-    for (CustomLiveTemplate customLiveTemplate : TemplateManagerImpl.listApplicableCustomTemplates(editor, file, false)) {
+    TemplateActionContext templateActionContext = TemplateActionContext.expanding(file, editor);
+    for (CustomLiveTemplate customLiveTemplate : TemplateManagerImpl.listApplicableCustomTemplates(templateActionContext)) {
       if (customLiveTemplate instanceof CustomLiveTemplateBase) {
-        String customTemplatePrefix = ((CustomLiveTemplateBase)customLiveTemplate).computeTemplateKeyWithoutContextChecking(customTemplateCallback);
+        String customTemplatePrefix =
+          ((CustomLiveTemplateBase)customLiveTemplate).computeTemplateKeyWithoutContextChecking(customTemplateCallback);
         if (customTemplatePrefix != null) {
           result.putValues(customTemplatePrefix, ((CustomLiveTemplateBase)customLiveTemplate).getLookupElements(file, editor, offset));
         }
@@ -236,11 +236,26 @@ public class ListTemplatesHandler implements CodeInsightActionHandler {
       if (item instanceof LiveTemplateLookupElementImpl) {
         final TemplateImpl template = ((LiveTemplateLookupElementImpl)item).getTemplate();
         final String argument = myTemplate2Argument != null ? myTemplate2Argument.get(template) : null;
-        WriteCommandAction.writeCommandAction(project).run(() -> ((TemplateManagerImpl)TemplateManager.getInstance(project)).startTemplateWithPrefix(lookup.getEditor(), template, null, argument));
+        WriteCommandAction.writeCommandAction(project).run(() -> {
+          Editor editor = lookup.getEditor();
+          if (!editor.isDisposed()) {
+            editor.getCaretModel().runForEachCaret(caret -> {
+              ((TemplateManagerImpl)TemplateManager.getInstance(project))
+                .startTemplateWithPrefix(caret.getEditor(), template, null, argument);
+            });
+          }
+        });
       }
       else if (item instanceof CustomLiveTemplateLookupElement) {
         if (myFile != null) {
-          WriteCommandAction.writeCommandAction(project).run(() -> ((CustomLiveTemplateLookupElement)item).expandTemplate(lookup.getEditor(), myFile));
+          WriteCommandAction.writeCommandAction(project).run(() -> {
+            Editor editor = lookup.getEditor();
+            if (!editor.isDisposed()) {
+              editor.getCaretModel().runForEachCaret(caret -> {
+                ((CustomLiveTemplateLookupElement)item).expandTemplate(lookup.getEditor(), myFile);
+              });
+            }
+          });
         }
       }
     }
@@ -260,7 +275,7 @@ public class ListTemplatesHandler implements CodeInsightActionHandler {
       result.addAll(items);
       ArrayList<LookupElement> list = new ArrayList<>(result);
       int selected = lookup.isSelectionTouched() ? list.indexOf(lookup.getCurrentItem()) : 0;
-      return new Pair<>(list, selected >= 0 ? selected : 0);
+      return new Pair<>(list, Math.max(selected, 0));
     }
 
     @Override

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.navigation;
 
@@ -17,13 +17,13 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 
-public class MethodUpDownUtil {
+public final class MethodUpDownUtil {
   private MethodUpDownUtil() {
   }
 
   public static int[] getNavigationOffsets(PsiFile file, final int caretOffset) {
-    for(MethodNavigationOffsetProvider provider: MethodNavigationOffsetProvider.EP_NAME.getExtensionList()) {
-      final int[] offsets = provider.getMethodNavigationOffsets(file, caretOffset);
+    for (MethodNavigationOffsetProvider provider : MethodNavigationOffsetProvider.EP_NAME.getExtensionList()) {
+      int[] offsets = provider.getMethodNavigationOffsets(file, caretOffset);
       if (offsets != null && offsets.length > 0) {
         return offsets;
       }

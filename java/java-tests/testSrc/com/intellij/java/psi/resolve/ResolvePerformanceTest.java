@@ -17,6 +17,7 @@ package com.intellij.java.psi.resolve;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.PathManagerEx;
+import com.intellij.openapi.util.RecursionManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -25,15 +26,16 @@ import com.intellij.psi.*;
 import com.intellij.psi.impl.source.resolve.ResolveCache;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.xml.XmlAttributeValue;
+import com.intellij.testFramework.JavaResolveTestCase;
 import com.intellij.testFramework.PlatformTestUtil;
-import com.intellij.testFramework.ResolveTestCase;
 import com.intellij.util.containers.ContainerUtil;
+import one.util.streamex.IntStreamEx;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ResolvePerformanceTest extends ResolveTestCase {
+public class ResolvePerformanceTest extends JavaResolveTestCase {
   public void testPerformance1() throws Exception{
     final String fullPath = PathManagerEx.getTestDataPath() + "/psi/resolve/Thinlet.java";
     final VirtualFile vFile = LocalFileSystem.getInstance().findFileByPath(fullPath.replace(File.separatorChar, '/'));
@@ -112,12 +114,41 @@ public class ResolvePerformanceTest extends ResolveTestCase {
   }
 
   public void testStaticImportInTheSameClassPerformance() throws Exception {
+    RecursionManager.disableMissedCacheAssertions(getTestRootDisposable());
     warmUpResolve();
 
     PsiReference ref = configureByFile("class/" + getTestName(false) + ".java");
     ensureIndexUpToDate();
     PlatformTestUtil.startPerformanceTest(getTestName(false), 150, () -> assertNull(ref.resolve()))
       .attempts(1).assertTiming();
+  }
+
+  public void testResolveOfManyStaticallyImportedFields() throws Exception {
+    int fieldCount = 7000;
+
+    createFile(myModule, "Constants.java",
+               "interface Constants { " +
+               IntStreamEx.range(0, fieldCount).mapToObj(i -> "String field" + i + ";").joining("\n") +
+               "}");
+
+    PsiFile file = createFile(myModule, "a.java",
+                              "import static Constants.*;\n" +
+                              "class Usage { \n" +
+                              "void foo(String s) {}\n" +
+                              "{" +
+                              IntStreamEx.range(0, fieldCount).mapToObj(i -> "foo(field" + i + ");").joining("\n") +
+                              "}}");
+
+    List<PsiJavaCodeReferenceElement> refs = SyntaxTraverser.psiTraverser(file).filter(PsiJavaCodeReferenceElement.class).toList();
+
+    PlatformTestUtil.startPerformanceTest(getTestName(false), 1_000, () -> {
+      for (PsiJavaCodeReferenceElement ref : refs) {
+        assertNotNull(ref.resolve());
+      }
+    })
+      .setup(getPsiManager()::dropPsiCaches)
+      .assertTiming();
+
   }
 
   private void ensureIndexUpToDate() {
@@ -132,6 +163,7 @@ public class ResolvePerformanceTest extends ResolveTestCase {
   }
 
   public void testStaticImportNetworkPerformance() throws Exception {
+    RecursionManager.disableMissedCacheAssertions(getTestRootDisposable());
     warmUpResolve();
 
     VirtualFile dir = createTempVfsDirectory();

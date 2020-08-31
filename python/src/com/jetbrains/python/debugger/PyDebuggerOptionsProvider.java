@@ -1,52 +1,41 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.debugger;
 
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author traff
- */
 @State(
   name = "PyDebuggerOptionsProvider",
   storages = {
     @Storage(StoragePathMacros.WORKSPACE_FILE)
   }
 )
-public class PyDebuggerOptionsProvider implements PersistentStateComponent<PyDebuggerOptionsProvider.State> {
-  private final State myState = new State();
-
-  @NotNull
-  private final Project myProject;
-
-  public PyDebuggerOptionsProvider(@NotNull Project project) {
-    myProject = project;
-  }
+public final class PyDebuggerOptionsProvider implements PersistentStateComponent<PyDebuggerOptionsProvider.State> {
+  private @NotNull State myState = new State();
 
   public static PyDebuggerOptionsProvider getInstance(Project project) {
-    return ServiceManager.getService(project, PyDebuggerOptionsProvider.class);
+    return project.getService(PyDebuggerOptionsProvider.class);
   }
 
   @Override
-  public State getState() {
+  public @NotNull State getState() {
     return myState;
   }
 
   @Override
   public void loadState(@NotNull State state) {
-    myState.myAttachToSubprocess = state.myAttachToSubprocess;
-    myState.mySaveCallSignatures = state.mySaveCallSignatures;
-    myState.mySupportGeventDebugging = state.mySupportGeventDebugging;
-    myState.mySupportQtDebugging = state.mySupportQtDebugging;
-    myState.myPyQtBackend = state.myPyQtBackend;
-    myState.myAttachProcessFilter = state.myAttachProcessFilter;
+    myState = state;
   }
 
   public static class State {
     public boolean myAttachToSubprocess = true;
     public boolean mySaveCallSignatures = false;
     public boolean mySupportGeventDebugging = false;
+    public boolean myDropIntoDebuggerOnFailedTests = true;
     public boolean mySupportQtDebugging = true;
     public String myPyQtBackend = "Auto";
     public String myAttachProcessFilter = "python";
@@ -75,6 +64,14 @@ public class PyDebuggerOptionsProvider implements PersistentStateComponent<PyDeb
 
   public void setSupportGeventDebugging(boolean supportGeventDebugging) {
     myState.mySupportGeventDebugging = supportGeventDebugging;
+  }
+
+  public boolean isDropIntoDebuggerOnFailedTest() {
+    return myState.myDropIntoDebuggerOnFailedTests;
+  }
+
+  public void setDropIntoDebuggerOnFailedTest(boolean dropIntoDebuggerOnFailedTest) {
+    myState.myDropIntoDebuggerOnFailedTests = dropIntoDebuggerOnFailedTest;
   }
 
   public boolean isSupportQtDebugging() {

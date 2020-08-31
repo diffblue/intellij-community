@@ -39,9 +39,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @author cdr
- */
 public class SliceNode extends AbstractTreeNode<SliceUsage> implements DuplicateNodeRenderer.DuplicatableNode<SliceNode>, MyColoredTreeCellRenderer {
   protected List<SliceNode> myCachedChildren;
   boolean dupNodeCalculated;
@@ -133,9 +130,8 @@ public class SliceNode extends AbstractTreeNode<SliceUsage> implements Duplicate
   @Override
   protected PresentationData createPresentation() {
     return new PresentationData(){
-      @NotNull
       @Override
-      public Object[] getEqualityObjects() {
+      public Object @NotNull [] getEqualityObjects() {
         return ArrayUtil.append(super.getEqualityObjects(), changed);
       }
     };
@@ -206,17 +202,17 @@ public class SliceNode extends AbstractTreeNode<SliceUsage> implements Duplicate
   }
 
   @Nullable
-  public SliceLanguageSupportProvider getProvider(){
+  public SliceLanguageSupportProvider getProvider() {
     AbstractTreeNode<SliceUsage> element = getElement();
-    if(element == null){
+    if (element == null) {
       return null;
     }
     SliceUsage usage = element.getValue();
-    if(usage == null){
+    if (usage == null) {
       return null;
     }
     PsiElement psiElement = usage.getElement();
-    if(psiElement == null){
+    if (psiElement == null) {
       return null;
     }
     return LanguageSlicing.getProvider(psiElement);

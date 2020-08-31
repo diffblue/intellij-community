@@ -35,7 +35,7 @@ public class ClassNameDiffersFromFileNameInspection extends BaseInspection {
   protected InspectionGadgetsFix buildFix(Object... infos) {
     final PsiJavaFile file = (PsiJavaFile)infos[0];
     final String fileName = file.getName();
-    final int prefixIndex = fileName.indexOf((int)'.');
+    final int prefixIndex = fileName.indexOf('.');
     final String filenameWithoutPrefix = fileName.substring(0, prefixIndex);
     final PsiClass[] classes = file.getClasses();
     for (PsiClass psiClass : classes) {
@@ -45,13 +45,6 @@ public class ClassNameDiffersFromFileNameInspection extends BaseInspection {
       }
     }
     return new RenameFix(filenameWithoutPrefix);
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "class.name.differs.from.file.name.display.name");
   }
 
   @Override
@@ -87,7 +80,7 @@ public class ClassNameDiffersFromFileNameInspection extends BaseInspection {
         return;
       }
       final String fileName = file.getName();
-      final int prefixIndex = fileName.indexOf((int)'.');
+      final int prefixIndex = fileName.indexOf('.');
       if (prefixIndex < 0) {
         return;
       }

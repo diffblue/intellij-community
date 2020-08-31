@@ -2,6 +2,7 @@
 package org.jetbrains.plugins.groovy.codeStyle;
 
 import com.intellij.application.options.CodeStyle;
+import com.intellij.configurationStore.Property;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.codeStyle.*;
@@ -43,6 +44,7 @@ public class GroovyCodeStyleSettings extends CustomCodeStyleSettings implements 
   public boolean ALIGN_MULTILINE_LIST_OR_MAP = true;
   public boolean SPACE_WITHIN_LIST_OR_MAP = false;
   public boolean ALIGN_NAMED_ARGS_IN_MAP = true;
+  @Property(externalName = "space_before_closure_left_brace")
   public boolean SPACE_BEFORE_CLOSURE_LBRACE = true;
   public boolean SPACE_WITHIN_GSTRING_INJECTION_BRACES = false;
   public boolean SPACE_WITHIN_TUPLE_EXPRESSION = false;
@@ -59,7 +61,8 @@ public class GroovyCodeStyleSettings extends CustomCodeStyleSettings implements 
   public int CLASS_COUNT_TO_USE_IMPORT_ON_DEMAND = 5;
   public int NAMES_COUNT_TO_USE_IMPORT_ON_DEMAND = 3;
   public final PackageEntryTable PACKAGES_TO_USE_IMPORT_ON_DEMAND = new PackageEntryTable();
-  public final PackageEntryTable IMPORT_LAYOUT_TABLE = new PackageEntryTable();
+  @Property(externalName = "imports_layout")
+  public PackageEntryTable IMPORT_LAYOUT_TABLE = new PackageEntryTable();
   public boolean LAYOUT_STATIC_IMPORTS_SEPARATELY = true;
 
   public int IMPORT_ANNOTATION_WRAP = CommonCodeStyleSettings.WRAP_ALWAYS;

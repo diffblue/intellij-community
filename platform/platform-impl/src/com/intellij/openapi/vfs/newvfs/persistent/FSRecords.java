@@ -1,54 +1,62 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vfs.newvfs.persistent;
 
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
+import com.intellij.ide.IdeBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.ThrowableComputable;
-import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream;
-import com.intellij.openapi.util.io.ByteArraySequence;
-import com.intellij.openapi.util.io.FileAttributes;
-import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.openapi.util.io.*;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.impl.ZipHandlerBase;
+import com.intellij.openapi.vfs.impl.local.LocalFileSystemImpl;
+import com.intellij.openapi.vfs.newvfs.ChildInfoImpl;
 import com.intellij.openapi.vfs.newvfs.FileAttribute;
+import com.intellij.openapi.vfs.newvfs.events.ChildInfo;
+import com.intellij.openapi.vfs.newvfs.impl.CachedFileType;
 import com.intellij.openapi.vfs.newvfs.impl.FileNameCache;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualDirectoryImpl;
 import com.intellij.openapi.vfs.newvfs.impl.VirtualFileSystemEntry;
 import com.intellij.util.*;
 import com.intellij.util.concurrency.SequentialTaskExecutor;
 import com.intellij.util.containers.ConcurrentIntObjectMap;
-import com.intellij.util.containers.IntArrayList;
+import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.ObjectIntHashMap;
+import com.intellij.util.hash.ContentHashEnumerator;
 import com.intellij.util.io.DataOutputStream;
 import com.intellij.util.io.*;
 import com.intellij.util.io.storage.*;
 import gnu.trove.TIntArrayList;
-import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import gnu.trove.TObjectHashingStrategy;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 
-/**
- * @author max
- */
-public class FSRecords {
+@ApiStatus.Internal
+public final class FSRecords {
   private static final Logger LOG = Logger.getInstance(FSRecords.class);
 
   public static final boolean WE_HAVE_CONTENT_HASHES = SystemProperties.getBooleanProperty("idea.share.contents", true);
-         static final String VFS_FILES_EXTENSION = System.getProperty("idea.vfs.files.extension", ".dat");
+  static final String VFS_FILES_EXTENSION = System.getProperty("idea.vfs.files.extension", ".dat");
 
   private static final boolean lazyVfsDataCleaning = SystemProperties.getBooleanProperty("idea.lazy.vfs.data.cleaning", true);
   private static final boolean backgroundVfsFlush = SystemProperties.getBooleanProperty("idea.background.vfs.flush", true);
@@ -58,7 +66,8 @@ public class FSRecords {
   private static final boolean useSmallAttrTable = SystemProperties.getBooleanProperty("idea.use.small.attr.table.for.vfs", true);
   private static final boolean ourStoreRootsSeparately = SystemProperties.getBooleanProperty("idea.store.roots.separately", false);
 
-  //TODO[anyone] when bumping the version, please delete `ourSymlinkTargetAttr_old` and use it's value for `ourSymlinkTargetAttr`
+  //TODO[anyone] when bumping the version, please delete `ourSymlinkTargetAttr_old`, use it's value for `ourSymlinkTargetAttr`,
+  //             and drop path conversion from `readSymlinkTarget`
   private static final int VERSION = 53 +
                                      (WE_HAVE_CONTENT_HASHES ? 0x10 : 0) +
                                      (IOUtil.BYTE_BUFFERS_USE_NATIVE_BYTE_ORDER ? 0x37 : 0) +
@@ -67,7 +76,9 @@ public class FSRecords {
                                      (ourStoreRootsSeparately ? 0x63 : 0) +
                                      (useCompressionUtil ? 0x7f : 0) +
                                      (useSmallAttrTable ? 0x31 : 0) +
-                                     (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 0x15 : 0);
+                                     (PersistentHashMapValueStorage.COMPRESSION_ENABLED ? 0x15 : 0) +
+                                     (FileSystemUtil.DO_NOT_RESOLVE_SYMLINKS ? 0x3b : 0) +
+                                     (ZipHandlerBase.USE_CRC_INSTEAD_OF_TIMESTAMP ? 0x4f : 0);
 
   private static final int PARENT_OFFSET = 0;
   private static final int PARENT_SIZE = 4;
@@ -114,6 +125,7 @@ public class FSRecords {
 
   private static final int FREE_RECORD_FLAG = 0x100;
   private static final int ALL_VALID_FLAGS = PersistentFS.ALL_VALID_FLAGS | FREE_RECORD_FLAG;
+  private static final int MAX_INITIALIZATION_ATTEMPTS = 10;
 
   static {
     //noinspection ConstantConditions
@@ -124,9 +136,10 @@ public class FSRecords {
     w = lock.writeLock();
   }
 
-  static void writeAttributesToRecord(int id, int parentId, @NotNull FileAttributes attributes, @NotNull String name) {
-    writeAndHandleErrors(() -> {
-      setName(id, name);
+  // return nameId>0
+  static int writeAttributesToRecord(int id, int parentId, @NotNull FileAttributes attributes, @NotNull String name) {
+    return writeAndHandleErrors(() -> {
+      int nameId = setName(id, name);
 
       setTimestamp(id, attributes.lastModified);
       setLength(id, attributes.isDirectory() ? -1L : attributes.length);
@@ -137,6 +150,7 @@ public class FSRecords {
                    (attributes.isSpecial() ? PersistentFS.IS_SPECIAL : 0) |
                    (attributes.isHidden() ? PersistentFS.IS_HIDDEN : 0), true);
       setParent(id, parentId);
+      return nameId;
     });
   }
 
@@ -150,17 +164,29 @@ public class FSRecords {
     return new File(DbConnection.getCachesDir());
   }
 
-  private static class DbConnection {
+  @NotNull
+  public static String diagnosticsForAlreadyCreatedFile(int id, int nameId, @NotNull Object existingData) {
+    invalidateCaches();
+    int parentId = getParent(id);
+    String msg = "File already created: id="+id + "; nameId="+nameId  + "; parentId=" + parentId+ "; existingData=" + existingData;
+    if (parentId > 0) {
+      msg += "; parent.name=" + getName(parentId);
+      msg += "; parent.children=" + list(parentId);
+    }
+    return msg;
+  }
+
+  private static final class DbConnection {
     private static boolean ourInitialized;
 
     private static PersistentStringEnumerator myNames;
     private static Storage myAttributes;
     private static RefCountingStorage myContents;
     private static ResizeableMappedFile myRecords;
-    private static PersistentBTreeEnumerator<byte[]> myContentHashesEnumerator;
+    private static ContentHashEnumerator myContentHashesEnumerator;
     private static File myRootsFile;
     private static final VfsDependentEnum<String> myAttributesList = new VfsDependentEnum<>("attrib", EnumeratorStringDescriptor.INSTANCE, 1);
-    private static final TIntArrayList myFreeRecords = new TIntArrayList();
+    private static final IntList myFreeRecords = new IntArrayList();
 
     private static volatile boolean myDirty;
     /** accessed under {@link #r}/{@link #w} */
@@ -193,7 +219,7 @@ public class FSRecords {
     }
 
     static int getFreeRecord() {
-      return myFreeRecords.isEmpty() ? 0 : myFreeRecords.remove(myFreeRecords.size() - 1);
+      return myFreeRecords.isEmpty() ? 0 : myFreeRecords.removeInt(myFreeRecords.size() - 1);
     }
 
     private static void createBrokenMarkerFile(@Nullable Throwable reason) {
@@ -220,9 +246,21 @@ public class FSRecords {
     }
 
     private static void init() {
+      Exception exception = null;
+      for (int i = 0; i < MAX_INITIALIZATION_ATTEMPTS; i++) {
+        exception = tryInit();
+        if (exception == null) {
+          return;
+        }
+      }
+      throw new RuntimeException("Can't initialize filesystem storage", exception);
+    }
+
+    @Nullable
+    private static Exception tryInit() {
       final File basePath = basePath().getAbsoluteFile();
       if (!(basePath.isDirectory() || basePath.mkdirs())) {
-        throw new RuntimeException("Cannot create storage directory: " + basePath);
+        return new RuntimeException("Cannot create storage directory: " + basePath);
       }
 
       final File namesFile = new File(basePath, "names" + VFS_FILES_EXTENSION);
@@ -244,8 +282,8 @@ public class FSRecords {
           throw new IOException("Corruption marker file found");
         }
 
-        PagedFileStorage.StorageLockContext storageLockContext = new PagedFileStorage.StorageLockContext(false);
-        myNames = new PersistentStringEnumerator(namesFile, storageLockContext);
+        StorageLockContext storageLockContext = new StorageLockContext(false);
+        myNames = new PersistentStringEnumerator(namesFile.toPath(), storageLockContext);
 
         myAttributes = new Storage(attributesFile.getPath(), REASONABLY_SMALL) {
           @Override
@@ -263,11 +301,11 @@ public class FSRecords {
         };
 
         // sources usually zipped with 4x ratio
-        myContentHashesEnumerator = WE_HAVE_CONTENT_HASHES ? new ContentHashesUtil.HashEnumerator(contentsHashesFile, storageLockContext) : null;
+        myContentHashesEnumerator = WE_HAVE_CONTENT_HASHES ? new ContentHashEnumerator(contentsHashesFile.toPath(), storageLockContext) : null;
 
         boolean aligned = PagedFileStorage.BUFFER_SIZE % RECORD_SIZE == 0;
         if (!aligned) LOG.error("Buffer size " + PagedFileStorage.BUFFER_SIZE + " is not aligned for record size " + RECORD_SIZE);
-        myRecords = new ResizeableMappedFile(recordsFile, 20 * 1024, storageLockContext,
+        myRecords = new ResizeableMappedFile(recordsFile.toPath(), 20 * 1024, storageLockContext,
                                              PagedFileStorage.BUFFER_SIZE, aligned, IOUtil.BYTE_BUFFERS_USE_NATIVE_BYTE_ORDER);
 
         boolean initial = myRecords.length() == 0;
@@ -291,6 +329,7 @@ public class FSRecords {
         }
         scanFreeRecords();
         getAttributeId(ourChildrenAttr.getId()); // trigger writing / loading of vfs attribute ids in top level write action
+        return null;
       }
       catch (Exception e) { // IOException, IllegalArgumentException
         LOG.info("Filesystem storage is corrupted or does not exist. [Re]Building. Reason: " + e.getMessage());
@@ -320,7 +359,7 @@ public class FSRecords {
               final String message = "Files in " + basePath.getPath() + " are locked.\n" +
                                      ApplicationNamesInfo.getInstance().getProductName() + " will not be able to start up.";
               if (!ApplicationManager.getApplication().isHeadlessEnvironment()) {
-                JOptionPane.showMessageDialog(JOptionPane.getRootFrame(), message, "Fatal Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(JOptionPane.getRootFrame(), message, IdeBundle.message("dialog.title.fatal.error"), JOptionPane.ERROR_MESSAGE);
               }
               else {
                 //noinspection UseOfSystemOutOrSystemErr
@@ -341,7 +380,7 @@ public class FSRecords {
           throw new RuntimeException("Can't rebuild filesystem storage ", e1);
         }
 
-        init();
+        return e;
       }
     }
 
@@ -526,7 +565,11 @@ public class FSRecords {
     }
   }
 
-  private FSRecords() {
+  private FSRecords() { }
+
+  @ApiStatus.Internal
+  public static int getVersion() {
+    return VERSION;
   }
 
   static void connect() {
@@ -543,7 +586,7 @@ public class FSRecords {
     return records;
   }
 
-  private static PersistentBTreeEnumerator<byte[]> getContentHashesEnumerator() {
+  private static ContentHashEnumerator getContentHashesEnumerator() {
     return DbConnection.myContentHashesEnumerator;
   }
 
@@ -584,9 +627,6 @@ public class FSRecords {
   private static int length() {
     return (int)getRecords().length();
   }
-  public static int getMaxId() {
-    return readAndHandleErrors(() -> length() / RECORD_SIZE);
-  }
 
   static void deleteRecordRecursively(int id) {
     writeAndHandleErrors(() -> {
@@ -601,7 +641,7 @@ public class FSRecords {
   }
 
   private static void markAsDeletedRecursively(final int id) {
-    for (int subRecord : list(id)) {
+    for (int subRecord : listIds(id)) {
       markAsDeletedRecursively(subRecord);
     }
 
@@ -616,7 +656,7 @@ public class FSRecords {
   }
 
   private static void doDeleteRecursively(final int id) {
-    for (int subRecord : list(id)) {
+    for (int subRecord : listIds(id)) {
       doDeleteRecursively(subRecord);
     }
 
@@ -674,9 +714,8 @@ public class FSRecords {
 
   private static final int ROOT_RECORD_ID = 1;
 
-  @NotNull
   @TestOnly
-  static int[] listRoots() {
+  static int @NotNull [] listRoots() {
     return readAndHandleErrors(() -> {
       if (ourStoreRootsSeparately) {
         TIntArrayList result = new TIntArrayList();
@@ -857,8 +896,7 @@ public class FSRecords {
     });
   }
 
-  @NotNull
-  static int[] list(int id) {
+  static int @NotNull [] listIds(int id) {
     return readAndHandleErrors(() -> {
       try (final DataInputStream input = readAttribute(id, ourChildrenAttr)) {
         if (input == null) return ArrayUtilRt.EMPTY_INT_ARRAY;
@@ -883,46 +921,33 @@ public class FSRecords {
     });
   }
 
-  public static class NameId {
-    public static final NameId[] EMPTY_ARRAY = new NameId[0];
-
-    public final int id;
-    public final CharSequence name;
-    public final int nameId;
-
-    public NameId(int id, int nameId, @NotNull CharSequence name) {
-      this.id = id;
-      this.nameId = nameId;
-      this.name = name;
-      if (id <= 0 || nameId <= 0) throw new IllegalArgumentException("invalid arguments id: "+id+"; nameId: "+nameId);
-    }
-
-    @Override
-    public String toString() {
-      return name + " (" + id + ")";
-    }
+  // returns child infos (sorted by id) without (potentially expensive) name (or without even nameId if `loadNameId` is false)
+  @NotNull
+  static ListResult list(int parentId) {
+    return readAndHandleErrors(() -> doLoadChildren(parentId));
   }
 
-  // returns NameId[] sorted by NameId.id
   @NotNull
-  public static NameId[] listAll(int parentId) {
-    assert parentId > 0 : parentId;
-    return readAndHandleErrors(() -> {
-      try (final DataInputStream input = readAttribute(parentId, ourChildrenAttr)) {
-        if (input == null) return NameId.EMPTY_ARRAY;
+  public static List<CharSequence> listNames(int parentId) {
+    return ContainerUtil.map(list(parentId).children, c -> c.getName());
+  }
 
-        int count = DataInputOutputUtil.readINT(input);
-        NameId[] result = count == 0 ? NameId.EMPTY_ARRAY : new NameId[count];
-        int prevId = parentId;
-        for (int i = 0; i < count; i++) {
-          int id = DataInputOutputUtil.readINT(input) + prevId;
-          prevId = id;
-          int nameId = doGetNameId(id);
-          result[i] = new NameId(id, nameId, FileNameCache.getVFileName(nameId, FSRecords::doGetNameByNameId));
-        }
-        return result;
+  @NotNull
+  private static ListResult doLoadChildren(int parentId) throws IOException {
+    assert parentId > 0 : parentId;
+    try (DataInputStream input = readAttribute(parentId, ourChildrenAttr)) {
+      int count = input == null ? 0 : DataInputOutputUtil.readINT(input);
+      List<ChildInfo> result = count == 0 ? Collections.emptyList() : new ArrayList<>(count);
+      int prevId = parentId;
+      for (int i = 0; i < count; i++) {
+        int id = DataInputOutputUtil.readINT(input) + prevId;
+        prevId = id;
+        int nameId = doGetNameId(id);
+        ChildInfo child = new ChildInfoImpl(id, nameId, null, null, null);
+        result.add(child);
       }
-    });
+      return new ListResult(result);
+    }
   }
 
   static boolean wereChildrenAccessed(int id) {
@@ -973,34 +998,168 @@ public class FSRecords {
     }
   }
 
-  static void updateList(int id, @NotNull int[] childIds) {
-    assert id > 0 : id;
-    Arrays.sort(childIds);
-    writeAndHandleErrors(() -> {
-      DbConnection.markDirty();
-      try (DataOutputStream record = writeAttribute(id, ourChildrenAttr)) {
-        DataInputOutputUtil.writeINT(record, childIds.length);
+  // try to apply `childrenConvertor` to the children of `parentId`.
+  // First, try optimistically: outside write lock and commit inside write lock if nothing changed
+  // Failing that, pessimistically: retry converter inside write lock for fresh children and commit inside the same write lock
+  @NotNull
+  static ListResult update(int parentId, @NotNull Function<? super ListResult, ? extends ListResult> childrenConvertor) {
+    assert parentId > 0: parentId;
+    ListResult children = list(parentId);
+    ListResult result = childrenConvertor.apply(children);
 
-        int prevId = id;
-        for (int childId : childIds) {
-          assert childId > 0 : childId;
-          if (childId == id) {
-            LOG.error("Cyclic parent child relations");
-          }
-          else {
-            int delta = childId - prevId;
-            assert prevId == id || delta > 0 : delta;
-            DataInputOutputUtil.writeINT(record, delta);
-            prevId = childId;
-          }
-        }
+    try {
+      w.lock();
+      ListResult toSave;
+      // optimization: if the children were never changed after list(), do not check for duplicates again
+      if (result.childrenWereChangedSinceLastList()) {
+        children = doLoadChildren(parentId);
+        toSave = childrenConvertor.apply(children);
       }
-    });
+      else {
+        toSave = result;
+      }
+
+      updateSymlinksForNewChildren(parentId, children, toSave);
+      doSaveChildren(parentId, toSave);
+      return toSave;
+    }
+    catch (ProcessCanceledException e) {
+      // NewVirtualFileSystem.list methods can be interrupted now
+      throw e;
+    }
+    catch (Throwable e) {
+      DbConnection.handleError(e);
+      ExceptionUtil.rethrow(e);
+      return result;
+    }
+    finally {
+      w.unlock();
+    }
   }
 
-  @Nullable
-  static String readSymlinkTarget(int id) {
-    return readAndHandleErrors(() -> {
+  private static void updateSymlinksForNewChildren(int parentId, @NotNull ListResult oldChildren, @NotNull ListResult newChildren) {
+    // find children which are added to the list and call updateSymlinkInfoForNewChild() on them (once)
+    ContainerUtil.processSortedListsInOrder(oldChildren.children, newChildren.children, Comparator.comparingInt(ChildInfo::getId), true,
+                                            (childInfo, isOldInfo) -> {
+                                              if (!isOldInfo) {
+                                                updateSymlinkInfoForNewChild(parentId, childInfo);
+                                              }
+                                            });
+  }
+
+  private static void updateSymlinkInfoForNewChild(int parentId, @NotNull ChildInfo info) {
+    FileAttributes attributes = info.getFileAttributes();
+    if (attributes != null && attributes.isSymLink()) {
+      int id = info.getId();
+      String symlinkTarget = info.getSymlinkTarget();
+      storeSymlinkTarget(id, symlinkTarget);
+      CharSequence name = info.getName();
+      LocalFileSystem fs = LocalFileSystem.getInstance();
+      if (fs instanceof LocalFileSystemImpl) {
+        VirtualFile parent = PersistentFS.getInstance().findFileById(parentId);
+        assert parent != null : parentId + '/' + id + ": " + name + " -> " + symlinkTarget;
+        String linkPath = parent.getPath() + '/' + name;
+        ((LocalFileSystemImpl)fs).symlinkUpdated(id, parent, linkPath, symlinkTarget);
+      }
+    }
+  }
+
+  private static void doSaveChildren(int parentId, @NotNull ListResult toSave) throws IOException {
+    DbConnection.markDirty();
+    try (DataOutputStream record = writeAttribute(parentId, ourChildrenAttr)) {
+      DataInputOutputUtil.writeINT(record, toSave.children.size());
+
+      int prevId = parentId;
+      for (ChildInfo childInfo : toSave.children) {
+        int childId = childInfo.getId();
+        if (childId <= 0) throw new IllegalArgumentException("ids must be >0 but got: "+childId+"; list: "+toSave);
+        if (childId == parentId) {
+          LOG.error("Cyclic parent-child relations. parentId="+parentId+"; list: "+toSave);
+        }
+        else {
+          int delta = childId - prevId;
+          if (prevId != parentId && delta <= 0) throw new IllegalArgumentException("The list must be sorted by (unique) id but got: " + toSave + "; delta=" + delta);
+          DataInputOutputUtil.writeINT(record, delta);
+          prevId = childId;
+        }
+      }
+    }
+  }
+
+  // return entries from `existingList` plus `newList',
+  // in case of name clash use id from the corresponding `existingList` entry and name from the `newList` entry (to avoid duplicating ids: preserve old id but supply new name)
+  @NotNull
+  static ListResult mergeByName(@NotNull ListResult existingList,
+                                @NotNull ListResult newList,
+                                @NotNull TObjectHashingStrategy<? super CharSequence> hashingStrategy) {
+    List<? extends ChildInfo> newChildren = newList.children;
+    List<? extends ChildInfo> oldChildren = existingList.children;
+    if (oldChildren.isEmpty()) return newList;
+    // both `newChildren` and `oldChildren` are sorted by id, but not nameId, so plain O(N) merge is not possible.
+    // instead, try to eliminate entries with the same id from both lists first (since they have same nameId), and compare the rest by (slower) nameId.
+    // typically, when `newChildren` contains 5K entries + couple absent from `oldChildren`, and `oldChildren` contains 5K+couple entries, these maps will contain a couple of entries absent from each other
+
+    // name -> index in result
+    // ObjectIntHashMap is used here to distinguish between absence and the 0th index
+    ObjectIntHashMap<CharSequence> name2I = new ObjectIntHashMap<>(Math.max(oldChildren.size(), newChildren.size()), hashingStrategy);
+
+    List<ChildInfo> result = new ArrayList<>(Math.max(oldChildren.size(), newChildren.size()));
+    for (int i = 0, j = 0; i < newChildren.size() || j < oldChildren.size(); ) {
+      ChildInfo newChild = i == newChildren.size() ? null : newChildren.get(i);
+      ChildInfo oldChild = j == oldChildren.size() ? null : oldChildren.get(j);
+      int newId = newChild == null ? Integer.MAX_VALUE : newChild.getId();
+      int oldId = oldChild == null ? Integer.MAX_VALUE : oldChild.getId();
+      if (newId == oldId) {
+        i++;
+        j++;
+        result.add(oldChild);
+      }
+      else if (newId < oldId) {
+        // newId is absent from `oldChildren`
+        CharSequence name = newChild.getName();
+        int dupI = name2I.put(name, result.size(), -1);
+        if (dupI == -1) {
+          result.add(newChild);
+        }
+        else {
+          // aha, found entry in `result` with the same name.
+          // That previous entry must come from the `oldChildren`
+          // so replace just the name (the new name must have changed its case), leave id the same
+          ChildInfo oldDup = result.get(dupI);
+          int nameId = newChild.getNameId();
+          assert nameId > 0 : newList;
+          ChildInfoImpl replaced = new ChildInfoImpl(oldDup.getId(), nameId, oldDup.getFileAttributes(), oldDup.getChildren(),
+                                                 oldDup.getSymlinkTarget());
+          result.set(dupI, replaced);
+        }
+        i++;
+      }
+      else {
+        // oldId is absent from `newChildren`
+        CharSequence name = oldChild.getName();
+        int dupI = name2I.put(name, result.size(), -1);
+        if (dupI == -1) {
+          result.add(oldChild);
+        }
+        else {
+          // aha, found entry in `result` with the same name.
+          // That previous entry must come from the `newChildren`
+          // so leave the new name (the new name must have changed its case), replace the id
+          ChildInfo dup = result.get(dupI);
+          int nameId = dup.getNameId();
+          assert nameId > 0 : existingList;
+          ChildInfoImpl replaced = new ChildInfoImpl(oldChild.getId(), nameId, dup.getFileAttributes(), dup.getChildren(),
+                                                 dup.getSymlinkTarget());
+          result.set(dupI, replaced);
+        }
+        j++;
+      }
+    }
+    return name2I.isEmpty() ? newList : new ListResult(result);
+  }
+
+  static @Nullable String readSymlinkTarget(int id) {
+    String result = readAndHandleErrors(() -> {
       try (DataInputStream stream = readAttribute(id, ourSymlinkTargetAttr)) {
         if (stream != null) return StringUtil.nullize(IOUtil.readUTF(stream));
       }
@@ -1009,6 +1168,7 @@ public class FSRecords {
       }
       return null;
     });
+    return result != null ? FileUtil.toSystemIndependentName(result) : null;
   }
 
   static void storeSymlinkTarget(int id, @Nullable String symlinkTarget) {
@@ -1022,6 +1182,8 @@ public class FSRecords {
 
   private static void incModCount(int id) {
     incLocalModCount();
+    CachedFileType.clearCache();
+
     final int count = doGetModCount() + 1;
     getRecords().putInt(HEADER_GLOBAL_MOD_COUNT_OFFSET, count);
 
@@ -1129,11 +1291,8 @@ public class FSRecords {
     });
   }
 
-  public static int getNameId(int id) {
-    return readAndHandleErrors(() -> doGetNameId(id));
-  }
-
   private static int doGetNameId(int id) {
+    assert id > 0 : id;
     return getRecordInt(id, NAME_OFFSET);
   }
 
@@ -1152,7 +1311,7 @@ public class FSRecords {
 
   @NotNull
   private static CharSequence doGetNameSequence(int id) throws IOException {
-    final int nameId = getRecordInt(id, NAME_OFFSET);
+    int nameId = doGetNameId(id);
     return nameId == 0 ? "" : FileNameCache.getVFileName(nameId, FSRecords::doGetNameByNameId);
   }
 
@@ -1161,14 +1320,18 @@ public class FSRecords {
   }
 
   private static String doGetNameByNameId(int nameId) throws IOException {
+    assert nameId >= 0 : nameId;
     return nameId == 0 ? "" : getNames().valueOf(nameId);
   }
 
-  static void setName(int id, @NotNull String name) {
-    writeAndHandleErrors(() -> {
+  // return nameId>0
+  static int setName(int id, @NotNull String name) {
+    return writeAndHandleErrors(() -> {
       incModCount(id);
       int nameId = getNames().enumerate(name);
+      assert nameId > 0 : nameId;
       putRecordInt(id, NAME_OFFSET, nameId);
+      return nameId;
     });
   }
 
@@ -1465,12 +1628,19 @@ public class FSRecords {
     return readAndHandleErrors(() -> getContentRecordId(fileId));
   }
 
+  static byte[] getContentHash(int fileId) {
+    if (!WE_HAVE_CONTENT_HASHES) return null;
+
+    return readAndHandleErrors(() -> {
+      int contentId = getContentRecordId(fileId);
+      return contentId <= 0 ? null : getContentHashesEnumerator().valueOf(contentId);
+    });
+  }
+
   @NotNull
   static DataOutputStream writeContent(int fileId, boolean readOnly) {
     return new ContentOutputStream(fileId, readOnly);
   }
-
-  private static final MessageDigest myDigest = ContentHashesUtil.createHashDigest();
 
   static void writeContent(int fileId, ByteArraySequence bytes, boolean readOnly) {
     //noinspection IOResourceOpenedButNotSafelyClosed
@@ -1509,7 +1679,7 @@ public class FSRecords {
     return stream;
   }
 
-  private static class ContentOutputStream extends DataOutputStream {
+  private static final class ContentOutputStream extends DataOutputStream {
     final int myFileId;
     final boolean myFixedSize;
 
@@ -1581,15 +1751,26 @@ public class FSRecords {
   private static int contents;
   private static int reuses;
 
+  @NotNull
+  public static MessageDigest getContentHashDigest() {
+    // TODO replace with sha-256
+    return DigestUtil.sha1();
+  }
+
+  private static byte @NotNull[] calculateHash(byte[] bytes, int offset, int length) {
+    // Probably we don't need to hash the length and "\0000".
+    MessageDigest digest = getContentHashDigest();
+    digest.update(String.valueOf(length).getBytes(StandardCharsets.UTF_8));
+    digest.update("\u0000".getBytes(StandardCharsets.UTF_8));
+    digest.update(bytes, offset, length);
+    return digest.digest();
+  }
+
   private static int findOrCreateContentRecord(byte[] bytes, int offset, int length) throws IOException {
     assert WE_HAVE_CONTENT_HASHES;
 
     long started = DUMP_STATISTICS ? System.nanoTime():0;
-    myDigest.reset();
-    myDigest.update(String.valueOf(length - offset).getBytes(Charset.defaultCharset()));
-    myDigest.update("\0".getBytes(Charset.defaultCharset()));
-    myDigest.update(bytes, offset, length);
-    byte[] digest = myDigest.digest();
+    byte[] contentHash = calculateHash(bytes, offset, length);
     long done = DUMP_STATISTICS ? System.nanoTime() - started : 0;
     time += done;
 
@@ -1599,9 +1780,10 @@ public class FSRecords {
     if (DUMP_STATISTICS && (contents & 0x3FFF) == 0) {
       LOG.info("Contents:" + contents + " of " + totalContents + ", reuses:" + reuses + " of " + totalReuses + " for " + time / 1000000);
     }
-    PersistentBTreeEnumerator<byte[]> hashesEnumerator = getContentHashesEnumerator();
+
+    ContentHashEnumerator hashesEnumerator = getContentHashesEnumerator();
     final int largestId = hashesEnumerator.getLargestId();
-    int page = hashesEnumerator.enumerate(digest);
+    int page = hashesEnumerator.enumerate(contentHash);
 
     if (page <= largestId) {
       ++reuses;
@@ -1618,7 +1800,7 @@ public class FSRecords {
     }
   }
 
-  private static class AttributeOutputStream extends DataOutputStream {
+  private static final class AttributeOutputStream extends DataOutputStream {
     @NotNull
     private final FileAttribute myAttribute;
     private final int myFileId;

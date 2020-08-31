@@ -1,11 +1,11 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.codeStyleSettings;
 
+import com.intellij.application.options.CodeStyle;
 import com.intellij.editor.EditorColorSchemeTestCase;
 import com.intellij.openapi.application.ex.PathManagerEx;
 import com.intellij.openapi.options.SchemeFactory;
 import com.intellij.openapi.options.SchemeImportException;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -53,16 +53,8 @@ public abstract class CodeStyleTestCase extends LightPlatformTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return new LightProjectDescriptor() {
-      @Override
-      public void setUpProject(@NotNull Project project, @NotNull SetupHandler handler) throws Exception {
-        setupProject();
-        super.setUpProject(project, handler);
-      }
-    };
+    return new LightProjectDescriptor();
   }
-
-  protected void setupProject() throws Exception {}
 
   @NotNull
   protected CodeStyleSettings importSettings() throws SchemeImportException {
@@ -91,7 +83,7 @@ public abstract class CodeStyleTestCase extends LightPlatformTestCase {
 
   protected CodeStyleScheme createTestScheme() {
     return new CodeStyleScheme() {
-      private final CodeStyleSettings mySettings = new CodeStyleSettings();
+      private final CodeStyleSettings mySettings = CodeStyle.createTestSettings();
 
       @NotNull
       @Override

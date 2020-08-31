@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.roots.ui.configuration.actions;
 
@@ -21,6 +21,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.OrderEntry;
 import com.intellij.openapi.roots.impl.ModifiableModelCommitter;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.project.ProjectKt;
 import com.intellij.projectImport.ProjectAttachProcessor;
@@ -29,6 +30,7 @@ import com.intellij.util.PlatformUtils;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -52,8 +54,8 @@ public class ModuleDeleteProvider  implements DeleteProvider, TitledHandler  {
         continue;
       }
 
-      String ideaDir = ProjectKt.getStateStore(project).getDirectoryStorePath();
-      if (PathUtilRt.getParentPath(moduleFile).equals(ideaDir)) {
+      Path ideaDir = ProjectKt.getStateStore(project).getDirectoryStorePath();
+      if (ideaDir != null && PathUtilRt.getParentPath(moduleFile).equals(FileUtil.toSystemIndependentName(ideaDir.toString()))) {
         return true;
       }
     }
@@ -75,7 +77,7 @@ public class ModuleDeleteProvider  implements DeleteProvider, TitledHandler  {
       moduleDescriptions.addAll(unloadedModules);
     }
 
-    String names = StringUtil.join(moduleDescriptions, description -> "\'" + description.getName() + "\'", ", ");
+    String names = StringUtil.join(moduleDescriptions, description -> "'" + description.getName() + "'", ", ");
     int ret = Messages.showOkCancelDialog(getConfirmationText(names, moduleDescriptions.size()), getActionTitle(), CommonBundle.message("button.remove"), CommonBundle.getCancelButtonText(), Messages.getQuestionIcon());
     if (ret != Messages.OK) return;
     CommandProcessor.getInstance().executeCommand(project, () -> {
@@ -118,7 +120,8 @@ public class ModuleDeleteProvider  implements DeleteProvider, TitledHandler  {
 
   @Override
   public String getActionTitle() {
-    return ProjectAttachProcessor.canAttachToProject() ? "Remove from Project View" : "Remove Module";
+    return ProjectAttachProcessor.canAttachToProject() ? ProjectBundle.message("action.text.remove.from.project.view")
+                                                       : ProjectBundle.message("action.text.remove.module");
   }
 
   public static void removeModule(@NotNull final Module moduleToRemove,

@@ -1,29 +1,16 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.ant.dom;
 
+import com.intellij.ide.highlighter.XmlFileType;
 import com.intellij.lang.ant.AntFilesProvider;
 import com.intellij.lang.ant.AntSupport;
 import com.intellij.lang.ant.ReflectedProject;
 import com.intellij.lang.ant.config.impl.AntResourcesClassLoader;
 import com.intellij.lang.properties.IProperty;
+import com.intellij.lang.properties.PropertiesFileType;
 import com.intellij.lang.properties.psi.PropertiesFile;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.LanguageFileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
@@ -37,7 +24,6 @@ import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 import com.intellij.util.LocalTimeCounter;
 import com.intellij.util.xml.XmlName;
-import gnu.trove.THashMap;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -55,16 +41,15 @@ import java.util.*;
  * parsed from ant files
  * @author Eugene Zhuravlev
  */
-public class CustomAntElementsRegistry {
-
+public final class CustomAntElementsRegistry {
   public static final ThreadLocal<Boolean> ourIsBuildingClasspathForCustomTagLoading = ThreadLocal.withInitial(() -> Boolean.FALSE);
-  private static final Logger LOG = Logger.getInstance("#com.intellij.lang.ant.dom.CustomAntElementsRegistry");
+  private static final Logger LOG = Logger.getInstance(CustomAntElementsRegistry.class);
   private static final Key<CustomAntElementsRegistry> REGISTRY_KEY = Key.create("_custom_element_registry_");
 
-  private final Map<XmlName, ClassProvider> myCustomElements = new THashMap<>();
-  private final Map<AntDomNamedElement, String> myTypeDefErrors = new THashMap<>();
-  private final Map<XmlName, AntDomNamedElement> myDeclarations = new THashMap<>();
-  private final Map<String, ClassLoader> myNamedLoaders = new THashMap<>();
+  private final Map<XmlName, ClassProvider> myCustomElements = new HashMap<>();
+  private final Map<AntDomNamedElement, String> myTypeDefErrors = new HashMap<>();
+  private final Map<XmlName, AntDomNamedElement> myDeclarations = new HashMap<>();
+  private final Map<String, ClassLoader> myNamedLoaders = new HashMap<>();
 
   private CustomAntElementsRegistry(final AntDomProject antProject) {
     antProject.accept(new CustomTagDefinitionFinder(antProject));
@@ -387,10 +372,8 @@ public class CustomAntElementsRegistry {
                   final InputStream stream = loader.getResourceAsStream(antLibResource);
                   if (stream != null) {
                     try {
-                      final XmlFile xmlFile = (XmlFile)loadContentAsFile(xmlElement.getProject(), stream, StdFileTypes.XML);
-                      if (xmlFile != null) {
-                        loadDefinitionsFromAntlib(xmlFile, uri, loader, null, myAntProject);
-                      }
+                      final XmlFile xmlFile = (XmlFile)loadContentAsFile(xmlElement.getProject(), stream, XmlFileType.INSTANCE);
+                      loadDefinitionsFromAntlib(xmlFile, uri, loader, null, myAntProject);
                     }
                     catch (IOException e) {
                       LOG.info(e);
@@ -535,10 +518,10 @@ public class CustomAntElementsRegistry {
         if (stream != null) {
           try {
             if (isXmlFormat(typedef, resource)) {
-              xmlFile = (XmlFile)loadContentAsFile(project, stream, StdFileTypes.XML);
+              xmlFile = (XmlFile)loadContentAsFile(project, stream, XmlFileType.INSTANCE);
             }
             else {
-              propFile = (PropertiesFile)loadContentAsFile(project, stream, StdFileTypes.PROPERTIES);
+              propFile = (PropertiesFile)loadContentAsFile(project, stream, PropertiesFileType.INSTANCE);
             }
           }
           catch (IOException e) {
@@ -553,10 +536,10 @@ public class CustomAntElementsRegistry {
         final PsiFileSystemItem file = typedef.getFile().getValue();
         if (file instanceof PsiFile) {
           if (isXmlFormat(typedef, file.getName())) {
-            xmlFile = file instanceof XmlFile ? (XmlFile)file : (XmlFile)loadContentAsFile((PsiFile)file, StdFileTypes.XML);
+            xmlFile = file instanceof XmlFile ? (XmlFile)file : (XmlFile)loadContentAsFile((PsiFile)file, XmlFileType.INSTANCE);
           }
           else { // assume properties format
-            propFile = file instanceof PropertiesFile ? (PropertiesFile)file : (PropertiesFile)loadContentAsFile((PsiFile)file, StdFileTypes.PROPERTIES);
+            propFile = file instanceof PropertiesFile ? (PropertiesFile)file : (PropertiesFile)loadContentAsFile((PsiFile)file, PropertiesFileType.INSTANCE);
           }
         }
       }

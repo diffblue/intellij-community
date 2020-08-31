@@ -13,6 +13,7 @@ import java.util.List;
  * @author yole
  */
 public class ScrollableSingleRowLayout extends SingleRowLayout {
+  public static final int DEADZONE_FOR_DECLARE_TAB_HIDDEN = 10;
   private int myScrollOffset = 0;
   private boolean myScrollSelectionInViewPending = false;
 
@@ -82,7 +83,13 @@ public class ScrollableSingleRowLayout extends SingleRowLayout {
         else {
           final int maxLength = passInfo.toFitLength - getStrategy().getMoreRectAxisSize();
           if (offset + length > maxLength) {
-            scroll(offset + length - maxLength);
+            // left side should be always visible
+            if (length < maxLength) {
+              scroll(offset + length - maxLength);
+            }
+            else {
+              scroll(offset);
+            }
           }
         }
         break;
@@ -93,11 +100,6 @@ public class ScrollableSingleRowLayout extends SingleRowLayout {
 
   @Override
   protected void recomputeToLayout(SingleRowPassInfo data) {
-    TabInfo info = myTabs.getSelectedInfo();
-    if (info != null && myScrollSelectionInViewPending) {
-      TabLabel label = myTabs.getTabLabel(info);
-      label.setActionPanelVisible(true);
-    }
     calculateRequiredLength(data);
     clampScrollOffsetToBounds(data);
     if (myScrollSelectionInViewPending || myLastSingRowLayout == null || !data.layoutSize.equals(myLastSingRowLayout.layoutSize)) {
@@ -121,14 +123,12 @@ public class ScrollableSingleRowLayout extends SingleRowLayout {
       final int moreRectSize = getStrategy().getMoreRectAxisSize();
       if (data.position + length > data.toFitLength - moreRectSize) {
         final int clippedLength = getStrategy().drawPartialOverflowTabs()
-                                  ? data.toFitLength - data.position - moreRectSize - 4 : 0;
+                                  ? data.toFitLength - data.position - moreRectSize : 0;
         super.applyTabLayout(data, label, clippedLength);
         label.setAlignmentToCenter(false);
-        label.setActionPanelVisible(false);
         return false;
       }
     }
-    label.setActionPanelVisible(true);
     return super.applyTabLayout(data, label, length);
   }
 
@@ -136,16 +136,18 @@ public class ScrollableSingleRowLayout extends SingleRowLayout {
   public boolean isTabHidden(TabInfo tabInfo) {
     final TabLabel label = myTabs.myInfo2Label.get(tabInfo);
     final Rectangle bounds = label.getBounds();
-    return getStrategy().getMinPosition(bounds) < -10 || bounds.isEmpty();
+    return getStrategy().getMinPosition(bounds) < -DEADZONE_FOR_DECLARE_TAB_HIDDEN
+           || bounds.width < label.getPreferredSize().width - DEADZONE_FOR_DECLARE_TAB_HIDDEN
+           || bounds.height < label.getPreferredSize().height - DEADZONE_FOR_DECLARE_TAB_HIDDEN;
   }
 
   @Nullable
   @Override
   protected TabLabel findLastVisibleLabel(SingleRowPassInfo data) {
-    int i = data.toLayout.size()-1;
-    while(i > 0) {
-      final TabInfo info = data.toLayout.get(i);
-      final TabLabel label = myTabs.myInfo2Label.get(info);
+    int i = data.toLayout.size() - 1;
+    while (i >= 0) {
+      TabInfo info = data.toLayout.get(i);
+      TabLabel label = myTabs.myInfo2Label.get(info);
       if (!label.getBounds().isEmpty()) {
         return label;
       }

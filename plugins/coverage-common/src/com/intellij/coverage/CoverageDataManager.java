@@ -7,9 +7,9 @@ import com.intellij.execution.configurations.RunnerSettings;
 import com.intellij.execution.configurations.coverage.CoverageEnabledConfiguration;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
-import com.intellij.openapi.util.JDOMExternalizable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,9 +18,9 @@ import java.util.List;
 /**
  * @author ven
  */
-public abstract class CoverageDataManager implements JDOMExternalizable {
+public abstract class CoverageDataManager {
   public static CoverageDataManager getInstance(@NotNull Project project) {
-    return project.getComponent(CoverageDataManager.class);
+    return ServiceManager.getService(project, CoverageDataManagerImpl.class);
   }
 
   /**
@@ -55,8 +55,7 @@ public abstract class CoverageDataManager implements JDOMExternalizable {
   /**
    * @return registered suites
    */
-  @NotNull
-  public abstract CoverageSuite[] getSuites();
+  public abstract CoverageSuite @NotNull [] getSuites();
 
   /**
    * @return currently active suite
@@ -81,7 +80,7 @@ public abstract class CoverageDataManager implements JDOMExternalizable {
    * runs computation in read action, blocking project close till action has been run,
    * and doing nothing in case projectClosing() event has been already broadcasted.
    *  Note that actions must not be long running not to cause significant pauses on project close.
-   * @param computation {@link com.intellij.openapi.util.Computable to be run}
+   * @param computation {@link Computable to be run}
    * @return result of the computation or null if the project is already closing.
    */
   @Nullable

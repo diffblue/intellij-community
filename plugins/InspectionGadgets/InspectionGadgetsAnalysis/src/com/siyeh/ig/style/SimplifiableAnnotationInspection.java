@@ -23,27 +23,19 @@ import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.psi.util.TypeConversionUtil;
-import java.util.HashSet;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.CommentTracker;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashSet;
 import java.util.Set;
 
 public class SimplifiableAnnotationInspection extends BaseInspection implements CleanupLocalInspectionTool {
-
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("simplifiable.annotation.display.name");
-  }
 
   @NotNull
   @Override
@@ -206,12 +198,8 @@ public class SimplifiableAnnotationInspection extends BaseInspection implements 
     }
 
     private static boolean containsError(PsiAnnotation annotation) {
-      final PsiJavaCodeReferenceElement nameRef = annotation.getNameReferenceElement();
-      if (nameRef == null) {
-        return true;
-      }
-      final PsiClass aClass = (PsiClass)nameRef.resolve();
-      if (aClass == null || !aClass.isAnnotationType()) {
+      final PsiClass aClass = annotation.resolveAnnotationType();
+      if (aClass == null) {
         return true;
       }
       final Set<String> names = new HashSet<>();

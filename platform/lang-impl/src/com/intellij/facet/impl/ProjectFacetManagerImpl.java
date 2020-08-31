@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.facet.impl;
 
 import com.intellij.ProjectTopics;
@@ -23,13 +22,10 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-/**
- * @author nik
- */
 @State(name = ProjectFacetManagerImpl.COMPONENT_NAME)
-public class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements PersistentStateComponent<ProjectFacetManagerImpl.ProjectFacetManagerState> {
+public final class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements PersistentStateComponent<ProjectFacetManagerImpl.ProjectFacetManagerState> {
   @NonNls public static final String COMPONENT_NAME = "ProjectFacetManager";
-  private static final Logger LOG = Logger.getInstance("#com.intellij.facet.impl.ProjectFacetManagerImpl");
+  private static final Logger LOG = Logger.getInstance(ProjectFacetManagerImpl.class);
   private ProjectFacetManagerState myState = new ProjectFacetManagerState();
   private final Project myProject;
   private volatile MultiMap<FacetTypeId<?>, Module> myIndex;
@@ -48,7 +44,7 @@ public class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements Pe
         myIndex = null;
       }
     }, project);
-    project.getMessageBus().connect(project).subscribe(ProjectTopics.MODULES, new ModuleListener() {
+    project.getMessageBus().connect().subscribe(ProjectTopics.MODULES, new ModuleListener() {
       @Override
       public void moduleAdded(@NotNull Project project, @NotNull Module module) {
         myIndex = null;
@@ -77,7 +73,7 @@ public class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements Pe
     if (index == null) {
       index = MultiMap.createLinked();
       for (Module module : ModuleManager.getInstance(myProject).getModules()) {
-        for (Facet facet : FacetManager.getInstance(module).getAllFacets()) {
+        for (Facet<?> facet : FacetManager.getInstance(module).getAllFacets()) {
           index.putValue(facet.getTypeId(), module);
         }
       }
@@ -88,7 +84,7 @@ public class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements Pe
 
   @NotNull
   @Override
-  public <F extends Facet> List<F> getFacets(@NotNull FacetTypeId<F> typeId) {
+  public <F extends Facet<?>> List<F> getFacets(@NotNull FacetTypeId<F> typeId) {
     return ContainerUtil.concat(getIndex().get(typeId), module -> FacetManager.getInstance(module).getFacetsByType(typeId));
   }
 
@@ -105,7 +101,7 @@ public class ProjectFacetManagerImpl extends ProjectFacetManagerEx implements Pe
   }
 
   @Override
-  public <F extends Facet> List<F> getFacets(@NotNull FacetTypeId<F> typeId, final Module[] modules) {
+  public <F extends Facet<?>> List<F> getFacets(@NotNull FacetTypeId<F> typeId, final Module[] modules) {
     final List<F> result = new ArrayList<>();
     for (Module module : modules) {
       result.addAll(FacetManager.getInstance(module).getFacetsByType(typeId));

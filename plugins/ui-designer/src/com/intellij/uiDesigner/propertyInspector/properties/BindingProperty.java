@@ -5,7 +5,6 @@ import com.intellij.CommonBundle;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -20,6 +19,7 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.refactoring.rename.RenameProcessor;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.uiDesigner.FormEditingUtil;
+import com.intellij.uiDesigner.GuiFormFileType;
 import com.intellij.uiDesigner.UIDesignerBundle;
 import com.intellij.uiDesigner.compiler.AsmCodeGenerator;
 import com.intellij.uiDesigner.designSurface.GuiEditor;
@@ -39,7 +39,6 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -49,7 +48,7 @@ import java.util.regex.Pattern;
  * @author Vladimir Kondratyev
  */
 public final class BindingProperty extends Property<RadComponent, String> {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.uiDesigner.propertyInspector.properties.BindingProperty");
+  private static final Logger LOG = Logger.getInstance(BindingProperty.class);
 
   private final PropertyRenderer<String> myRenderer = new LabelPropertyRenderer<String>() {
     @Override
@@ -156,9 +155,9 @@ public final class BindingProperty extends Property<RadComponent, String> {
 
     if (!isFieldUnreferenced(oldField)) {
       final int option = Messages.showYesNoDialog(project,
-        MessageFormat.format(UIDesignerBundle.message("message.rename.field"), oldName, newName),
-        UIDesignerBundle.message("title.rename"),
-        Messages.getQuestionIcon()
+                                                  UIDesignerBundle.message("message.rename.field", oldName, newName),
+                                                  UIDesignerBundle.message("title.rename"),
+                                                  Messages.getQuestionIcon()
       );
 
       if(option != Messages.YES/*Yes*/){
@@ -247,7 +246,7 @@ public final class BindingProperty extends Property<RadComponent, String> {
     try {
       return ReferencesSearch.search(field).forEach(t -> {
         PsiFile f = t.getElement().getContainingFile();
-        if (f != null && f.getFileType().equals(StdFileTypes.GUI_DESIGNER_FORM)) {
+        if (f != null && f.getFileType().equals(GuiFormFileType.INSTANCE)) {
           return true;
         }
         PsiMethod method = PsiTreeUtil.getParentOfType(t.getElement(), PsiMethod.class);

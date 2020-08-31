@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide;
 
 import com.intellij.openapi.actionSystem.AnAction;
@@ -17,9 +17,7 @@ public abstract class RecentProjectsManager {
     return ServiceManager.getService(RecentProjectsManager.class);
   }
 
-  @Nullable
-  @SystemIndependent
-  public abstract String getLastProjectCreationLocation();
+  public abstract @Nullable @SystemIndependent String getLastProjectCreationLocation();
 
   public abstract void setLastProjectCreationLocation(@Nullable @SystemIndependent String lastProjectLocation);
 
@@ -34,16 +32,19 @@ public abstract class RecentProjectsManager {
 
   public abstract void updateLastProjectPath();
 
-  public abstract void removePath(@Nullable @SystemIndependent String path);
+  public abstract void removePath(@NotNull @SystemIndependent String path);
 
   /**
-   * @param addClearListItem whether the "Clear List" action should be added to the end of the list.
+   * @deprecated Use {@link RecentProjectListActionProvider#getActions}
    */
-  @NotNull
-  public abstract AnAction[] getRecentProjectsActions(boolean addClearListItem);
+  @Deprecated
+  public abstract AnAction @NotNull [] getRecentProjectsActions(boolean addClearListItem);
 
-  @NotNull
-  public AnAction[] getRecentProjectsActions(boolean addClearListItem, boolean useGroups) {
+  /**
+   * @deprecated Use {@link RecentProjectListActionProvider#getActions}
+   */
+  @Deprecated
+  public AnAction @NotNull [] getRecentProjectsActions(boolean addClearListItem, boolean useGroups) {
     return getRecentProjectsActions(addClearListItem);
   }
 
@@ -64,5 +65,5 @@ public abstract class RecentProjectsManager {
 
   public abstract boolean willReopenProjectOnStart();
 
-  public abstract void reopenLastProjectsOnStart();
+  public abstract boolean reopenLastProjectsOnStart();
 }

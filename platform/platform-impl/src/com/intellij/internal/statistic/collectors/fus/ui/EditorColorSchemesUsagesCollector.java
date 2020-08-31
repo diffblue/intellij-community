@@ -8,19 +8,18 @@ import com.intellij.internal.statistic.service.fus.collectors.ApplicationUsagesC
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.impl.AbstractColorsScheme;
-import com.intellij.openapi.options.SchemeManager;
+import com.intellij.openapi.options.Scheme;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ColorUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
 import java.util.Set;
 
 public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollector {
 
-  private final static int CURR_VERSION = 2;
+  private final static int CURR_VERSION = 3;
 
   public static final String SCHEME_NAME_OTHER = "Other";
   public final static String[] KNOWN_NAMES = {
@@ -41,7 +40,7 @@ public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollecto
     "Aptana",
     "Flash Builder",
     "IdeaLight",
-    "High сontrast",
+    "High contrast",
     "ReSharper",
     "Rider"
   };
@@ -58,14 +57,16 @@ public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollecto
     Set<MetricEvent> usages = new HashSet<>();
     if (currentScheme instanceof AbstractColorsScheme) {
       String schemeName = currentScheme.getName();
-      if (schemeName.startsWith(SchemeManager.EDITABLE_COPY_PREFIX)) {
+      if (schemeName.startsWith(Scheme.EDITABLE_COPY_PREFIX)) {
         EditorColorsScheme original = ((AbstractColorsScheme)currentScheme).getOriginal();
         if (original != null) {
           schemeName = original.getName();
         }
       }
-      final String reportableName = getKnownSchemeName(schemeName);
-      usages.add(MetricEventFactoryKt.newMetric(reportableName, ColorUtil.isDark(currentScheme.getDefaultBackground())));
+      final FeatureUsageData data = new FeatureUsageData().
+        addData("scheme", getKnownSchemeName(schemeName)).
+        addData("is_dark", ColorUtil.isDark(currentScheme.getDefaultBackground()));
+      usages.add(MetricEventFactoryKt.newMetric("enabled.color.scheme", data));
     }
     return usages;
   }
@@ -84,11 +85,5 @@ public class EditorColorSchemesUsagesCollector extends ApplicationUsagesCollecto
   @Override
   public String getGroupId() {
     return "ui.editor.color.schemes";
-  }
-
-  @Nullable
-  @Override
-  public FeatureUsageData getData() {
-    return new FeatureUsageData().addOS();
   }
 }

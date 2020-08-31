@@ -1,23 +1,20 @@
 package com.intellij.openapi.externalSystem.model.task;
 
 import com.intellij.openapi.extensions.ExtensionPointName;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.EventListener;
 
 /**
  * Defines contract for callback to listen external task notifications.
  *
  * @author Denis Zhdanov
  */
-public interface ExternalSystemTaskNotificationListener {
+public interface ExternalSystemTaskNotificationListener extends EventListener {
 
   ExtensionPointName<ExternalSystemTaskNotificationListener> EP_NAME
     = ExtensionPointName.create("com.intellij.externalSystemTaskNotificationListener");
-
-  /**
-   * @deprecated use {@link #onStart(ExternalSystemTaskId, String)}
-   */
-  @Deprecated
-  void onQueued(@NotNull ExternalSystemTaskId id, String workingDir);
 
   /**
    * Notifies that task with the given id is about to be started.
@@ -26,7 +23,6 @@ public interface ExternalSystemTaskNotificationListener {
    * @param workingDir working directory
    */
   default void onStart(@NotNull ExternalSystemTaskId id, String workingDir) {
-    onQueued(id, workingDir);
     onStart(id);
   }
 
@@ -34,6 +30,7 @@ public interface ExternalSystemTaskNotificationListener {
    * @deprecated use {@link #onStart(ExternalSystemTaskId, String)}
    */
   @Deprecated
+  @ApiStatus.ScheduledForRemoval(inVersion = "2020.3")
   void onStart(@NotNull ExternalSystemTaskId id);
 
   /**

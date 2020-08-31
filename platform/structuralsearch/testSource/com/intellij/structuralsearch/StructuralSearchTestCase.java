@@ -1,16 +1,13 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch;
 
 import com.intellij.codeInsight.daemon.quickFix.LightQuickFixTestCase;
+import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.lang.Language;
 import com.intellij.openapi.fileTypes.LanguageFileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.LanguageLevelProjectExtension;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.CharsetToolkit;
-import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.PsiElement;
 import com.intellij.structuralsearch.impl.matcher.CompiledPattern;
 import com.intellij.structuralsearch.impl.matcher.compiler.PatternCompiler;
@@ -23,23 +20,26 @@ import java.util.List;
 
 public abstract class StructuralSearchTestCase extends LightQuickFixTestCase {
   protected MatchOptions options;
-  protected Matcher testMatcher;
 
   @Override
   protected void setUp() throws Exception {
     super.setUp();
-
-    testMatcher = new Matcher(getProject());
     options = new MatchOptions();
     options.setRecursiveSearch(true);
-    LanguageLevelProjectExtension.getInstance(getProject()).setLanguageLevel(LanguageLevel.JDK_1_5);
   }
 
   @Override
   protected void tearDown() throws Exception {
-    testMatcher = null;
     options = null;
     super.tearDown();
+  }
+
+  protected String getSearchPlan(String query, LanguageFileType fileType) {
+    final MatchOptions matchOptions = new MatchOptions();
+    matchOptions.fillSearchCriteria(query);
+    matchOptions.setFileType(fileType);
+    PatternCompiler.compilePattern(getProject(), matchOptions, true, true);
+    return PatternCompiler.getLastSearchPlan();
   }
 
   protected int findMatchesCount(String in, String pattern, LanguageFileType fileType) {
@@ -56,13 +56,14 @@ public abstract class StructuralSearchTestCase extends LightQuickFixTestCase {
     options.setFileType(patternFileType);
     options.setDialect(patternLanguage);
 
-    final String message = checkApplicableConstraints(options, getProject());
+    final CompiledPattern compiledPattern = PatternCompiler.compilePattern(getProject(), options, true, false);
+    final String message = checkApplicableConstraints(options, compiledPattern);
     assertNull(message, message);
-    return testMatcher.testFindMatches(in, options, true, sourceFileType, physicalSourceFile);
+    final Matcher matcher = new Matcher(getProject(), options, compiledPattern);
+    return matcher.testFindMatches(in, true, sourceFileType, physicalSourceFile);
   }
 
-  public static String checkApplicableConstraints(MatchOptions options, Project project) {
-    final CompiledPattern compiledPattern = PatternCompiler.compilePattern(project, options, true, false);
+  public static String checkApplicableConstraints(MatchOptions options, CompiledPattern compiledPattern) {
     final StructuralSearchProfile profile = StructuralSearchUtil.getProfileByFileType(options.getFileType());
     assert profile != null;
     for (String varName : options.getVariableConstraintNames()) {
@@ -104,7 +105,7 @@ public abstract class StructuralSearchTestCase extends LightQuickFixTestCase {
   }
 
   protected int findMatchesCount(String in, String pattern) {
-    return findMatchesCount(in, pattern, StdFileTypes.JAVA);
+    return findMatchesCount(in, pattern, JavaFileType.INSTANCE);
   }
 
   protected String loadFile(String fileName) throws IOException {

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.util;
 
 import com.intellij.codeInsight.generation.OverrideImplementExploreUtil;
@@ -17,7 +17,7 @@ import org.jetbrains.plugins.groovy.lang.psi.util.GrTraitUtil;
 
 import java.util.*;
 
-public class GroovyOverrideImplementExploreUtil {
+public final class GroovyOverrideImplementExploreUtil {
 
   @NotNull
   public static Collection<MethodSignature> getMethodSignaturesToOverride(@NotNull GrTypeDefinition aClass) {
@@ -42,7 +42,10 @@ public class GroovyOverrideImplementExploreUtil {
   }
 
   @NotNull
-  public static Map<MethodSignature, CandidateInfo> getMapToOverrideImplement(GrTypeDefinition aClass, Collection<? extends HierarchicalMethodSignature> allMethodSignatures, boolean toImplement, boolean skipImplemented) {
+  public static Map<MethodSignature, CandidateInfo> getMapToOverrideImplement(PsiClass aClass,
+                                                                              Collection<? extends HierarchicalMethodSignature> allMethodSignatures,
+                                                                              boolean toImplement,
+                                                                              boolean skipImplemented) {
     Map<MethodSignature, PsiMethod> abstracts = new LinkedHashMap<>();
     Map<MethodSignature, PsiMethod> finals = new LinkedHashMap<>();
     Map<MethodSignature, PsiMethod> concretes = new LinkedHashMap<>();
@@ -84,12 +87,12 @@ public class GroovyOverrideImplementExploreUtil {
     return result;
   }
 
-  public static void processMethod(GrTypeDefinition aClass,
-                                    boolean skipImplemented,
-                                    Map<MethodSignature, PsiMethod> abstracts,
-                                    Map<MethodSignature, PsiMethod> finals,
-                                    Map<MethodSignature, PsiMethod> concretes,
-                                    PsiResolveHelper resolveHelper, HierarchicalMethodSignature signature, PsiMethod method) {
+  public static void processMethod(PsiClass aClass,
+                                   boolean skipImplemented,
+                                   Map<MethodSignature, PsiMethod> abstracts,
+                                   Map<MethodSignature, PsiMethod> finals,
+                                   Map<MethodSignature, PsiMethod> concretes,
+                                   PsiResolveHelper resolveHelper, HierarchicalMethodSignature signature, PsiMethod method) {
     PsiUtilCore.ensureValid(method);
 
     if (method.hasModifierProperty(PsiModifier.STATIC) || !resolveHelper.isAccessible(method, aClass, aClass)) return;

@@ -20,6 +20,7 @@ import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.PsiReplacementUtil;
@@ -50,7 +51,7 @@ public class EqualityToEqualsFix extends InspectionGadgetsFix {
 
   @Nullable
   public static EqualityToEqualsFix buildFix(PsiBinaryExpression expression) {
-    final PsiExpression lhs = ParenthesesUtils.stripParentheses(expression.getLOperand());
+    final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(expression.getLOperand());
     if (lhs instanceof PsiReferenceExpression) {
       final PsiReferenceExpression referenceExpression = (PsiReferenceExpression)lhs;
       final PsiElement target = referenceExpression.resolve();
@@ -64,8 +65,7 @@ public class EqualityToEqualsFix extends InspectionGadgetsFix {
     return new EqualityToEqualsFix(JavaTokenType.NE.equals(expression.getOperationTokenType()));
   }
 
-  @NotNull
-  public static InspectionGadgetsFix[] buildEqualityFixes(PsiBinaryExpression expression) {
+  public static InspectionGadgetsFix @NotNull [] buildEqualityFixes(PsiBinaryExpression expression) {
     final List<InspectionGadgetsFix> result = new ArrayList<>(2);
     ContainerUtil.addIfNotNull(result, buildFix(expression));
     ContainerUtil.addIfNotNull(result, EqualityToSafeEqualsFix.buildFix(expression));
@@ -100,8 +100,8 @@ public class EqualityToEqualsFix extends InspectionGadgetsFix {
       return;
     }
     final PsiBinaryExpression expression = (PsiBinaryExpression)parent;
-    final PsiExpression lhs = ParenthesesUtils.stripParentheses(expression.getLOperand());
-    final PsiExpression rhs = ParenthesesUtils.stripParentheses(expression.getROperand());
+    final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(expression.getLOperand());
+    final PsiExpression rhs = PsiUtil.skipParenthesizedExprDown(expression.getROperand());
     if (lhs == null || rhs == null) {
       return;
     }

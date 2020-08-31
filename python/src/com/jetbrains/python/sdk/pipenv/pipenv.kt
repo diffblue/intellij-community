@@ -1,9 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.sdk.pipenv
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.annotations.SerializedName
+import com.intellij.CommonBundle
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.execution.ExecutionException
@@ -15,14 +16,12 @@ import com.intellij.execution.process.ProcessOutput
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
-import com.intellij.notification.NotificationType
+import com.intellij.notification.NotificationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.runInEdt
-import com.intellij.openapi.components.ProjectComponent
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.editor.event.EditorFactoryEvent
@@ -46,6 +45,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.StandardFileSystems
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.PathUtil
+import com.jetbrains.python.PyBundle
 import com.jetbrains.python.inspections.PyPackageRequirementsInspection
 import com.jetbrains.python.packaging.*
 import com.jetbrains.python.sdk.*
@@ -55,10 +55,6 @@ import org.jetbrains.annotations.SystemDependent
 import org.jetbrains.annotations.TestOnly
 import java.io.File
 import javax.swing.Icon
-
-/**
- * @author vlan
- */
 
 const val PIP_FILE: String = "Pipfile"
 const val PIP_FILE_LOCK: String = "Pipfile.lock"
@@ -142,15 +138,12 @@ fun setupPipEnvSdkUnderProgress(project: Project?,
                                 newProjectPath: String?,
                                 python: String?,
                                 installPackages: Boolean): Sdk? {
-  val projectPath = newProjectPath ?:
-                    module?.basePath ?:
-                    project?.basePath ?:
-                    return null
-  val task = object : Task.WithResult<String, ExecutionException>(project, "Setting Up Pipenv Environment", true) {
+  val projectPath = newProjectPath ?: module?.basePath ?: project?.basePath ?: return null
+  val task = object : Task.WithResult<String, ExecutionException>(project, PyBundle.message("python.sdk.setting.up.pipenv.title"), true) {
     override fun compute(indicator: ProgressIndicator): String {
       indicator.isIndeterminate = true
       val pipEnv = setupPipEnv(FileUtil.toSystemDependentName(projectPath), python, installPackages)
-      return PythonSdkType.getPythonExecutable(pipEnv) ?: FileUtil.join(pipEnv, "bin", "python")
+      return PythonSdkUtil.getPythonExecutable(pipEnv) ?: FileUtil.join(pipEnv, "bin", "python")
     }
   }
   val suggestedName = "Pipenv (${PathUtil.getFileName(projectPath)})"
@@ -184,9 +177,9 @@ fun setupPipEnv(projectPath: @SystemDependent String, python: String?, installPa
  * Runs the configured pipenv for the specified Pipenv SDK with the associated project path.
  */
 fun runPipEnv(sdk: Sdk, vararg args: String): String {
-  val projectPath = sdk.associatedModulePath ?:
-                    throw PyExecutionException("Cannot find the project associated with this Pipenv environment",
-                                               "Pipenv", emptyList(), ProcessOutput())
+  val projectPath = sdk.associatedModulePath ?: throw PyExecutionException(
+    PyBundle.message("python.sdk.pipenv.execution.exception.no.project.message"),
+    "Pipenv", emptyList(), ProcessOutput())
   return runPipEnv(projectPath, *args)
 }
 
@@ -194,8 +187,9 @@ fun runPipEnv(sdk: Sdk, vararg args: String): String {
  * Runs the configured pipenv for the specified project path.
  */
 fun runPipEnv(projectPath: @SystemDependent String, vararg args: String): String {
-  val executable = getPipEnvExecutable()?.path ?:
-                   throw PyExecutionException("Cannot find Pipenv", "pipenv", emptyList(), ProcessOutput())
+  val executable = getPipEnvExecutable()?.path ?: throw PyExecutionException(
+    PyBundle.message("python.sdk.pipenv.execution.exception.no.pipenv.message"),
+    "pipenv", emptyList(), ProcessOutput())
 
   val command = listOf(executable) + args
   val commandLine = GeneralCommandLine(command).withWorkDirectory(projectPath)
@@ -204,7 +198,7 @@ fun runPipEnv(projectPath: @SystemDependent String, vararg args: String): String
   val result = with(handler) {
     when {
       indicator != null -> {
-        addProcessListener(PyPackageManagerImpl.IndicatedProcessOutputListener(indicator))
+        addProcessListener(IndicatedProcessOutputListener(indicator))
         runProcessWithProgressIndicator(indicator)
       }
       else ->
@@ -216,7 +210,8 @@ fun runPipEnv(projectPath: @SystemDependent String, vararg args: String): String
       isCancelled ->
         throw RunCanceledByUserException()
       exitCode != 0 ->
-        throw PyExecutionException("Error Running Pipenv", executable, args.asList(),
+        throw PyExecutionException(PyBundle.message("python.sdk.pipenv.execution.exception.error.running.pipenv.message"),
+                                   executable, args.asList(),
                                    stdout, stderr, exitCode, emptyList())
       else -> stdout
     }
@@ -237,8 +232,7 @@ fun detectAndSetupPipEnv(project: Project?, module: Module?, existingSdks: List<
  * The URLs of package sources configured in the Pipfile.lock of the module associated with this SDK.
  */
 val Sdk.pipFileLockSources: List<String>
-  get() = parsePipFileLock()?.meta?.sources?.mapNotNull { it.url } ?:
-          listOf(PIPENV_DEFAULT_SOURCE_URL)
+  get() = parsePipFileLock()?.meta?.sources?.mapNotNull { it.url } ?: listOf(PIPENV_DEFAULT_SOURCE_URL)
 
 /**
  * The list of requirements defined in the Pipfile.lock of the module associated with this SDK.
@@ -253,8 +247,8 @@ val Sdk.pipFileLockRequirements: List<PyRequirement>?
  */
 class UsePipEnvQuickFix(sdk: Sdk?, module: Module) : LocalQuickFix {
   private val quickFixName = when {
-    sdk != null && sdk.associatedModule != module -> "Fix Pipenv interpreter"
-    else -> "Use Pipenv interpreter"
+    sdk != null && sdk.isAssociatedWithAnotherModule(module) -> PyBundle.message("python.sdk.pipenv.quickfix.fix.pipenv.name")
+    else -> PyBundle.message("python.sdk.pipenv.quickfix.use.pipenv.name")
   }
 
   companion object {
@@ -307,7 +301,7 @@ class PipEnvInstallQuickFix : LocalQuickFix {
     }
   }
 
-  override fun getFamilyName() = "Install requirements from Pipfile.lock"
+  override fun getFamilyName() = PyBundle.message("python.sdk.install.requirements.from.pipenv.lock")
 
   override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
     val element = descriptor.psiElement ?: return
@@ -319,94 +313,96 @@ class PipEnvInstallQuickFix : LocalQuickFix {
 /**
  * Watches for edits in Pipfiles inside modules with a pipenv SDK set.
  */
-class PipEnvPipFileWatcherComponent(val project: Project) : ProjectComponent {
-  override fun projectOpened() {
-    val editorFactoryListener = object : EditorFactoryListener {
-      private val changeListenerKey = Key.create<DocumentListener>("Pipfile.change.listener")
-      private val notificationActive = Key.create<Boolean>("Pipfile.notification.active")
+class PipEnvPipFileWatcher : EditorFactoryListener {
+  private val changeListenerKey = Key.create<DocumentListener>("Pipfile.change.listener")
+  private val notificationActive = Key.create<Boolean>("Pipfile.notification.active")
 
-      override fun editorCreated(event: EditorFactoryEvent) {
-        if (!isPipFileEditor(event.editor)) return
-        val listener = object : DocumentListener {
-          override fun documentChanged(event: DocumentEvent) {
-            val document = event?.document ?: return
-            val module = document.virtualFile?.getModule(project) ?: return
-            if (FileDocumentManager.getInstance().isDocumentUnsaved(document)) {
-              notifyPipFileChanged(module)
-            }
-          }
+  override fun editorCreated(event: EditorFactoryEvent) {
+    val project = event.editor.project
+    if (project == null || !isPipFileEditor(event.editor)) return
+    val listener = object : DocumentListener {
+      override fun documentChanged(event: DocumentEvent) {
+        val document = event.document
+        val module = document.virtualFile?.getModule(project) ?: return
+        if (FileDocumentManager.getInstance().isDocumentUnsaved(document)) {
+          notifyPipFileChanged(module)
         }
-        with(event.editor.document) {
-          addDocumentListener(listener)
-          putUserData(changeListenerKey, listener)
-        }
-      }
-
-      override fun editorReleased(event: EditorFactoryEvent) {
-        val listener = event.editor.getUserData(changeListenerKey) ?: return
-        event.editor.document.removeDocumentListener(listener)
-      }
-
-      private fun notifyPipFileChanged(module: Module) {
-        if (module.getUserData(notificationActive) == true) return
-        val what = when {
-          module.pipFileLock == null -> "not found"
-          else -> "out of date"
-        }
-        val title = "$PIP_FILE_LOCK is $what"
-        val content = "Run <a href='#lock'>pipenv lock</a> or <a href='#update'>pipenv update</a>"
-        val notification = LOCK_NOTIFICATION_GROUP.createNotification(title, null, content,
-                                                                      NotificationType.INFORMATION) { notification, event ->
-          notification.expire()
-          module.putUserData(notificationActive, null)
-          FileDocumentManager.getInstance().saveAllDocuments()
-          when (event.description) {
-            "#lock" ->
-              runPipEnvInBackground(module, listOf("lock"), "Locking $PIP_FILE")
-            "#update" ->
-              runPipEnvInBackground(module, listOf("update", "--dev"), "Updating Pipenv environment")
-          }
-        }
-        module.putUserData(notificationActive, true)
-        notification.whenExpired {
-          module.putUserData(notificationActive, null)
-        }
-        notification.notify(project)
-      }
-
-      private fun runPipEnvInBackground(module: Module, args: List<String>, description: String) {
-        val task = object : Task.Backgroundable(module.project, StringUtil.toTitleCase(description), true) {
-          override fun run(indicator: ProgressIndicator) {
-            val sdk = module.pythonSdk ?: return
-            indicator.text = "$description..."
-            try {
-              runPipEnv(sdk, *args.toTypedArray())
-            }
-            catch (e: RunCanceledByUserException) {}
-            catch (e: ExecutionException) {
-              runInEdt {
-                Messages.showErrorDialog(project, e.toString(), "Error Running Pipenv")
-              }
-            }
-            finally {
-              PythonSdkType.getSitePackagesDirectory(sdk)?.refresh(true, true)
-              sdk.associatedModule?.baseDir?.refresh(true, false)
-            }
-          }
-        }
-        ProgressManager.getInstance().run(task)
-      }
-
-      private fun isPipFileEditor(editor: Editor): Boolean {
-        if (editor.project != project) return false
-        val file = editor.document.virtualFile ?: return false
-        if (file.name != PIP_FILE) return false
-        val module = file.getModule(project) ?: return false
-        if (module.pipFile != file) return false
-        return module.pythonSdk?.isPipEnv == true
       }
     }
-    EditorFactory.getInstance().addEditorFactoryListener(editorFactoryListener, project)
+    with(event.editor.document) {
+      addDocumentListener(listener)
+      putUserData(changeListenerKey, listener)
+    }
+  }
+
+  override fun editorReleased(event: EditorFactoryEvent) {
+    val listener = event.editor.getUserData(changeListenerKey) ?: return
+    event.editor.document.removeDocumentListener(listener)
+  }
+
+  private fun notifyPipFileChanged(module: Module) {
+    if (module.getUserData(notificationActive) == true) return
+    val what = when {
+      module.pipFileLock == null -> PyBundle.message("python.sdk.pipenv.pip.file.lock.not.found")
+      else -> PyBundle.message("python.sdk.pipenv.pip.file.lock.out.of.date")
+    }
+    val title = "$PIP_FILE_LOCK is $what"
+    val content = PyBundle.message("python.sdk.pipenv.pip.file.notification.content")
+    val notification = LOCK_NOTIFICATION_GROUP.createNotification(title = title, content = content,
+                                                                  listener = NotificationListener { notification, event ->
+                                                                    notification.expire()
+                                                                    module.putUserData(notificationActive, null)
+                                                                    FileDocumentManager.getInstance().saveAllDocuments()
+                                                                    when (event.description) {
+                                                                      "#lock" ->
+                                                                        runPipEnvInBackground(module, listOf("lock"),
+                                                                                              PyBundle.message(
+                                                                                                "python.sdk.pipenv.pip.file.notification.locking",
+                                                                                                PIP_FILE))
+                                                                      "#update" ->
+                                                                        runPipEnvInBackground(module, listOf("update", "--dev"),
+                                                                                              PyBundle.message(
+                                                                                                "python.sdk.pipenv.pip.file.notification.updating"))
+                                                                    }
+                                                                  })
+    module.putUserData(notificationActive, true)
+    notification.whenExpired {
+      module.putUserData(notificationActive, null)
+    }
+    notification.notify(module.project)
+  }
+
+  private fun runPipEnvInBackground(module: Module, args: List<String>, description: String) {
+    val task = object : Task.Backgroundable(module.project, StringUtil.toTitleCase(description), true) {
+      override fun run(indicator: ProgressIndicator) {
+        val sdk = module.pythonSdk ?: return
+        indicator.text = "$description..."
+        try {
+          runPipEnv(sdk, *args.toTypedArray())
+        }
+        catch (e: RunCanceledByUserException) {
+        }
+        catch (e: ExecutionException) {
+          runInEdt {
+            Messages.showErrorDialog(project, e.toString(), CommonBundle.message("title.error"))
+          }
+        }
+        finally {
+          PythonSdkUtil.getSitePackagesDirectory(sdk)?.refresh(true, true)
+          sdk.associatedModuleDir?.refresh(true, false)
+        }
+      }
+    }
+    ProgressManager.getInstance().run(task)
+  }
+
+  private fun isPipFileEditor(editor: Editor): Boolean {
+    val file = editor.document.virtualFile ?: return false
+    if (file.name != PIP_FILE) return false
+    val project = editor.project ?: return false
+    val module = file.getModule(project) ?: return false
+    if (module.pipFile != file) return false
+    return module.pythonSdk?.isPipEnv == true
   }
 }
 
@@ -416,7 +412,8 @@ private val Document.virtualFile: VirtualFile?
 private fun VirtualFile.getModule(project: Project): Module? =
   ModuleUtil.findModuleForFile(this, project)
 
-private val LOCK_NOTIFICATION_GROUP = NotificationGroup("$PIP_FILE Watcher", NotificationDisplayType.STICKY_BALLOON, false)
+private val LOCK_NOTIFICATION_GROUP = NotificationGroup(PyBundle.message(  "python.sdk.pipenv.pip.file.watcher", PIP_FILE),
+                                                        NotificationDisplayType.STICKY_BALLOON, false)
 
 private val Sdk.packageManager: PyPackageManager
   get() = PyPackageManagers.getInstance().forSdk(this)

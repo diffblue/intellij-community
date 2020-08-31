@@ -27,7 +27,7 @@ import java.awt.*;
  * @author peter
  */
 public abstract class AbstractFindUsagesDialog extends DialogWrapper {
-  protected final Project myProject;
+  private final Project myProject;
   protected final FindUsagesOptions myFindUsagesOptions;
 
   private final boolean myToShowInNewTab;
@@ -60,14 +60,16 @@ public abstract class AbstractFindUsagesDialog extends DialogWrapper {
     myIsShowInNewTabVisible = !isSingleFile;
     mySearchForTextOccurrencesAvailable = searchForTextOccurrencesAvailable;
     mySearchInLibrariesAvailable = searchInLibrariesAvailable;
+    if (myFindUsagesOptions instanceof PersistentFindUsagesOptions) {
+      ((PersistentFindUsagesOptions)myFindUsagesOptions).setDefaults(myProject);
+    }
 
     setOKButtonText(FindBundle.message("find.dialog.find.button"));
     setTitle(FindBundle.message(isSingleFile ? "find.usages.in.file.dialog.title" : "find.usages.dialog.title"));
   }
 
-  @NotNull
   @Override
-  protected Action[] createActions() {
+  protected Action @NotNull [] createActions() {
     return new Action[]{getOKAction(), getCancelAction(), getHelpAction()};
   }
 
@@ -122,6 +124,9 @@ public abstract class AbstractFindUsagesDialog extends DialogWrapper {
   @NotNull
   public final FindUsagesOptions calcFindUsagesOptions() {
     calcFindUsagesOptions(myFindUsagesOptions);
+    if (myFindUsagesOptions instanceof PersistentFindUsagesOptions) {
+      ((PersistentFindUsagesOptions)myFindUsagesOptions).storeDefaults(myProject);
+    }
     return myFindUsagesOptions;
   }
 

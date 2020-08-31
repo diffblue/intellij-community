@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.search;
 
 import com.intellij.lang.Language;
@@ -28,7 +27,7 @@ import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.CharSequenceSubSequence;
-import gnu.trove.TIntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -70,12 +69,12 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
     final CharSequence chars = file.getViewProvider().getContents();
     boolean multiLine = queryParameters.isMultiLine();
     List<CommentRange> commentRanges = findCommentTokenRanges(file, chars, queryParameters.getRange(), multiLine);
-    TIntArrayList occurrences = new TIntArrayList(1);
+    IntArrayList occurrences = new IntArrayList(1);
     IndexPattern[] patterns = patternProvider != null ? patternProvider.getIndexPatterns()
                                                       : new IndexPattern[] {queryParameters.getPattern()};
 
     for (int i = 0; i < commentRanges.size(); i++) {
-      occurrences.resetQuick();
+      occurrences.clear();
 
       for (int j = patterns.length - 1; j >=0; --j) {
         if (!collectPatternMatches(patterns, patterns[j], chars, commentRanges, i, file, queryParameters.getRange(), consumer,
@@ -175,7 +174,7 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
         int end = lexer.getTokenEnd() - endDelta;
 
         if (start < end && end <= chars.length()) {
-          commentRanges.add(new CommentRange(start, end,
+          commentRanges.add(new CommentRange(start, end, startDelta, endDelta,
                                              builderForFile == null ? "" : builderForFile.getCharsAllowedInContinuationPrefix(tokenType)));
         }
         lastEndOffset = end;
@@ -198,22 +197,25 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
   private static boolean collectPatternMatches(IndexPattern[] allIndexPatterns,
                                                IndexPattern indexPattern,
                                                CharSequence chars,
-                                               List<? extends CommentRange> commentRanges,
+                                               List<CommentRange> commentRanges,
                                                int commentNum,
                                                PsiFile file,
                                                TextRange range,
                                                Processor<? super IndexPatternOccurrence> consumer,
-                                               TIntArrayList matches,
+                                               IntArrayList matches,
                                                boolean multiLine
                                                ) {
     CommentRange commentRange = commentRanges.get(commentNum);
     int commentStart = commentRange.startOffset;
     int commentEnd = commentRange.endOffset;
+    int commentPrefixLength = commentRange.prefixLength;
+    int commentSuffixLength = commentRange.suffixLength;
     Pattern pattern = indexPattern.getPattern();
     if (pattern != null) {
       ProgressManager.checkCanceled();
 
-      CharSequence input = StringPattern.newBombedCharSequence(new CharSequenceSubSequence(chars, commentStart, commentEnd));
+      CharSequence input = StringPattern.newBombedCharSequence(new CharSequenceSubSequence(chars, commentStart - commentPrefixLength,
+                                                                                           commentEnd + commentSuffixLength));
       Matcher matcher = pattern.matcher(input);
       while (true) {
         //long time1 = System.currentTimeMillis();
@@ -222,10 +224,11 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
         //System.out.println("scanned text of length " + (lexer.getTokenEnd() - lexer.getTokenStart() + " in " + (time2 - time1) + " ms"));
 
         if (!found) break;
-        int start = matcher.start() + commentStart;
-        int end = matcher.end() + commentStart;
+        int suffixStartOffset = input.length() - commentSuffixLength;
+        int start = fitToRange(matcher.start(), commentPrefixLength, suffixStartOffset) + commentStart - commentPrefixLength;
+        int end = fitToRange(matcher.end(), commentPrefixLength, suffixStartOffset) + commentStart - commentPrefixLength;
         if (start != end) {
-          if ((range == null || range.getStartOffset() <= start && end <= range.getEndOffset()) && matches.indexOf(start) == -1) {
+          if ((range == null || range.getStartOffset() <= start && end <= range.getEndOffset()) && !matches.contains(start)) {
             List<TextRange> additionalRanges = multiLine ? findContinuation(start, chars, allIndexPatterns, commentRanges, commentNum)
                                                          : Collections.emptyList();
             if (range != null && !additionalRanges.isEmpty() &&
@@ -246,8 +249,12 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
     return true;
   }
 
+  private static int fitToRange(int value, int minValue, int maxValue) {
+    return Math.max(minValue, Math.min(value, maxValue));
+  }
+
   private static List<TextRange> findContinuation(int mainRangeStartOffset, CharSequence text, IndexPattern[] allIndexPatterns,
-                                                  List<? extends CommentRange> commentRanges, int commentNum) {
+                                                  List<CommentRange> commentRanges, int commentNum) {
     CommentRange commentRange = commentRanges.get(commentNum);
     int lineStartOffset = CharArrayUtil.shiftBackwardUntil(text, mainRangeStartOffset - 1, "\n") + 1;
     int lineEndOffset = CharArrayUtil.shiftForwardUntil(text, mainRangeStartOffset, "\n");
@@ -284,21 +291,25 @@ public class IndexPatternSearcher extends QueryExecutorBase<IndexPatternOccurren
     return result.isEmpty() ? Collections.emptyList() : result;
   }
 
-  private static class CommentRange {
+  private static final class CommentRange {
     private static final Comparator<CommentRange> BY_START_OFFSET_THEN_BY_END_OFFSET =
       Comparator.comparingInt((CommentRange o) -> o.startOffset).thenComparingInt((CommentRange o) -> o.endOffset);
 
     private final int startOffset;
     private final int endOffset;
+    private final int prefixLength;
+    private final int suffixLength;
     private final String allowedContinuationPrefixChars;
 
     private CommentRange(int startOffset, int endOffset) {
-      this(startOffset, endOffset, "");
+      this(startOffset, endOffset, 0, 0, "");
     }
 
-    private CommentRange(int startOffset, int endOffset, String chars) {
+    private CommentRange(int startOffset, int endOffset, int prefixLength, int suffixLength, String chars) {
       this.startOffset = startOffset;
       this.endOffset = endOffset;
+      this.prefixLength = prefixLength;
+      this.suffixLength = suffixLength;
       allowedContinuationPrefixChars = chars;
     }
   }

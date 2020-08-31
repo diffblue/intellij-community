@@ -8,8 +8,8 @@ import com.intellij.util.SystemProperties
 import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import org.jetbrains.intellij.build.*
+import org.jetbrains.intellij.build.impl.compilation.CompilationPartsUtil
 import org.jetbrains.intellij.build.impl.logging.BuildMessagesImpl
-import org.jetbrains.jps.gant.JpsGantProjectBuilder
 import org.jetbrains.jps.model.JpsElementFactory
 import org.jetbrains.jps.model.JpsGlobal
 import org.jetbrains.jps.model.JpsModel
@@ -28,9 +28,6 @@ import org.jetbrains.jps.util.JpsPathUtil
 import java.util.concurrent.atomic.AtomicLong
 import java.util.function.BiFunction
 
-/**
- * @author nik
- */
 @CompileStatic
 class CompilationContextImpl implements CompilationContext {
   final AntBuilder ant
@@ -41,7 +38,6 @@ class CompilationContextImpl implements CompilationContext {
   final JpsProject project
   final JpsGlobal global
   final JpsModel projectModel
-  final JpsGantProjectBuilder projectBuilder
   final Map<String, String> oldToNewModuleName
   final Map<String, String> newToOldModuleName
   JpsCompilationData compilationData
@@ -65,7 +61,7 @@ class CompilationContextImpl implements CompilationContext {
 
     def dependenciesProjectDir = new File(communityHome, 'build/dependencies')
     logFreeDiskSpace(messages, projectHome, "before downloading dependencies")
-    def gradleJdk = toCanonicalPath(JdkUtils.computeJdkHome(messages, '1.8', "jdk8Home", null, "JDK_18_x64"))
+    def gradleJdk = toCanonicalPath(JdkUtils.computeJdkHome(messages, '1.8', null, "JDK_18_x64"))
     GradleRunner gradle = new GradleRunner(dependenciesProjectDir, projectHome, messages, gradleJdk)
     if (!options.isInDevelopmentMode) {
       setupCompilationDependencies(gradle, options)
@@ -89,39 +85,44 @@ class CompilationContextImpl implements CompilationContext {
   private static String defineJavaSdk(JpsModel model, String projectHome, BuildOptions options, BuildMessages messages) {
     def sdks = []
     def jbrDir = jbrDir(projectHome, options)
-    def jdk6Home = JdkUtils.computeJdkHome(messages, '1.6', "jdkHome", "$jbrDir/1.6", "JDK_16_x64")
+    def jdk6Home = JdkUtils.computeJdkHome(messages, '1.6', "$jbrDir/1.6", "JDK_16_x64")
     JdkUtils.defineJdk(model.global, "IDEA jdk", jdk6Home, messages)
     sdks << "IDEA jdk"
     def jbrVersionName = jbrVersionName(options)
     sdks << jbrVersionName
     def jbrDefaultDir = "$jbrDir/$jbrVersionName"
     def jbrEnvVar = "JDK_${options.jbrVersion < 9 ? "1$options.jbrVersion" : options.jbrVersion}_x64"
-    def jbrHome = toCanonicalPath(JdkUtils.computeJdkHome(messages, jbrVersionName, "jdk${options.jbrVersion}Home", jbrDefaultDir, jbrEnvVar))
+    def jbrHome = toCanonicalPath(JdkUtils.computeJdkHome(messages, jbrVersionName, jbrDefaultDir, jbrEnvVar))
     JdkUtils.defineJdk(model.global, jbrVersionName, jbrHome, messages)
+    readModulesFromReleaseFile(model, jbrVersionName, jbrHome)
     model.project.modules
       .collect { it.getSdkReference(JpsJavaSdkType.INSTANCE)?.sdkName }
       .findAll { it != null && !sdks.contains(it) }
       .toSet().each { sdkName ->
-      def sdkHome = JdkUtils.computeJdkHome(messages, sdkName, sdkName, "$jbrDir/$sdkName", null)?.with {
-        toCanonicalPath(it as String)
+      def vendorPrefixEnd = sdkName.indexOf("-")
+      def sdkNameWithoutVendor = vendorPrefixEnd != -1 ? sdkName.substring(vendorPrefixEnd + 1) : sdkName
+      def sdkHome = JdkUtils.computeJdkHome(messages, sdkNameWithoutVendor, "$jbrDir/$sdkNameWithoutVendor", null)?.with {
+        toCanonicalPath(it)
       }
       if (sdkHome != null) {
         JdkUtils.defineJdk(model.global, sdkName, sdkHome, messages)
-        if (sdkName == '11') {
-          def jbr11 = model.global.libraryCollection.findLibrary(sdkName)
-          def urls = jbr11.getRoots(JpsOrderRootType.COMPILED).collect { it.url }
-          JdkUtils.readModulesFromReleaseFile(new File(sdkHome)).each {
-            if (!urls.contains(it)) {
-              jbr11.addRoot(it as String, JpsOrderRootType.COMPILED)
-            }
-          }
-        }
+        readModulesFromReleaseFile(model, sdkName, sdkHome)
       }
       else {
         messages.warning("JDK $sdkName is required to compile the project but it's not found")
       }
     }
     return jbrHome
+  }
+
+  private static def readModulesFromReleaseFile(JpsModel model, String sdkName, String sdkHome) {
+    def additionalSdk = model.global.libraryCollection.findLibrary(sdkName)
+    def urls = additionalSdk.getRoots(JpsOrderRootType.COMPILED).collect { it.url }
+    JdkUtils.readModulesFromReleaseFile(new File(sdkHome)).each {
+      if (!urls.contains(it)) {
+        additionalSdk.addRoot(it, JpsOrderRootType.COMPILED)
+      }
+    }
   }
 
   private static String jbrDir(String projectHome, BuildOptions options) {
@@ -158,7 +159,6 @@ class CompilationContextImpl implements CompilationContext {
     this.project = model.project
     this.global = model.global
     this.options = options
-    this.projectBuilder = new JpsGantProjectBuilder(ant.project, projectModel)
     this.messages = messages
     this.oldToNewModuleName = oldToNewModuleName
     this.newToOldModuleName = oldToNewModuleName.collectEntries { oldName, newName -> [newName, oldName] } as Map<String, String>
@@ -267,6 +267,9 @@ class CompilationContextImpl implements CompilationContext {
     cleanOutput(outputDirectoriesToKeep)
   }
 
+  /**
+   * @return url attribute value of output tag from .idea/misc.xml
+   */
   File getProjectOutputDirectory() {
     JpsPathUtil.urlToFile(JpsJavaExtensionService.instance.getOrCreateProjectExtension(project).outputUrl)
   }
@@ -407,6 +410,9 @@ class CompilationContextImpl implements CompilationContext {
   private static final AtomicLong totalSizeOfProducedArtifacts = new AtomicLong()
   @Override
   void notifyArtifactBuilt(String artifactPath) {
+    if (options.buildStepsToSkip.contains(BuildOptions.TEAMCITY_ARTIFACTS_PUBLICATION)) {
+      return
+    }
     def file = new File(artifactPath)
     def artifactsDir = new File(paths.artifacts)
 

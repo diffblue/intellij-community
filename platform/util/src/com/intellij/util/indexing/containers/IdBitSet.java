@@ -3,6 +3,8 @@ package com.intellij.util.indexing.containers;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.indexing.ValueContainer;
+import com.intellij.util.indexing.impl.ValueContainerImpl;
+import org.jetbrains.annotations.NotNull;
 
 class IdBitSet implements Cloneable, RandomAccessIntContainer {
   private static final int SHIFT = 6;
@@ -107,18 +109,8 @@ class IdBitSet implements Cloneable, RandomAccessIntContainer {
   }
 
   @Override
-  public IntIdsIterator intIterator() {
-    return new Iterator();
-  }
-
-  @Override
-  public ValueContainer.IntPredicate intPredicate() {
-    return new ValueContainer.IntPredicate() {
-      @Override
-      public boolean contains(int id) {
-        return IdBitSet.this.contains(id);
-      }
-    };
+  public @NotNull IntIdsIterator intIterator() {
+    return size() == 0 ? ValueContainerImpl.EMPTY_ITERATOR : new Iterator();
   }
 
   @Override
@@ -138,7 +130,7 @@ class IdBitSet implements Cloneable, RandomAccessIntContainer {
   }
 
   @Override
-  public RandomAccessIntContainer ensureContainerCapacity(int diff) {
+  public @NotNull RandomAccessIntContainer ensureContainerCapacity(int diff) {
     return this; // todo
   }
 
@@ -160,7 +152,9 @@ class IdBitSet implements Cloneable, RandomAccessIntContainer {
   }
 
   private int nextSetBit(int bitIndex) {
-    assert myBase >= 0;
+    if (myBase < 0) {
+      throw new IllegalStateException();
+    }
     if (bitIndex >= myBase) bitIndex -= myBase;
     int wordIndex = bitIndex >> SHIFT;
     if (wordIndex > myLastUsedSlot) {

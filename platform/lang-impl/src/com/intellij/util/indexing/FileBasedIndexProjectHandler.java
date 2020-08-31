@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 /*
  * @author max
@@ -20,79 +6,111 @@
 package com.intellij.util.indexing;
 
 import com.intellij.diagnostic.PerformanceWatcher;
-import com.intellij.ide.IdeBundle;
-import com.intellij.openapi.Disposable;
+import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.TransactionGuard;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.*;
 import com.intellij.openapi.roots.ContentIterator;
+import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.openapi.roots.impl.PushedFilePropertiesUpdater;
-import com.intellij.openapi.startup.StartupManager;
+import com.intellij.openapi.startup.StartupActivity;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.util.Processor;
+import com.intellij.util.indexing.contentQueue.IndexUpdateRunner;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 
-public class FileBasedIndexProjectHandler implements IndexableFileSet, Disposable {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.util.indexing.FileBasedIndexProjectHandler");
+@Service
+public final class FileBasedIndexProjectHandler implements IndexableFileSet {
+  private static final Logger LOG = Logger.getInstance(FileBasedIndexProjectHandler.class);
+  private final Project myProject;
+  private final @NotNull ProjectFileIndex myProjectFileIndex;
 
-  private final FileBasedIndex myIndex;
-  private final FileBasedIndexScanRunnableCollector myCollector;
+  private FileBasedIndexProjectHandler(@NotNull Project project) {
+    myProject = project;
+    myProjectFileIndex = ProjectFileIndex.getInstance(myProject);
+  }
 
-  public FileBasedIndexProjectHandler(@NotNull Project project, FileBasedIndex index, FileBasedIndexScanRunnableCollector collector) {
-    myIndex = index;
-    myCollector = collector;
-
-    if (ApplicationManager.getApplication().isInternal()) {
-      project.getMessageBus().connect(this).subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
-
+  static final class FileBasedIndexProjectHandlerStartupActivity implements StartupActivity.RequiredForSmartMode {
+    FileBasedIndexProjectHandlerStartupActivity() {
+      ApplicationManager.getApplication().getMessageBus().connect().subscribe(ProjectManager.TOPIC,  new ProjectManagerListener() {
         @Override
-        public void exitDumbMode() {
-          LOG.info("Has changed files: " + (createChangedFilesIndexingTask(project) != null) + "; project=" + project);
+        public void projectClosing(@NotNull Project project) {
+          removeProjectIndexableSet(project);
         }
       });
     }
 
-    StartupManager startupManager = StartupManager.getInstance(project);
-    if (startupManager != null) {
-      startupManager.registerPreStartupActivity(() -> {
-        PushedFilePropertiesUpdater.getInstance(project).initializeProperties();
-
-        // schedule dumb mode start after the read action we're currently in
-        TransactionGuard.submitTransaction(project, () -> {
-          if (FileBasedIndex.getInstance() instanceof FileBasedIndexImpl) {
-            DumbService.getInstance(project).queueTask(new UnindexedFilesUpdater(project));
+    @Override
+    public void runActivity(@NotNull Project project) {
+      if (ApplicationManager.getApplication().isInternal()) {
+        project.getMessageBus().connect().subscribe(DumbService.DUMB_MODE, new DumbService.DumbModeListener() {
+          @Override
+          public void exitDumbMode() {
+            LOG.info("Has changed files: " + (createChangedFilesIndexingTask(project) != null) + "; project=" + project);
           }
         });
+      }
 
-        myIndex.registerIndexableSet(this, project);
-        project.getMessageBus().connect(this).subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
-          private boolean removed;
+      FileBasedIndex fileBasedIndex = FileBasedIndex.getInstance();
+      PushedFilePropertiesUpdater.getInstance(project).initializeProperties();
 
-          @Override
-          public void projectClosing(@NotNull Project eventProject) {
-            if (eventProject == project && !removed) {
-              removed = true;
-              myIndex.removeIndexableSet(FileBasedIndexProjectHandler.this);
+      // schedule dumb mode start after the read action we're currently in
+      if (fileBasedIndex instanceof FileBasedIndexImpl) {
+        DumbService.getInstance(project).queueTask(new UnindexedFilesUpdater(project, IndexInfrastructure.isIndexesInitializationSuspended(), true));
+      }
+
+      for (Class<? extends IndexableFileSet> indexableSetClass : getProjectIndexableSetClasses()) {
+        IndexableFileSet set = project.getService(indexableSetClass);
+        fileBasedIndex.registerIndexableSet(set, project);
+      }
+
+      // done mostly for tests. In real life this is no-op, because the set was removed on project closing
+      Disposer.register(project, () -> removeProjectIndexableSet(project));
+    }
+
+    private static void removeProjectIndexableSet(@NotNull Project project) {
+      ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
+        ReadAction.run(() -> {
+          for (Class<? extends IndexableFileSet> indexableSetClass : getProjectIndexableSetClasses()) {
+            IndexableFileSet set = project.getServiceIfCreated(indexableSetClass);
+            if (set != null) {
+              FileBasedIndex.getInstance().removeIndexableSet(set);
             }
           }
         });
-      });
+      }, IndexingBundle.message("removing.indexable.set.project.handler"), false, project);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Class<? extends IndexableFileSet> @NotNull [] getProjectIndexableSetClasses() {
+      return new Class[]{FileBasedIndexProjectHandler.class, ProjectAdditionalIndexableFileSet.class};
     }
   }
 
   @Override
   public boolean isInSet(@NotNull final VirtualFile file) {
-    return myCollector.shouldCollect(file);
+    if (LightEdit.owns(myProject)) {
+      return false;
+    }
+    if (myProjectFileIndex.isInContent(file) || myProjectFileIndex.isInLibrary(file)) {
+      return !FileTypeManager.getInstance().isFileIgnored(file);
+    }
+    return false;
   }
 
   @Override
@@ -109,43 +127,38 @@ public class FileBasedIndexProjectHandler implements IndexableFileSet, Disposabl
     });
   }
 
-  @Override
-  public void dispose() {
-    // done mostly for tests. In real life this is no-op, because the set was removed on project closing
-    myIndex.removeIndexableSet(this);
-  }
-
   @ApiStatus.Internal
   public static final int ourMinFilesToStartDumMode = Registry.intValue("ide.dumb.mode.minFilesToStart", 20);
   private static final int ourMinFilesSizeToStartDumMode = Registry.intValue("ide.dumb.mode.minFilesSizeToStart", 1048576);
-  
+
   @Nullable
-  public static DumbModeTask createChangedFilesIndexingTask(final Project project) {
+  public static DumbModeTask createChangedFilesIndexingTask(@NotNull Project project) {
     final FileBasedIndex i = FileBasedIndex.getInstance();
     if (!(i instanceof FileBasedIndexImpl) || !IndexInfrastructure.hasIndices()) {
       return null;
     }
 
     FileBasedIndexImpl index = (FileBasedIndexImpl)i;
-
     if (!mightHaveManyChangedFilesInProject(project, index)) {
       return null;
     }
 
-    return new DumbModeTask(project.getComponent(FileBasedIndexProjectHandler.class)) {
+    return new DumbModeTask(project.getService(FileBasedIndexProjectHandler.class)) {
       @Override
       public void performInDumbMode(@NotNull ProgressIndicator indicator) {
+        indicator.setIndeterminate(false);
+        indicator.setText(IndexingBundle.message("progress.indexing.updating"));
+
         long start = System.currentTimeMillis();
         Collection<VirtualFile> files = index.getFilesToUpdate(project);
         long calcDuration = System.currentTimeMillis() - start;
 
-        indicator.setIndeterminate(false);
-        indicator.setText(IdeBundle.message("progress.indexing.updating"));
-        
         LOG.info("Reindexing refreshed files: " + files.size() + " to update, calculated in " + calcDuration + "ms");
         if (!files.isEmpty()) {
           PerformanceWatcher.Snapshot snapshot = PerformanceWatcher.takeSnapshot();
-          reindexRefreshedFiles(indicator, files, project, index);
+          int numberOfIndexingThreads = UnindexedFilesUpdater.getNumberOfIndexingThreads();
+          LOG.info("Using " + numberOfIndexingThreads + " " + StringUtil.pluralize("thread", numberOfIndexingThreads) + " for indexing");
+          new IndexUpdateRunner(index, UnindexedFilesUpdater.GLOBAL_INDEXING_EXECUTOR, numberOfIndexingThreads).indexFiles(project, files, indicator);
           snapshot.logResponsivenessSinceCreation("Reindexing refreshed files");
         }
       }
@@ -153,21 +166,21 @@ public class FileBasedIndexProjectHandler implements IndexableFileSet, Disposabl
       @Override
       public String toString() {
         StringBuilder sampleOfChangedFilePathsToBeIndexed = new StringBuilder();
-        
+
         index.processChangedFiles(project, new Processor<VirtualFile>() {
           int filesInProjectToBeIndexed;
           final String projectBasePath = project.getBasePath();
-          
+
           @Override
           public boolean process(VirtualFile file) {
             if (filesInProjectToBeIndexed != 0) sampleOfChangedFilePathsToBeIndexed.append(", ");
-            
+
             String filePath = file.getPath();
             String loggedPath = projectBasePath != null ? FileUtil.getRelativePath(projectBasePath, filePath, '/') : null;
             if (loggedPath == null) loggedPath = filePath;
             else loggedPath = "%project_path%/" + loggedPath;
             sampleOfChangedFilePathsToBeIndexed.append(loggedPath);
-            
+
             return ++filesInProjectToBeIndexed < ourMinFilesToStartDumMode;
           }
         });
@@ -193,10 +206,12 @@ public class FileBasedIndexProjectHandler implements IndexableFileSet, Disposabl
     });
   }
 
-  private static void reindexRefreshedFiles(ProgressIndicator indicator,
-                                            Collection<VirtualFile> files,
-                                            final Project project,
-                                            final FileBasedIndexImpl index) {
-    CacheUpdateRunner.processFiles(indicator, files, project, content -> index.processRefreshedFile(project, content));
+  // TODO automated project indexable file set management
+  @ApiStatus.Internal
+  @Service
+  public static final class ProjectAdditionalIndexableFileSet extends AdditionalIndexableFileSet {
+    public ProjectAdditionalIndexableFileSet(@NotNull Project project) {
+      super(project, true);
+    }
   }
 }

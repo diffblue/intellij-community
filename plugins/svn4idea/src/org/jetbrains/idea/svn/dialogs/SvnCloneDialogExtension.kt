@@ -8,6 +8,7 @@ import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.ui.VcsCloneComponent
 import com.intellij.util.ui.JBEmptyBorder
 import com.intellij.util.ui.UIUtil
+import org.jetbrains.idea.svn.SvnBundle
 import javax.swing.JComponent
 
 class SvnCloneDialogExtension(project: Project) : CheckoutDialog(project, ProjectLevelVcsManager.getInstance(project).compositeCheckoutListener), VcsCloneComponent {
@@ -24,9 +25,13 @@ class SvnCloneDialogExtension(project: Project) : CheckoutDialog(project, Projec
     return this.isOKActionEnabled
   }
 
-  override fun getOkButtonText() = "Check Out"
+  override fun getOkButtonText() = SvnBundle.message("checkout.dialog.button")
 
   override fun doValidateAll(): MutableList<ValidationInfo> {
     return super.doValidateAll()
+  }
+
+  override fun dispose() {
+    super.dispose()
   }
 }

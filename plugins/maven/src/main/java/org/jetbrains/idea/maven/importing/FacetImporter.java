@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.importing;
 
 import com.intellij.facet.*;
@@ -11,7 +11,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ArrayUtilRt;
-import com.intellij.util.PathUtil;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.jetbrains.idea.maven.project.MavenProjectChanges;
 import org.jetbrains.idea.maven.project.MavenProjectsProcessorTask;
@@ -28,14 +28,14 @@ public abstract class FacetImporter<FACET_TYPE extends Facet, FACET_CONFIG_TYPE 
   protected final FACET_TYPE_TYPE myFacetType;
   protected final String myDefaultFacetName;
 
-  protected FacetImporter(String pluginGroupID, String pluginArtifactID, FACET_TYPE_TYPE type) {
+  protected FacetImporter(@NonNls String pluginGroupID, @NonNls String pluginArtifactID, FACET_TYPE_TYPE type) {
     this(pluginGroupID, pluginArtifactID, type, type.getDefaultFacetName());
   }
 
-  public FacetImporter(String pluginGroupID,
-                       String pluginArtifactID,
+  public FacetImporter(@NonNls String pluginGroupID,
+                       @NonNls String pluginArtifactID,
                        FACET_TYPE_TYPE type,
-                       String defaultFacetName) {
+                       @NonNls String defaultFacetName) {
     super(pluginGroupID, pluginArtifactID);
     myFacetType = type;
     myDefaultFacetName = defaultFacetName;
@@ -121,7 +121,7 @@ public abstract class FacetImporter<FACET_TYPE extends Facet, FACET_CONFIG_TYPE 
     return findFacet(model, myFacetType, myDefaultFacetName);
   }
 
-  protected <T extends Facet> T findFacet(FacetModel model, FacetType<T, ?> type, String defaultFacetName) {
+  protected <T extends Facet> T findFacet(FacetModel model, FacetType<T, ?> type, @NonNls String defaultFacetName) {
     T result = model.findFacet(type.getId(), defaultFacetName);
     if (result == null) result = model.getFacetByType(type.getId());
     return result;
@@ -145,11 +145,11 @@ public abstract class FacetImporter<FACET_TYPE extends Facet, FACET_CONFIG_TYPE 
     return getTargetFileName(p, "." + getTargetExtension(p));
   }
 
-  protected String getTargetFileName(MavenProject p, String suffix) {
+  protected String getTargetFileName(MavenProject p, @NonNls String suffix) {
     return getTargetName(p) + suffix;
   }
 
-  protected String getTargetFilePath(MavenProject p, String suffix) {
+  protected String getTargetFilePath(MavenProject p, @NonNls String suffix) {
     return makePath(p, p.getBuildDirectory(), getTargetName(p) + suffix);
   }
 
@@ -169,7 +169,7 @@ public abstract class FacetImporter<FACET_TYPE extends Facet, FACET_CONFIG_TYPE 
     String tail = tailBuff.toString();
     String result = FileUtil.isAbsolute(tail) ? tail : new File(p.getDirectory(), tail).getPath();
 
-    return FileUtil.toSystemIndependentName(PathUtil.getCanonicalPath(result));
+    return FileUtil.toSystemIndependentName(FileUtil.toCanonicalPath(result));
   }
 
   protected String getTargetExtension(MavenProject p) {

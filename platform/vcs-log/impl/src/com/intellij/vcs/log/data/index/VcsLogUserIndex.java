@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.data.index;
 
 import com.intellij.openapi.Disposable;
@@ -19,24 +19,25 @@ import com.intellij.vcs.log.data.VcsUserKeyDescriptor;
 import com.intellij.vcs.log.impl.FatalErrorHandler;
 import com.intellij.vcs.log.util.StorageId;
 import gnu.trove.THashMap;
-import gnu.trove.TIntHashSet;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
-import static com.intellij.util.ObjectUtils.notNull;
 import static com.intellij.util.containers.ContainerUtil.getFirstItem;
 
 public class VcsLogUserIndex extends VcsLogFullDetailsIndex<Void, VcsShortCommitDetails> {
   private static final Logger LOG = Logger.getInstance(VcsLogUserIndex.class);
-  public static final String USERS = "users";
-  public static final String USERS_IDS = "users-ids";
+  @NonNls private static final String USERS = "users";
+  @NonNls private static final String USERS_IDS = "users-ids";
   @NotNull private final UserIndexer myUserIndexer;
 
   public VcsLogUserIndex(@NotNull StorageId storageId,
@@ -52,20 +53,20 @@ public class VcsLogUserIndex extends VcsLogFullDetailsIndex<Void, VcsShortCommit
   @Nullable
   @Override
   protected Pair<ForwardIndex, ForwardIndexAccessor<Integer, Void>> createdForwardIndex() throws IOException {
-    return Pair.create(new PersistentMapBasedForwardIndex(myStorageId.getStorageFile(myName + ".idx")),
+    return Pair.create(new PersistentMapBasedForwardIndex(myStorageId.getStorageFile(myName + ".idx"), false),
                        new KeyCollectionForwardIndexAccessor<>(new IntCollectionDataExternalizer()));
   }
 
   @NotNull
   private static PersistentEnumeratorBase<VcsUser> createUsersEnumerator(@NotNull StorageId storageId,
                                                                          @NotNull VcsUserRegistry userRegistry) throws IOException {
-    File storageFile = storageId.getStorageFile(USERS_IDS);
+    Path storageFile = storageId.getStorageFile(USERS_IDS);
     return new PersistentBTreeEnumerator<>(storageFile, new VcsUserKeyDescriptor(userRegistry), Page.PAGE_SIZE, null,
                                            storageId.getVersion());
   }
 
-  public TIntHashSet getCommitsForUsers(@NotNull Set<? extends VcsUser> users) throws IOException, StorageException {
-    Set<Integer> ids = new HashSet<>();
+  public IntSet getCommitsForUsers(@NotNull Set<? extends VcsUser> users) throws IOException, StorageException {
+    IntSet ids = new IntOpenHashSet();
     for (VcsUser user : users) {
       ids.add(myUserIndexer.getUserId(user));
     }
@@ -77,7 +78,7 @@ public class VcsLogUserIndex extends VcsLogFullDetailsIndex<Void, VcsShortCommit
     Collection<Integer> userIds = getKeysForCommit(commit);
     if (userIds == null || userIds.isEmpty()) return null;
     LOG.assertTrue(userIds.size() == 1);
-    return myUserIndexer.getUserById(notNull(getFirstItem(userIds)));
+    return myUserIndexer.getUserById(Objects.requireNonNull(getFirstItem(userIds)));
   }
 
   public int getUserId(@NotNull VcsUser user) throws IOException {

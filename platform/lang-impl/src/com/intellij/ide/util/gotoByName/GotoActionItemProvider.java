@@ -1,9 +1,10 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util.gotoByName;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.SearchTopHitProvider;
 import com.intellij.ide.actions.ApplyIntentionAction;
+import com.intellij.ide.actions.searcheverywhere.FoundItemDescriptor;
 import com.intellij.ide.ui.OptionsSearchTopHitProvider;
 import com.intellij.ide.ui.OptionsTopHitProvider;
 import com.intellij.ide.ui.search.ActionFromOptionDescriptorProvider;
@@ -16,9 +17,10 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.NotNullLazyValue;
+import com.intellij.openapi.util.ClearableLazyValue;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.psi.codeStyle.MinusculeMatcher;
 import com.intellij.psi.codeStyle.NameUtil;
 import com.intellij.psi.codeStyle.WordPrefixMatcher;
 import com.intellij.ui.switcher.QuickActionProvider;
@@ -29,6 +31,7 @@ import com.intellij.util.containers.JBIterable;
 import com.intellij.util.text.Matcher;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -37,33 +40,69 @@ import static com.intellij.ide.util.gotoByName.GotoActionModel.*;
 /**
  * @author peter
  */
-public class GotoActionItemProvider implements ChooseByNameItemProvider {
+public final class GotoActionItemProvider implements ChooseByNameWeightedItemProvider {
+
+  private static final int BONUS_FOR_SPACE_IN_PATTERN = 100;
+  private static final int SETTINGS_PENALTY = 100;
+
   private final ActionManager myActionManager = ActionManager.getInstance();
   private final GotoActionModel myModel;
-  private final NotNullLazyValue<Map<String, ApplyIntentionAction>> myIntentions;
+  private final ClearableLazyValue<Map<String, ApplyIntentionAction>> myIntentions;
 
   public GotoActionItemProvider(GotoActionModel model) {
     myModel = model;
-    myIntentions = NotNullLazyValue.createValue(() -> ReadAction.compute(() -> myModel.getAvailableIntentions()));
+    myIntentions = ClearableLazyValue.create(() -> ReadAction.compute(() -> myModel.getAvailableIntentions()));
+  }
+
+  @Override
+  public @NotNull List<String> filterNames(@NotNull ChooseByNameBase base, String @NotNull [] names, @NotNull String pattern) {
+    return filterNames((ChooseByNameViewModel)base, names, pattern);
   }
 
   @NotNull
   @Override
-  public List<String> filterNames(@NotNull ChooseByNameBase base, @NotNull String[] names, @NotNull String pattern) {
+  public List<String> filterNames(@NotNull ChooseByNameViewModel base, String @NotNull [] names, @NotNull String pattern) {
     return Collections.emptyList(); // no common prefix insertion in goto action
   }
 
   @Override
-  public boolean filterElements(@NotNull final ChooseByNameBase base,
+  public boolean filterElements(@NotNull ChooseByNameBase base,
+                                @NotNull String pattern,
+                                boolean everywhere,
+                                @NotNull ProgressIndicator cancelled,
+                                @NotNull Processor<Object> consumer) {
+    return filterElements((ChooseByNameViewModel)base, pattern, everywhere, cancelled, consumer);
+  }
+
+  @Override
+  public boolean filterElements(final @NotNull ChooseByNameViewModel base,
                                 @NotNull final String pattern,
                                 boolean everywhere,
                                 @NotNull ProgressIndicator cancelled,
                                 @NotNull final Processor<Object> consumer) {
+    return filterElementsWithWeights(base, pattern, everywhere, cancelled, descriptor -> consumer.process(descriptor.getItem()));
+  }
+
+  @Override
+  public boolean filterElementsWithWeights(@NotNull ChooseByNameBase base,
+                                           @NotNull String pattern,
+                                           boolean everywhere,
+                                           @NotNull ProgressIndicator indicator,
+                                           @NotNull Processor<? super FoundItemDescriptor<?>> consumer) {
+    return filterElementsWithWeights((ChooseByNameViewModel)base, pattern, everywhere, indicator, consumer);
+  }
+
+  @Override
+  public boolean filterElementsWithWeights(@NotNull ChooseByNameViewModel base,
+                                           @NotNull String pattern,
+                                           boolean everywhere,
+                                           @NotNull ProgressIndicator indicator,
+                                           @NotNull Processor<? super FoundItemDescriptor<?>> consumer) {
     return filterElements(pattern, value -> {
       if (!everywhere && value.value instanceof ActionWrapper && !((ActionWrapper)value.value).isAvailable()) {
         return true;
       }
-      return consumer.process(value);
+      return consumer.process(new FoundItemDescriptor<>(value, value.getMatchingDegree()));
     });
   }
 
@@ -71,22 +110,23 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
     DataContext dataContext = DataManager.getInstance().getDataContext(myModel.getContextComponent());
 
     if (!processAbbreviations(pattern, consumer, dataContext)) return false;
-    if (!processIntentions(pattern, consumer, dataContext)) return false;
     if (!processActions(pattern, consumer, dataContext)) return false;
-    if (Registry.is("goto.action.skip.tophits.and.options")) return true;
     if (!processTopHits(pattern, consumer, dataContext)) return false;
+    if (!processIntentions(pattern, consumer, dataContext)) return false;
     if (!processOptions(pattern, consumer, dataContext)) return false;
 
     return true;
   }
 
   private boolean processAbbreviations(@NotNull String pattern, Processor<? super MatchedValue> consumer, DataContext context) {
+    MinusculeMatcher matcher = buildWeightMatcher(pattern);
     List<String> actionIds = AbbreviationManager.getInstance().findActions(pattern);
     JBIterable<MatchedValue> wrappers = JBIterable.from(actionIds)
       .filterMap(myActionManager::getAction)
       .transform(action -> {
         ActionWrapper wrapper = wrapAnAction(action, context);
-        return new MatchedValue(wrapper, pattern) {
+        Integer degree = matcher.matchingDegree(pattern);
+        return new MatchedValue(wrapper, pattern, degree == null ? 0 : degree.intValue()) {
           @NotNull
           @Override
           public String getValueText() {
@@ -117,9 +157,8 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
       provider.consumeTopHits(pattern, collector, project);
     }
     Collection<Object> result = collector.getResult();
-    JBIterable<Comparable> wrappers = JBIterable.from(result)
-      .transform(object -> object instanceof AnAction ? wrapAnAction((AnAction)object, dataContext) : object)
-      .filter(Comparable.class);
+    JBIterable<?> wrappers = JBIterable.from(result)
+      .transform(object -> object instanceof AnAction ? wrapAnAction((AnAction)object, dataContext) : object);
     return processItems(pattern, wrappers, consumer);
   }
 
@@ -130,11 +169,13 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
     List<Object> options = new ArrayList<>();
     final Set<String> words = registrar.getProcessedWords(pattern);
     Set<OptionDescription> optionDescriptions = null;
-    final String actionManagerName = myActionManager.getComponentName();
+    String actionManagerName = myActionManager.getComponentName();
+    boolean filterOutInspections = Registry.is("go.to.action.filter.out.inspections", true);
     for (String word : words) {
       final Set<OptionDescription> descriptions = registrar.getAcceptableDescriptions(word);
       if (descriptions != null) {
-        descriptions.removeIf(description -> actionManagerName.equals(description.getPath()));
+        descriptions.removeIf(description -> actionManagerName.equals(description.getPath()) ||
+                                             filterOutInspections && "Inspections".equals(description.getGroupName()));
         if (!descriptions.isEmpty()) {
           if (optionDescriptions == null) {
             optionDescriptions = descriptions;
@@ -143,7 +184,8 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
             optionDescriptions.retainAll(descriptions);
           }
         }
-      } else {
+      }
+      else {
         optionDescriptions = null;
         break;
       }
@@ -170,8 +212,8 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
         for (ActionFromOptionDescriptorProvider converter : ActionFromOptionDescriptorProvider.EP.getExtensions()) {
           AnAction action = converter.provide(description);
           if (action != null) options.add(new ActionWrapper(action, null, MatchMode.NAME, dataContext, myModel));
-          options.add(description);
         }
+        options.add(description);
       }
     }
     return processItems(pattern, JBIterable.from(options), consumer);
@@ -193,6 +235,10 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
       return new ActionWrapper(action, myModel.getGroupMapping(action), mode, dataContext, myModel);
     });
     return processItems(pattern, actionWrappers, consumer);
+  }
+
+  public void clearIntentions() {
+    myIntentions.drop();
   }
 
   @NotNull
@@ -221,13 +267,46 @@ public class GotoActionItemProvider implements ChooseByNameItemProvider {
   private static final Logger LOG = Logger.getInstance(GotoActionItemProvider.class);
 
   private static boolean processItems(String pattern, JBIterable<?> items, Processor<? super MatchedValue> consumer) {
-    List<MatchedValue> matched = ContainerUtil.newArrayList(items.map(o -> o instanceof MatchedValue ? (MatchedValue)o : new MatchedValue(o, pattern)));
+    MinusculeMatcher matcher = buildWeightMatcher(pattern);
+    List<MatchedValue> matched = ContainerUtil.newArrayList(items.map(o -> {
+      if (o instanceof MatchedValue) return (MatchedValue)o;
+
+      Integer weight = calcElementWeight(o, pattern, matcher);
+      return weight != null ? new MatchedValue(o, pattern, weight) : new MatchedValue(o, pattern);
+    }));
     try {
-      Collections.sort(matched, (o1, o2) -> o1.compareWeights(o2));
+      matched.sort((o1, o2) -> o1.compareWeights(o2));
     }
     catch (IllegalArgumentException e) {
       LOG.error("Comparison method violates its general contract with pattern '" + pattern + "'", e);
     }
     return ContainerUtil.process(matched, consumer);
+  }
+
+  @Nullable
+  private static Integer calcElementWeight(Object element, String pattern, MinusculeMatcher matcher) {
+    String name = getActionText(element);
+    if (name == null) return null;
+
+    int degree = matcher.matchingDegree(name);
+    if (pattern.trim().contains(" ")) degree += BONUS_FOR_SPACE_IN_PATTERN;
+    if (element instanceof OptionDescription && degree > 0) degree -= SETTINGS_PENALTY;
+
+    return Math.max(degree, 0);
+  }
+
+  private static MinusculeMatcher buildWeightMatcher(String pattern) {
+    return NameUtil.buildMatcher("*" + pattern)
+      .withCaseSensitivity(NameUtil.MatchingCaseSensitivity.NONE)
+      .preferringStartMatches()
+      .build();
+  }
+
+  @Nullable
+  public static String getActionText(Object value) {
+    if (value instanceof OptionDescription) return ((OptionDescription)value).getHit();
+    if (value instanceof AnAction) return ((AnAction)value).getTemplatePresentation().getText();
+    if (value instanceof ActionWrapper) return ((ActionWrapper)value).getAction().getTemplatePresentation().getText();
+    return null;
   }
 }

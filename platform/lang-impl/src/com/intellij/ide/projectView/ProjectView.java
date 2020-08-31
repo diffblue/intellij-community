@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ide.projectView;
 
@@ -121,7 +121,7 @@ public abstract class ProjectView {
 
   /**
    * e.g. {@link com.intellij.ide.projectView.impl.ProjectViewPane#ID}
-   * @see com.intellij.ide.projectView.impl.AbstractProjectViewPane#getId()
+   * @see AbstractProjectViewPane#getId()
    */
   public abstract String getCurrentViewId();
 
@@ -140,4 +140,6 @@ public abstract class ProjectView {
 
   @NotNull
   public abstract Collection<SelectInTarget> getSelectInTargets();
+
+  public abstract @NotNull String getDefaultViewId();
 }

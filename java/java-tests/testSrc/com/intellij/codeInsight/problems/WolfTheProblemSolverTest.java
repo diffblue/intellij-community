@@ -4,6 +4,7 @@ package com.intellij.codeInsight.problems;
 import com.intellij.codeInsight.daemon.DaemonAnalyzerTestCase;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.compiler.CompilerConfiguration;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.WriteCommandAction;
@@ -14,12 +15,16 @@ import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vcs.FileStatusManager;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.packageDependencies.DependencyValidationManager;
 import com.intellij.problems.ProblemListener;
 import com.intellij.problems.WolfTheProblemSolver;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.search.scope.ProblemsScope;
 import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl;
 import com.intellij.util.IncorrectOperationException;
@@ -30,9 +35,6 @@ import java.util.*;
 
 import static java.util.Collections.emptySet;
 
-/**
- * @author cdr
- */
 public class WolfTheProblemSolverTest extends DaemonAnalyzerTestCase {
   @NonNls private static final String BASE_PATH = "/codeInsight/daemonCodeAnalyzer/projectWide";
   private MockWolfTheProblemSolver myWolfTheProblemSolver;
@@ -40,7 +42,7 @@ public class WolfTheProblemSolverTest extends DaemonAnalyzerTestCase {
   @Override
   protected void setUp() throws Exception {
     super.setUp();
-    myWolfTheProblemSolver = prepareWolf(myProject);
+    myWolfTheProblemSolver = prepareWolf(myProject, getTestRootDisposable());
   }
 
   @Override
@@ -130,14 +132,17 @@ public class WolfTheProblemSolverTest extends DaemonAnalyzerTestCase {
     assertFalse(myWolfTheProblemSolver.isProblemFile(x));
   }
 
-  public static MockWolfTheProblemSolver prepareWolf(final Project project) {
+  @NotNull
+  public static MockWolfTheProblemSolver prepareWolf(@NotNull Project project, @NotNull Disposable parentDisposable) {
     MockWolfTheProblemSolver wolfTheProblemSolver = (MockWolfTheProblemSolver)WolfTheProblemSolver.getInstance(project);
 
-    WolfTheProblemSolverImpl theRealSolver = new WolfTheProblemSolverImpl(project, PsiManager.getInstance(project), project.getMessageBus());
+    WolfTheProblemSolverImpl theRealSolver = new WolfTheProblemSolverImpl(project);
     wolfTheProblemSolver.setDelegate(theRealSolver);
+    Disposer.register(parentDisposable, theRealSolver);
     return wolfTheProblemSolver;
+
   }
-    
+
   private VirtualFile configureRoot() throws Exception {
     configureByFile(BASE_PATH + "/x/X.java", BASE_PATH);
     return ModuleRootManager.getInstance(myModule).getContentRoots()[0];

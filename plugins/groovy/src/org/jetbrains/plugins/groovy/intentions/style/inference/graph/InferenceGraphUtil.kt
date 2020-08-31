@@ -18,7 +18,7 @@ import org.jetbrains.plugins.groovy.intentions.style.inference.resolve
 import org.jetbrains.plugins.groovy.lang.psi.api.statements.typedef.members.GrMethod
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.ConversionResult.OK
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil
-import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrTypeConverter.ApplicableTo.METHOD_PARAMETER
+import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrTypeConverter.Position.METHOD_PARAMETER
 import org.jetbrains.plugins.groovy.lang.psi.util.GroovyCommonClassNames
 import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.GroovyInferenceSession
 import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.rawType
@@ -27,28 +27,22 @@ import org.jetbrains.plugins.groovy.lang.resolve.processors.inference.type
 
 fun createGraphFromInferenceVariables(session: GroovyInferenceSession,
                                       virtualMethod: GrMethod,
-                                      forbiddingTypes: Collection<PsiType>,
                                       usageInformation: TypeUsageInformation,
                                       constantTypes: List<PsiTypeParameter>): InferenceUnitGraph {
   val variableMap = BidirectionalMap<InferenceUnit, InferenceVariable>()
   val builder = InferenceUnitGraphBuilder()
   val constantNames = constantTypes.mapNotNull { it.name }.toMutableList()
-  val flexibleTypes = virtualMethod.parameters.map { it.type }
   val variables = virtualMethod.typeParameters.mapNotNull { getInferenceVariable(session, it.type()) }
   for (variable in variables) {
     val variableType = variable.parameter.type()
     val (instantiation, isStrict) = inferType(variable.parameter, usageInformation)
     val core = InferenceUnit(variable.parameter,
-                             flexible = variableType in flexibleTypes,
                              constant = variableType.name in constantNames)
     if (variableType.name !in constantNames) {
       builder.setType(core, instantiation)
     }
     else {
       builder.setType(core, variable.parameter.extendsListTypes.firstOrNull() ?: PsiType.NULL)
-    }
-    if (variableType in forbiddingTypes) {
-      builder.forbidInstantiation(core)
     }
     if (isStrict) {
       builder.setDirect(core)

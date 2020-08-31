@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.roots;
 
 import com.intellij.ProjectTopics;
@@ -286,7 +286,7 @@ public class RootsChangedTest extends JavaModuleTestCase {
     });
   }
 
-  private void verifyLibraryTableEditingInUncommittedModel(final LibraryTable libraryTable) {
+  private void verifyLibraryTableEditingInUncommittedModel(LibraryTable libraryTable) {
     ApplicationManager.getApplication().runWriteAction(() -> {
       final Module moduleA = createModule("a.iml");
       final Module moduleB = createModule("b.iml");
@@ -330,21 +330,25 @@ public class RootsChangedTest extends JavaModuleTestCase {
     assertNoEvents(false);
   }
 
-  private void assertNoEvents(boolean modificationCountMustBeIncremented) {
-    assertEventsCountAndIncrementModificationCount(0, modificationCountMustBeIncremented);
+  private void assertNoEvents(boolean modificationCountMayBeIncremented) {
+    assertEventsCountAndIncrementModificationCount(0, false, modificationCountMayBeIncremented);
   }
 
   private void assertEventsCount(int count) {
-    assertEventsCountAndIncrementModificationCount(count, count != 0);
+    assertEventsCountAndIncrementModificationCount(count, count != 0, false);
   }
 
-  private void assertEventsCountAndIncrementModificationCount(int eventsCount, boolean modificationCountMustBeIncremented) {
+  private void assertEventsCountAndIncrementModificationCount(int eventsCount, boolean modificationCountMustBeIncremented,
+                                                              boolean modificationCountMayBeIncremented) {
     final int beforeCount = myModuleRootListener.beforeCount;
     final int afterCount = myModuleRootListener.afterCount;
     assertEquals("beforeCount = " + beforeCount + ", afterCount = " + afterCount, beforeCount, afterCount);
     assertEquals(eventsCount, beforeCount);
     long currentModificationCount = ProjectRootManager.getInstance(myProject).getModificationCount();
-    if (modificationCountMustBeIncremented) {
+    if (modificationCountMayBeIncremented) {
+      assertTrue(currentModificationCount >= myModuleRootListener.modificationCount);
+    }
+    else if (modificationCountMustBeIncremented) {
       assertTrue(currentModificationCount > myModuleRootListener.modificationCount);
     }
     else {

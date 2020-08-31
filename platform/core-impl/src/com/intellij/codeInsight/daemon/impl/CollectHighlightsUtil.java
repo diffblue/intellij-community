@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight.daemon.impl;
 
@@ -18,10 +18,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CollectHighlightsUtil {
-  private static final ExtensionPointName<Condition<PsiElement>> EP_NAME = ExtensionPointName.create("com.intellij.elementsToHighlightFilter");
+public final class CollectHighlightsUtil {
+  static final ExtensionPointName<Condition<PsiElement>> EP_NAME = ExtensionPointName.create("com.intellij.elementsToHighlightFilter");
 
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.CollectHighlightsUtil");
+  private static final Logger LOG = Logger.getInstance(CollectHighlightsUtil.class);
 
   private CollectHighlightsUtil() { }
 
@@ -52,16 +52,10 @@ public class CollectHighlightsUtil {
 
   private static final int STARTING_TREE_HEIGHT = 100;
 
-  static class FiltersHolder {
-    static final Condition<PsiElement>[] FILTERS = EP_NAME.getExtensions();
-  }
   @NotNull
   private static List<PsiElement> getElementsToHighlight(@NotNull PsiElement parent, final int startOffset, final int endOffset) {
     final List<PsiElement> result = new ArrayList<>();
-    final int currentOffset = parent.getTextRange().getStartOffset();
-    final Condition<PsiElement>[] filters = FiltersHolder.FILTERS;
-
-    int offset = currentOffset;
+    int offset = parent.getTextRange().getStartOffset();
 
     final TIntStack starts = new TIntStack(STARTING_TREE_HEIGHT);
     final Stack<PsiElement> elements = new Stack<>(STARTING_TREE_HEIGHT);
@@ -72,7 +66,7 @@ public class CollectHighlightsUtil {
     while (true) {
       ProgressIndicatorProvider.checkCanceled();
 
-      for (Condition<PsiElement> filter : filters) {
+      for (Condition<PsiElement> filter : EP_NAME.getExtensionList()) {
         if (!filter.value(element)) {
           assert child == PsiUtilCore.NULL_PSI_ELEMENT;
           child = null; // do not want to process children

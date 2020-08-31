@@ -24,9 +24,7 @@ import com.intellij.psi.impl.source.PsiFileImpl;
 import com.intellij.psi.impl.source.tree.*;
 import com.intellij.psi.templateLanguages.ITemplateDataElementType;
 import com.intellij.psi.text.BlockSupport;
-import com.intellij.psi.tree.IElementType;
-import com.intellij.psi.tree.IReparseableElementType;
-import com.intellij.psi.tree.IReparseableLeafElementType;
+import com.intellij.psi.tree.*;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.CharTable;
@@ -39,7 +37,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class BlockSupportImpl extends BlockSupport {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.text.BlockSupportImpl");
+  private static final Logger LOG = Logger.getInstance(BlockSupportImpl.class);
 
   @Override
   public void reparseRange(@NotNull PsiFile file, int startOffset, int endOffset, @NotNull CharSequence newText) throws IncorrectOperationException {
@@ -59,12 +57,10 @@ public class BlockSupportImpl extends BlockSupport {
                               @NotNull final CharSequence newFileText,
                               @NotNull final ProgressIndicator indicator,
                               @NotNull CharSequence lastCommittedText) {
-    try (ReparseResult result = reparse(file, oldFileNode, changedPsiRange, newFileText, indicator, lastCommittedText)) {
-      return result.log;
-    }
+    return reparse(file, oldFileNode, changedPsiRange, newFileText, indicator, lastCommittedText).log;
   }
 
-  static class ReparseResult implements AutoCloseable {
+  static class ReparseResult {
     final DiffLog log;
     final ASTNode oldRoot;
     final ASTNode newRoot;
@@ -75,9 +71,6 @@ public class BlockSupportImpl extends BlockSupport {
       this.newRoot = newRoot;
     }
 
-    @Override
-    public void close() {
-    }
   }
   // return diff log, old node to replace, new node (in dummy file)
   // MUST call .close() on the returned result
@@ -127,7 +120,7 @@ public class BlockSupportImpl extends BlockSupport {
 
     while (node != null && !(node instanceof FileElement)) {
       IElementType elementType = node.getElementType();
-      if (elementType instanceof IReparseableElementType || elementType instanceof IReparseableLeafElementType) {
+      if (elementType instanceof IReparseableElementTypeBase || elementType instanceof IReparseableLeafElementType) {
         final TextRange textRange = node.getTextRange();
 
         if (textRange.getLength() + lengthShift > 0 &&
@@ -142,8 +135,8 @@ public class BlockSupportImpl extends BlockSupport {
           CharSequence newTextStr = newFileText.subSequence(start, end);
 
           ASTNode newNode;
-          if (elementType instanceof IReparseableElementType) {
-            newNode = tryReparseNode((IReparseableElementType)elementType, node, newTextStr, file.getManager(), baseLanguage, charTable);
+          if (elementType instanceof IReparseableElementTypeBase) {
+            newNode = tryReparseNode((IReparseableElementTypeBase)elementType, node, newTextStr, file.getManager(), baseLanguage, charTable);
           }
           else {
             newNode = tryReparseLeaf((IReparseableLeafElementType)elementType, node, newTextStr);
@@ -167,12 +160,21 @@ public class BlockSupportImpl extends BlockSupport {
   }
 
   @Nullable
-  protected static ASTNode tryReparseNode(@NotNull IReparseableElementType reparseable, @NotNull ASTNode node, @NotNull CharSequence newTextStr,
+  protected static ASTNode tryReparseNode(@NotNull IReparseableElementTypeBase reparseable, @NotNull ASTNode node, @NotNull CharSequence newTextStr,
                                           @NotNull PsiManager manager, @NotNull Language baseLanguage, @NotNull CharTable charTable) {
     if (!reparseable.isParsable(node.getTreeParent(), newTextStr, baseLanguage, manager.getProject())) {
       return null;
     }
-    ASTNode chameleon = reparseable.createNode(newTextStr);
+    ASTNode chameleon;
+    if (reparseable instanceof ICustomParsingType) {
+      chameleon = ((ICustomParsingType)reparseable).parse(newTextStr, SharedImplUtil.findCharTableByTree(node));
+    }
+    else if (reparseable instanceof ILazyParseableElementType) {
+      chameleon = ((ILazyParseableElementType)reparseable).createNode(newTextStr);
+    }
+    else {
+      throw new AssertionError(reparseable.getClass() + " must either implement ICustomParsingType or extend ILazyParseableElementType");
+    }
     if (chameleon == null) {
       return null;
     }
@@ -225,13 +227,7 @@ public class BlockSupportImpl extends BlockSupport {
       DiffLog diffLog = new DiffLog();
       diffLog.appendReplaceFileElement(parent, (FileElement)holderElement.getFirstChildNode());
 
-      return new ReparseResult(diffLog, oldFileNode, holderElement) {
-        @Override
-        public void close() {
-          VirtualFile lightFile = dummyHolder.getViewProvider().getVirtualFile();
-          ((PsiManagerEx)fileImpl.getManager()).getFileManager().setViewProvider(lightFile, null);
-        }
-      };
+      return new ReparseResult(diffLog, oldFileNode, holderElement);
     }
     FileViewProvider viewProvider = fileImpl.getViewProvider();
     viewProvider.getLanguages();
@@ -259,12 +255,7 @@ public class BlockSupportImpl extends BlockSupport {
     }
     DiffLog diffLog = mergeTrees(fileImpl, oldFileElement, newFileElement, indicator, lastCommittedText);
 
-    return new ReparseResult(diffLog, oldFileElement, newFileElement) {
-      @Override
-      public void close() {
-        ((PsiManagerEx)fileImpl.getManager()).getFileManager().setViewProvider(lightFile, null);
-      }
-    };
+    return new ReparseResult(diffLog, oldFileElement, newFileElement);
   }
 
   @NotNull

@@ -44,7 +44,7 @@ import java.util.*;
 public class CombinePropertiesFilesAction extends AnAction {
 
   public CombinePropertiesFilesAction() {
-    super(PropertiesBundle.message("combine.properties.files.title"), null, AllIcons.FileTypes.Properties);
+    super(PropertiesBundle.messagePointer("combine.properties.files.title"), AllIcons.FileTypes.Properties);
   }
 
   @Override
@@ -148,7 +148,7 @@ public class CombinePropertiesFilesAction extends AnAction {
     @Nullable
     @Override
     public String getErrorText(String inputString) {
-      return checkInput(inputString) ? null : String.format("Base name must be valid for file \'%s\'", checkBaseName(inputString).getFailedFile());
+      return checkInput(inputString) ? null : String.format("Base name must be valid for file '%s'", checkBaseName(inputString).getFailedFile());
     }
 
     @Nullable

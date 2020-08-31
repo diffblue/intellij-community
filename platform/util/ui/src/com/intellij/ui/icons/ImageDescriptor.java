@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.icons;
 
 import com.intellij.diagnostic.StartUpMeasurer;
@@ -10,6 +10,7 @@ import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtilRt;
 import com.intellij.util.ImageLoader;
 import com.intellij.util.SVGLoader;
+import com.intellij.util.containers.CollectionFactory;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -26,6 +27,8 @@ import java.util.concurrent.ConcurrentMap;
 @ApiStatus.Internal
 public final class ImageDescriptor {
   private static final ConcurrentMap<String, Pair<Image, ImageLoader.Dimension2DDouble>> ourCache = ContainerUtil.createConcurrentSoftValueMap();
+  private static final ConcurrentMap<String, Image> ourLargeImageCache = ContainerUtil.createConcurrentWeakValueMap();
+  private static final ConcurrentMap<Image, ImageLoader.Dimension2DDouble> ourLargeImageDimensionMap = CollectionFactory.createConcurrentWeakMap();
 
   final @NotNull String path;
   public final double scale; // initial scale factor
@@ -62,6 +65,9 @@ public final class ImageDescriptor {
 
   public static void clearCache() {
     ourCache.clear();
+    ourLargeImageCache.clear();
+    ourLargeImageDimensionMap.clear();
+    ImageLoader.clearCache();
   }
 
   public ImageDescriptor(@NotNull String path, double scale, @NotNull ImageType type, boolean original) {
@@ -70,6 +76,10 @@ public final class ImageDescriptor {
     this.type = type;
     this.original = original;
     this.origUsrSize = new ImageLoader.Dimension2DDouble(0, 0);
+  }
+
+  public @NotNull String getPath() {
+    return path;
   }
 
   @Nullable
@@ -92,6 +102,14 @@ public final class ImageDescriptor {
       if (pair != null) {
         origUsrSize.setSize(pair.second);
         return pair.first;
+      }
+      Image image = ourLargeImageCache.get(cacheKey);
+      if (image != null) {
+        ImageLoader.Dimension2DDouble dimension = ourLargeImageDimensionMap.get(image);
+        if (dimension != null) {
+          origUsrSize.setSize(dimension);
+          return image;
+        }
       }
     }
 
@@ -127,8 +145,14 @@ public final class ImageDescriptor {
     finally {
       stream.close();
     }
-    if (image != null && cacheKey != null && 4L * image.getWidth(null) * image.getHeight(null) <= ImageLoader.CACHED_IMAGE_MAX_SIZE) {
-      ourCache.put(cacheKey, Pair.create(image, origUsrSize));
+    if (image != null && cacheKey != null) {
+      if (4L * image.getWidth(null) * image.getHeight(null) <= ImageLoader.CACHED_IMAGE_MAX_SIZE) {
+        ourCache.put(cacheKey, Pair.create(image, origUsrSize));
+      }
+      else {
+        ourLargeImageCache.put(cacheKey, image);
+        ourLargeImageDimensionMap.put(image, origUsrSize);
+      }
     }
     return image;
   }

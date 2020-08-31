@@ -1,23 +1,23 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.StoragePathMacros
-import com.intellij.openapi.module.impl.ModuleManagerImpl
+import com.intellij.openapi.diagnostic.runAndLogException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.serviceContainer.ServiceManagerImpl
+import com.intellij.serviceContainer.processAllImplementationClasses
+import com.intellij.serviceContainer.processComponentInstancesOfType
 import com.intellij.util.LineSeparator
 import com.intellij.util.SmartList
-import com.intellij.util.containers.forEachGuaranteed
 import com.intellij.util.io.exists
 import com.intellij.util.io.outputStream
 import com.intellij.util.isEmpty
 import com.intellij.util.write
-import gnu.trove.THashMap
-import gnu.trove.THashSet
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import org.jdom.Element
+import org.jetbrains.jps.model.serialization.JpsProjectLoader
 import java.nio.file.Path
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -43,7 +43,7 @@ internal fun normalizeDefaultProjectElement(defaultProject: Project, element: El
         writeProfileSettings(schemeDir, componentName, component)
       }
 
-      ModuleManagerImpl.COMPONENT_NAME -> {
+      JpsProjectLoader.MODULE_MANAGER_COMPONENT -> {
         iterator.remove()
       }
     }
@@ -80,14 +80,18 @@ private fun convertProfiles(profileIterator: MutableIterator<Element>, component
   }
 }
 
-internal fun moveComponentConfiguration(defaultProject: Project, element: Element, storagePathResolver: (storagePath: String) -> String, fileResolver: (name: String) -> Path) {
+internal fun moveComponentConfiguration(defaultProject: Project,
+                                        element: Element,
+                                        storagePathResolver: (storagePath: String) -> String,
+                                        fileResolver: (name: String) -> Path) {
   val componentElements = element.getChildren("component")
   if (componentElements.isEmpty()) {
     return
   }
 
-  val storageNameToComponentNames = THashMap<String, MutableSet<String>>()
-  val workspaceComponentNames = THashSet(listOf("GradleLocalSettings"))
+  val storageNameToComponentNames = HashMap<String, MutableSet<String>>()
+  val workspaceComponentNames = HashSet(listOf("GradleLocalSettings"))
+  val ignoredComponentNames = HashSet<String>()
   storageNameToComponentNames.put("workspace.xml", workspaceComponentNames)
 
   fun processComponents(aClass: Class<*>) {
@@ -101,27 +105,36 @@ internal fun moveComponentConfiguration(defaultProject: Project, element: Elemen
 
     when (storagePath) {
       StoragePathMacros.WORKSPACE_FILE -> workspaceComponentNames.add(stateAnnotation.name)
-      else -> storageNameToComponentNames.getOrPut(storagePathResolver(storagePath)) { THashSet() }.add(stateAnnotation.name)
+      StoragePathMacros.PRODUCT_WORKSPACE_FILE, StoragePathMacros.CACHE_FILE -> {
+        // ignore - this data should be not copied
+        ignoredComponentNames.add(stateAnnotation.name)
+      }
+      else -> storageNameToComponentNames.getOrPut(storagePathResolver(storagePath)) { ObjectOpenHashSet() }.add(stateAnnotation.name)
     }
   }
 
-  @Suppress("DEPRECATION")
-  defaultProject.getComponentInstancesOfType(PersistentStateComponent::class.java).forEachGuaranteed {
-    processComponents(it.javaClass)
+  processComponentInstancesOfType(defaultProject.picoContainer, PersistentStateComponent::class.java) {
+    LOG.runAndLogException {
+      processComponents(it.javaClass)
+    }
   }
 
-  ServiceManagerImpl.processAllImplementationClasses(defaultProject) { aClass, _ ->
+  processAllImplementationClasses(defaultProject.picoContainer) { aClass, _ ->
     processComponents(aClass)
     true
   }
 
   // fileResolver may return the same file for different storage names (e.g. for IPR project)
-  val storagePathToComponentStates = THashMap<Path, MutableList<Element>>()
+  val storagePathToComponentStates = HashMap<Path, MutableList<Element>>()
   val iterator = componentElements.iterator()
   cI@ for (componentElement in iterator) {
     iterator.remove()
 
     val name = componentElement.getAttributeValue("name") ?: continue
+    if (ignoredComponentNames.contains(name)) {
+      continue
+    }
+
     for ((storageName, componentNames) in storageNameToComponentNames) {
       if (componentNames.contains(name)) {
         storagePathToComponentStates.getOrPut(fileResolver(storageName)) { SmartList() }.add(componentElement)

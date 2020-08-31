@@ -11,7 +11,7 @@ import org.jetbrains.plugins.groovy.intentions.style.inference.removeWildcard
 import org.jetbrains.plugins.groovy.intentions.style.inference.resolve
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.ConversionResult.OK
 import org.jetbrains.plugins.groovy.lang.psi.impl.statements.expressions.TypesUtil.canAssign
-import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrTypeConverter.ApplicableTo.METHOD_PARAMETER
+import org.jetbrains.plugins.groovy.lang.psi.typeEnhancers.GrTypeConverter.Position.METHOD_PARAMETER
 
 /**
  * Represents graph which is used for determining [InferenceUnitNode] dependencies.
@@ -48,6 +48,10 @@ data class InferenceUnitGraph(val units: List<InferenceUnitNode>) {
       else -> emptyArray()
     }.forEach { parameter ->
       units.find { it.type == parameter }?.run { visitTypes(this, visited, order) }
+    }
+    val parent = unit.parent
+    if (parent != null) {
+      visitTypes(parent, visited, order)
     }
     order.add(unit)
   }
@@ -95,9 +99,6 @@ private fun condense(graph: InferenceUnitGraph): InferenceUnitGraph {
         typeMap[representative.core] = mergeTypes(representativeType, it.typeInstantiation)
         builder.setType(it.core, representative.core.type).setDirect(it.core)
       }
-    }
-    if (component.any(InferenceUnitNode::forbiddenToInstantiate)) {
-      builder.forbidInstantiation(representative.core)
     }
   }
   graph.units.filter { representativeMap[it.core] == it.core }.forEach { unit ->

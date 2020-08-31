@@ -17,7 +17,6 @@
 package com.intellij.util.ui;
 
 import com.intellij.icons.AllIcons;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -41,15 +40,6 @@ public class AsyncProcessIcon extends AnimatedIcon {
   @Override
   protected Dimension calcPreferredSize() {
     return new Dimension(myPassiveIcon.getIconWidth(), myPassiveIcon.getIconHeight());
-  }
-
-  /**
-   * @deprecated no effect
-   */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.3")
-  @Deprecated
-  public AsyncProcessIcon setUseMask(boolean useMask) {
-    return this;
   }
 
   @Override
@@ -81,6 +71,21 @@ public class AsyncProcessIcon extends AnimatedIcon {
       super(name, BIG_ICONS, AllIcons.Process.Big.Step_passive);
     }
   }
+
+  public static class BigCentered extends Big {
+    public BigCentered(@NonNls final String name) {
+      super(name);
+    }
+
+    @NotNull
+    @Override
+    protected Rectangle calculateBounds(@NotNull JComponent container) {
+      Dimension size = container.getSize();
+      Dimension iconSize = getPreferredSize();
+      return new Rectangle((size.width - iconSize.width) / 2, (size.height - iconSize.height) / 2, iconSize.width, iconSize.height);
+    }
+  }
+
 
   public boolean isDisposed() {
     return myAnimator.isDisposed();

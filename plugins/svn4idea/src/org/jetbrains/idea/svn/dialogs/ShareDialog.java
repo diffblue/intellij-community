@@ -94,8 +94,7 @@ public class ShareDialog extends RepositoryBrowserDialog {
   }
 
   @Override
-  @NotNull
-  protected Action[] createActions() {
+  protected Action @NotNull [] createActions() {
     return new Action[] {getOKAction(), getCancelAction(), getHelpAction()};
   }
   @Override
@@ -117,7 +116,7 @@ public class ShareDialog extends RepositoryBrowserDialog {
 
   public static ActionPopupMenu createShortPopupForRepositoryDialog(RepositoryBrowserComponent browserComponent) {
     DefaultActionGroup group = new DefaultActionGroup();
-    DefaultActionGroup newGroup = new DefaultActionGroup("_New", true);
+    DefaultActionGroup newGroup = DefaultActionGroup.createPopupGroup(() -> "_New");
     newGroup.add(new AddLocationAction(browserComponent));
     newGroup.add(new MkDirAction(browserComponent));
     group.add(newGroup);
@@ -172,7 +171,7 @@ public class ShareDialog extends RepositoryBrowserDialog {
       @Override
       public Dimension getPreferredSize() {
         final Dimension superValue = super.getPreferredSize();
-        return new Dimension(superValue.width, superValue.height > 90 ? superValue.height : 90);
+        return new Dimension(superValue.width, Math.max(superValue.height, 90));
       }
 
       @Override

@@ -238,7 +238,7 @@ public class TypeOrElementOrAttributeReference implements PsiReference {
 
     if (rootTag != null &&
         "schema".equals(rootTag.getLocalName()) &&
-        XmlUtil.ourSchemaUrisList.indexOf(rootTag.getNamespace()) != -1 ) {
+        XmlUtil.ourSchemaUrisList.contains(rootTag.getNamespace())) {
       final String targetNS = rootTag.getAttributeValue(TARGET_NAMESPACE);
 
       if (targetNS != null) {
@@ -268,8 +268,7 @@ public class TypeOrElementOrAttributeReference implements PsiReference {
   public PsiElement handleElementRename(@NotNull String newElementName) throws IncorrectOperationException {
     final String canonicalText = getCanonicalText();
 
-    final PsiElement element = ElementManipulators.getManipulator(myElement)
-      .handleContentChange(myElement, getRangeInElement(), newElementName);
+    final PsiElement element = ElementManipulators.handleContentChange(myElement, getRangeInElement(), newElementName);
     myRange = new TextRange(myRange.getStartOffset(),myRange.getEndOffset() - (canonicalText.length() - newElementName.length()));
     return element;
   }
@@ -285,8 +284,7 @@ public class TypeOrElementOrAttributeReference implements PsiReference {
   }
 
   @Override
-  @NotNull
-  public Object[] getVariants() {
+  public Object @NotNull [] getVariants() {
     final XmlTag tag = PsiTreeUtil.getContextOfType(myElement, XmlTag.class, true);
     if (tag == null || myType == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
 

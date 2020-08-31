@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.keymap.impl.ui;
 
 import com.intellij.icons.AllIcons;
@@ -15,7 +15,6 @@ import com.intellij.openapi.keymap.ex.KeymapManagerEx;
 import com.intellij.openapi.keymap.impl.KeymapImpl;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.GraphicsConfig;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Conditions;
 import com.intellij.openapi.util.Pair;
@@ -48,10 +47,7 @@ import java.awt.event.MouseMotionAdapter;
 import java.util.List;
 import java.util.*;
 
-import static com.intellij.util.ui.UIUtil.useSafely;
-import static com.intellij.util.ui.tree.TreeUtil.getNodeRowX;
-
-public class ActionsTree {
+public final class ActionsTree {
   private static final Icon EMPTY_ICON = EmptyIcon.ICON_18;
   private static final Icon CLOSE_ICON = AllIcons.Nodes.Folder;
 
@@ -187,7 +183,7 @@ public class ActionsTree {
     return null;
   }
 
-  public void reset(@NotNull Keymap keymap, @NotNull QuickList[] allQuickLists) {
+  public void reset(@NotNull Keymap keymap, QuickList @NotNull [] allQuickLists) {
     reset(keymap, allQuickLists, myFilter, null);
   }
 
@@ -210,7 +206,7 @@ public class ActionsTree {
     return myBaseFilter;
   }
 
-  private void reset(@NotNull Keymap keymap, @NotNull QuickList[] allQuickLists, String filter, @Nullable Shortcut shortcut) {
+  private void reset(@NotNull Keymap keymap, QuickList @NotNull [] allQuickLists, String filter, @Nullable Shortcut shortcut) {
     myKeymap = keymap;
 
     final PathsKeeper pathsKeeper = new PathsKeeper();
@@ -316,40 +312,38 @@ public class ActionsTree {
     }
   }
 
+  public static boolean isShortcutCustomized(@NotNull String actionId, @NotNull Keymap keymap) {
+    if (!keymap.canModify()) return false; // keymap is not customized
 
-  private static boolean isActionChanged(String actionId, Keymap oldKeymap, Keymap newKeymap) {
-    if (!newKeymap.canModify()) return false;
-
-    Shortcut[] oldShortcuts = oldKeymap.getShortcuts(actionId);
-    Shortcut[] newShortcuts = newKeymap.getShortcuts(actionId);
-    return !Arrays.equals(oldShortcuts, newShortcuts);
+    Keymap parent = keymap.getParent();
+    return parent != null && !Arrays.equals(parent.getShortcuts(actionId), keymap.getShortcuts(actionId));
   }
 
-  private static boolean isGroupChanged(Group group, Keymap oldKeymap, Keymap newKeymap) {
-    if (!newKeymap.canModify()) return false;
+  private static boolean areGroupShortcutsCustomized(@NotNull Group group, @NotNull Keymap keymap) {
+    if (!keymap.canModify()) return false;
 
     ArrayList children = group.getChildren();
     for (Object child : children) {
       if (child instanceof Group) {
-        if (isGroupChanged((Group)child, oldKeymap, newKeymap)) {
+        if (areGroupShortcutsCustomized((Group)child, keymap)) {
           return true;
         }
       }
       else if (child instanceof String) {
         String actionId = (String)child;
-        if (isActionChanged(actionId, oldKeymap, newKeymap)) {
+        if (isShortcutCustomized(actionId, keymap)) {
           return true;
         }
       }
       else if (child instanceof QuickList) {
         String actionId = ((QuickList)child).getActionId();
-        if (isActionChanged(actionId, oldKeymap, newKeymap)) {
+        if (isShortcutCustomized(actionId, keymap)) {
           return true;
         }
       }
     }
 
-    return isActionChanged(group.getId(), oldKeymap, newKeymap);
+    return group.getId() != null && isShortcutCustomized(group.getId(), keymap);
   }
 
   public void selectAction(String actionId) {
@@ -375,7 +369,7 @@ public class ActionsTree {
     Enumeration enumeration = ((DefaultMutableTreeNode)myTree.getModel().getRoot()).preorderEnumeration();
     while (enumeration.hasMoreElements()) {
       DefaultMutableTreeNode node = (DefaultMutableTreeNode)enumeration.nextElement();
-      if (Comparing.equal(getPath(node), path)) {
+      if (Objects.equals(getPath(node), path)) {
         return node;
       }
     }
@@ -515,7 +509,6 @@ public class ActionsTree {
       myHaveLink = false;
       myLink.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
       final boolean showIcons = UISettings.getInstance().getShowIconsInMenus();
-      Keymap originalKeymap = myKeymap == null ? null : myKeymap.getParent();
       Icon icon = null;
       String text;
       String actionId = null;
@@ -531,7 +524,7 @@ public class ActionsTree {
           actionId = group.getId();
           text = group.getName();
 
-          changed = originalKeymap != null && isGroupChanged(group, originalKeymap, myKeymap);
+          changed = myKeymap != null && areGroupShortcutsCustomized(group, myKeymap);
           icon = group.getIcon();
           if (icon == null){
             icon = CLOSE_ICON;
@@ -555,14 +548,14 @@ public class ActionsTree {
           else {
             text = actionId;
           }
-          changed = originalKeymap != null && isActionChanged(actionId, originalKeymap, myKeymap);
+          changed = myKeymap != null && isShortcutCustomized(actionId, myKeymap);
         }
         else if (userObject instanceof QuickList) {
           QuickList list = (QuickList)userObject;
           icon = null; // AllIcons.Actions.QuickList;
           text = list.getName();
 
-          changed = originalKeymap != null && isActionChanged(list.getActionId(), originalKeymap, myKeymap);
+          changed = myKeymap != null && isShortcutCustomized(list.getActionId(), myKeymap);
         }
         else if (userObject instanceof Separator) {
           // TODO[vova,anton]: beautify
@@ -580,7 +573,7 @@ public class ActionsTree {
           icon = link.getIcon();
           setIcon(getEvenIcon(link.getIcon()));
           Rectangle treeVisibleRect = tree.getVisibleRect();
-          int rowX = getNodeRowX(tree, row);
+          int rowX = TreeUtil.getNodeRowX(tree, row);
           setupLinkDimensions(treeVisibleRect, rowX);
         }
         else {
@@ -647,7 +640,7 @@ public class ActionsTree {
         super.doPaint(g);
       }
 
-      useSafely(g.create(0, 0, myLinkOffset, g.getClipBounds().height),
+      UIUtil.useSafely(g.create(0, 0, myLinkOffset, g.getClipBounds().height),
                        textGraphics -> super.doPaint(textGraphics));
       g.translate(myLinkOffset, 0);
       myLink.setHeight(getHeight());

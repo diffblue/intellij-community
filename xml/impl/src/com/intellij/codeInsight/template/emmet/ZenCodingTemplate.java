@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.template.emmet;
 
 import com.intellij.application.options.emmet.EmmetOptions;
@@ -9,6 +9,7 @@ import com.intellij.codeInsight.lookup.LookupElementPresentation;
 import com.intellij.codeInsight.template.CustomLiveTemplateBase;
 import com.intellij.codeInsight.template.CustomTemplateCallback;
 import com.intellij.codeInsight.template.LiveTemplateBuilder;
+import com.intellij.codeInsight.template.TemplateActionContext;
 import com.intellij.codeInsight.template.emmet.EmmetAbbreviationBalloon.EmmetContextHelp;
 import com.intellij.codeInsight.template.emmet.filters.SingleLineEmmetFilter;
 import com.intellij.codeInsight.template.emmet.filters.ZenCodingFilter;
@@ -118,7 +119,7 @@ public class ZenCodingTemplate extends CustomLiveTemplateBase {
       expand(key, callback, defaultGenerator, Collections.emptyList(), true, Registry.intValue("emmet.segments.limit"));
     }
     catch (EmmetException e) {
-      CommonRefactoringUtil.showErrorHint(callback.getProject(), callback.getEditor(), e.getMessage(), "Emmet error", "");
+      CommonRefactoringUtil.showErrorHint(callback.getProject(), callback.getEditor(), e.getMessage(), XmlBundle.message("emmet.error"), "");
     }
   }
 
@@ -319,7 +320,8 @@ public class ZenCodingTemplate extends CustomLiveTemplateBase {
             expand(node, generator, filters, selectedText, callback, true, Registry.intValue("emmet.segments.limit"));
           }
           catch (EmmetException e) {
-            CommonRefactoringUtil.showErrorHint(callback.getProject(), callback.getEditor(), e.getMessage(), "Emmet error", "");
+            CommonRefactoringUtil.showErrorHint(callback.getProject(), callback.getEditor(), e.getMessage(),
+                                                XmlBundle.message("emmet.error"), "");
           }
         }
       }), CodeInsightBundle.message("insert.code.template.command"), null));
@@ -365,7 +367,8 @@ public class ZenCodingTemplate extends CustomLiveTemplateBase {
       final String templatePrefix = computeTemplateKeyWithoutContextChecking(callback);
 
       if (templatePrefix != null) {
-        List<TemplateImpl> regularTemplates = TemplateManagerImpl.listApplicableTemplates(file, offset, false);
+        List<TemplateImpl> regularTemplates = TemplateManagerImpl.listApplicableTemplates(
+          TemplateActionContext.expanding(file, offset));
         boolean regularTemplateWithSamePrefixExists = !ContainerUtil.filter(regularTemplates,
                                                                             template -> templatePrefix.equals(template.getKey())).isEmpty();
         result = result.withPrefixMatcher(result.getPrefixMatcher().cloneWithPrefix(templatePrefix));

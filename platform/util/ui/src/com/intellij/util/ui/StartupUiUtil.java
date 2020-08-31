@@ -1,9 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.ui;
 
 import com.intellij.diagnostic.Activity;
-import com.intellij.diagnostic.ActivitySubNames;
-import com.intellij.diagnostic.ParallelActivity;
+import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.ui.JreHiDpiUtil;
@@ -13,9 +12,9 @@ import com.intellij.util.Function;
 import com.intellij.util.JBHiDPIScaledImage;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.ui.accessibility.ScreenReader;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import javax.swing.text.html.HTMLEditorKit;
@@ -25,18 +24,18 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.awt.image.BufferedImageOp;
 import java.awt.image.ImageObserver;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.Locale;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.Map;
 
-public class StartupUiUtil {
+public final class StartupUiUtil {
   private static String ourSystemLaFClassName;
   private static volatile StyleSheet ourDefaultHtmlKitCss;
 
   public static final String ARIAL_FONT_NAME = "Arial";
 
-  @NotNull
-  public static String getSystemLookAndFeelClassName() {
+  public static @NotNull String getSystemLookAndFeelClassName() {
     if (ourSystemLaFClassName != null) {
       return ourSystemLaFClassName;
     }
@@ -49,8 +48,9 @@ public class StartupUiUtil {
       // installation in order to let it properly scale default font
       // based on Xft.dpi value.
       try {
+        @SuppressWarnings("SpellCheckingInspection")
         String name = "com.sun.java.swing.plaf.gtk.GTKLookAndFeel";
-        Class cls = Class.forName(name);
+        Class<?> cls = Class.forName(name);
         LookAndFeel laf = (LookAndFeel)cls.newInstance();
         // if gtk lib is available
         if (laf.isSupportedLookAndFeel()) {
@@ -71,10 +71,7 @@ public class StartupUiUtil {
 
     blockATKWrapper();
 
-    // separate activity to make clear that it is not our code takes time
-    Activity activity = ParallelActivity.PREPARE_APP_INIT.start("init AWT Toolkit");
-    Toolkit.getDefaultToolkit();
-    activity = activity.endAndStart(ActivitySubNames.INIT_DEFAULT_LAF);
+    Activity activity = StartUpMeasurer.startActivity("LaF initialization");
     UIManager.setLookAndFeel(getSystemLookAndFeelClassName());
     activity.end();
   }
@@ -84,7 +81,7 @@ public class StartupUiUtil {
       return;
     }
 
-    Activity activity = ParallelActivity.PREPARE_APP_INIT.start("configure html kit");
+    Activity activity = StartUpMeasurer.startActivity("html kit configuration");
 
     // save the default JRE CSS and ..
     HTMLEditorKit kit = new HTMLEditorKit();
@@ -97,9 +94,47 @@ public class StartupUiUtil {
     activity.end();
   }
 
-  @SuppressWarnings("HardCodedStringLiteral")
+  public static @NotNull StyleSheet createStyleSheet(@NotNull String css) {
+    StyleSheet styleSheet = new StyleSheet();
+    try {
+      styleSheet.loadRules(new StringReader(css), null);
+    }
+    catch (IOException e) {
+      throw new RuntimeException(e); // shouldn't happen
+    }
+    return styleSheet;
+  }
+
   public static boolean isUnderDarcula() {
     return UIManager.getLookAndFeel().getName().contains("Darcula");
+  }
+
+  @ApiStatus.Internal
+  public static int doGetLcdContrastValueForSplash(boolean isUnderDarcula) {
+    if (SystemInfo.isMacIntel64) {
+      return isUnderDarcula ? 140 : 230;
+    }
+    else {
+      @SuppressWarnings({"unchecked", "SpellCheckingInspection"})
+      Map<Object, Object> map = (Map<Object, Object>)Toolkit.getDefaultToolkit().getDesktopProperty("awt.font.desktophints");
+      if (map == null) {
+        return 140;
+      }
+      else {
+        Object o = map.get(RenderingHints.KEY_TEXT_LCD_CONTRAST);
+        if (o == null) {
+          return 140;
+        }
+        else {
+          int lcdContrastValue = (Integer)o;
+          return normalizeLcdContrastValue(lcdContrastValue);
+        }
+      }
+    }
+  }
+
+  static int normalizeLcdContrastValue(int lcdContrastValue) {
+    return (lcdContrastValue < 100 || lcdContrastValue > 250) ? 140 : lcdContrastValue;
   }
 
   /*
@@ -108,6 +143,7 @@ public class StartupUiUtil {
    */
   private static void blockATKWrapper() {
     // registry must be not used here, because this method called before application loading
+    //noinspection SpellCheckingInspection
     if (!SystemInfo.isLinux || !SystemProperties.getBooleanProperty("linux.jdk.accessibility.atkwrapper.block", true)) {
       return;
     }
@@ -146,13 +182,11 @@ public class StartupUiUtil {
     return JreHiDpiUtil.isJreHiDPIEnabled() && JBUIScale.isHiDPI(JBUIScale.sysScale(ctx));
   }
 
-  @NotNull
-  public static Point getCenterPoint(@NotNull Dimension container, @NotNull Dimension child) {
+  public static @NotNull Point getCenterPoint(@NotNull Dimension container, @NotNull Dimension child) {
     return getCenterPoint(new Rectangle(container), child);
   }
 
-  @NotNull
-  public static Point getCenterPoint(@NotNull Rectangle container, @NotNull Dimension child) {
+  public static @NotNull Point getCenterPoint(@NotNull Rectangle container, @NotNull Dimension child) {
     return new Point(
       container.x + (container.width - child.width) / 2,
       container.y + (container.height - child.height) / 2
@@ -181,7 +215,7 @@ public class StartupUiUtil {
     drawImage(g, image, x, y, width, height, null, observer);
   }
 
-  private static void drawImage(@NotNull Graphics g, @NotNull Image image, int x, int y, int width, int height, @Nullable BufferedImageOp op, ImageObserver observer) {
+  static void drawImage(@NotNull Graphics g, @NotNull Image image, int x, int y, int width, int height, @Nullable BufferedImageOp op, ImageObserver observer) {
     Rectangle srcBounds = width >= 0 && height >= 0 ? new Rectangle(x, y, width, height) : null;
     drawImage(g, image, new Rectangle(x, y, width, height), srcBounds, op, observer);
   }
@@ -202,8 +236,7 @@ public class StartupUiUtil {
                                @NotNull Image image,
                                @Nullable Rectangle dstBounds,
                                @Nullable Rectangle srcBounds,
-                               @Nullable ImageObserver observer)
-  {
+                               @Nullable ImageObserver observer) {
     drawImage(g, image, dstBounds, srcBounds, null, observer);
   }
 
@@ -308,24 +341,6 @@ public class StartupUiUtil {
 
   public static Font getLabelFont() {
     return UIManager.getFont("Label.font");
-  }
-
-  /** @see UIUtil#dispatchAllInvocationEvents() */
-  @TestOnly
-  public static void pump() {
-    assert !SwingUtilities.isEventDispatchThread();
-    final BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
-    //noinspection SSBasedInspection
-    SwingUtilities.invokeLater(() -> {
-      //noinspection CollectionAddedToSelf
-      queue.offer(queue);
-    });
-    try {
-      queue.take();
-    }
-    catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public static boolean isDialogFont(@NotNull Font font) {

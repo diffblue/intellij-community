@@ -17,11 +17,11 @@ package com.intellij.spellchecker.quickfixes;
 
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ProblemDescriptorUtil;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.Anchor;
 import com.intellij.openapi.project.Project;
 import com.intellij.spellchecker.SpellCheckerManager;
 import com.intellij.spellchecker.util.SpellCheckerBundle;
-import icons.SpellcheckerIcons;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -67,16 +67,17 @@ public class AcceptWordAsCorrect implements SpellCheckerQuickFix {
 
   @Override
   public void applyFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
-    SpellCheckerManager spellCheckerManager = SpellCheckerManager.getInstance(project);
+    SpellCheckerManager manager = SpellCheckerManager.getInstance(project);
     if (myWord != null) {
-      spellCheckerManager.acceptWordAsCorrect(myWord, project);
-    } else {
-      spellCheckerManager.acceptWordAsCorrect(ProblemDescriptorUtil.extractHighlightedText(descriptor, descriptor.getPsiElement()), project);
+      manager.acceptWordAsCorrect(myWord, project);
+    }
+    else {
+      manager.acceptWordAsCorrect(ProblemDescriptorUtil.extractHighlightedText(descriptor, descriptor.getPsiElement()), project);
     }
   }
 
   @Override
   public Icon getIcon(int flags) {
-    return SpellcheckerIcons.Spellcheck;
+    return AllIcons.Actions.AddToDictionary;
   }
 }

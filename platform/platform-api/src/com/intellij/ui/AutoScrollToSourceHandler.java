@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.ui;
 
@@ -6,7 +6,6 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypes;
 import com.intellij.openapi.fileTypes.INativeFileType;
@@ -42,7 +41,7 @@ public abstract class AutoScrollToSourceHandler {
         TreePath location = tree.getPathForLocation(e.getPoint().x, e.getPoint().y);
         if (location != null) {
           onMouseClicked(tree);
-          return isAutoScrollMode();
+          // return isAutoScrollMode(); // do not consume event to allow processing by a tree
         }
 
         return false;
@@ -176,7 +175,7 @@ public abstract class AutoScrollToSourceHandler {
 
   protected void scrollToSource(final Component tree) {
     DataContext dataContext=DataManager.getInstance().getDataContext(tree);
-    getReady(dataContext).doWhenDone(() -> TransactionGuard.submitTransaction(ApplicationManager.getApplication(), () -> {
+    getReady(dataContext).doWhenDone(() -> ApplicationManager.getApplication().invokeLater(() -> {
       DataContext context = DataManager.getInstance().getDataContext(tree);
       final VirtualFile vFile = CommonDataKeys.VIRTUAL_FILE.getData(context);
       Navigatable[] navigatables = CommonDataKeys.NAVIGATABLE_ARRAY.getData(context);

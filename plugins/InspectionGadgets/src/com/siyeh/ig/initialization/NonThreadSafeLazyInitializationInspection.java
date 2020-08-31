@@ -22,7 +22,6 @@ import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.CommentTracker;
 import com.siyeh.ig.psiutils.ComparisonUtils;
 import com.siyeh.ig.psiutils.ControlFlowUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -43,13 +42,6 @@ public class NonThreadSafeLazyInitializationInspection extends BaseInspection {
       return null;
     }
     return new IntroduceHolderFix();
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "non.thread.safe.lazy.initialization.display.name");
   }
 
   @Override
@@ -100,7 +92,7 @@ public class NonThreadSafeLazyInitializationInspection extends BaseInspection {
       return false;
     }
     final PsiAssignmentExpression assignmentExpression = (PsiAssignmentExpression)expression;
-    final PsiExpression lhs = ParenthesesUtils.stripParentheses(assignmentExpression.getLExpression());
+    final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(assignmentExpression.getLExpression());
     if (!(lhs instanceof PsiReferenceExpression)) {
       return false;
     }
@@ -135,7 +127,6 @@ public class NonThreadSafeLazyInitializationInspection extends BaseInspection {
       }
       final PsiField field = (PsiField)resolved;
       final String fieldName = field.getName();
-      assert fieldName != null;
       @NonNls final String holderName = StringUtil.capitalize(fieldName) + "Holder";
       final PsiElement expressionParent = expression.getParent();
       if (!(expressionParent instanceof PsiAssignmentExpression)) {

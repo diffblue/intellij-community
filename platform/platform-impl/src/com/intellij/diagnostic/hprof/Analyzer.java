@@ -65,8 +65,8 @@ class AnalyzerProgressIndicator extends EmptyProgressIndicator {
   }
 }
 
-@SuppressWarnings("UseOfSystemOutOrSystemErr")
-public class Analyzer {
+@SuppressWarnings({"UseOfSystemOutOrSystemErr", "HardCodedStringLiteral"})
+public final class Analyzer {
   public static void main(String[] args) throws IOException {
     if (args.length == 0 ||
         args.length == 1 && args[0].equals("-v")) {

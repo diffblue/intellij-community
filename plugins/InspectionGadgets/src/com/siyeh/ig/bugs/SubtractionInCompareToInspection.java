@@ -16,7 +16,6 @@
 package com.siyeh.ig.bugs;
 
 import com.intellij.codeInspection.dataFlow.CommonDataflow;
-import com.intellij.codeInspection.dataFlow.DfaFactType;
 import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeSet;
 import com.intellij.codeInspection.ui.ListTable;
 import com.intellij.codeInspection.ui.ListWrappingTableModel;
@@ -32,7 +31,6 @@ import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.MethodMatcher;
 import com.siyeh.ig.psiutils.MethodUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.ui.UiUtils;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
@@ -82,12 +80,6 @@ public class SubtractionInCompareToInspection extends BaseInspection {
   public void writeSettings(@NotNull Element node) throws WriteExternalException {
     super.writeSettings(node);
     methodMatcher.writeSettings(node);
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("subtraction.in.compareto.display.name");
   }
 
   @Override
@@ -158,8 +150,8 @@ public class SubtractionInCompareToInspection extends BaseInspection {
         return true;
       }
       if (isSafeOperand(lhs) && isSafeOperand(rhs)) return true;
-      LongRangeSet leftRange = CommonDataflow.getExpressionFact(lhs, DfaFactType.RANGE);
-      LongRangeSet rightRange = CommonDataflow.getExpressionFact(rhs, DfaFactType.RANGE);
+      LongRangeSet leftRange = CommonDataflow.getExpressionRange(lhs);
+      LongRangeSet rightRange = CommonDataflow.getExpressionRange(rhs);
       if (leftRange != null && !leftRange.isEmpty() && rightRange != null && !rightRange.isEmpty()) {
         if (!leftRange.subtractionMayOverflow(rightRange, PsiType.LONG.equals(type))) return true;
       }
@@ -167,7 +159,7 @@ public class SubtractionInCompareToInspection extends BaseInspection {
     }
 
     private boolean isSafeOperand(PsiExpression operand) {
-      operand = ParenthesesUtils.stripParentheses(operand);
+      operand = PsiUtil.skipParenthesizedExprDown(operand);
       if (operand instanceof PsiMethodCallExpression) {
         final PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)operand;
         return methodMatcher.matches(methodCallExpression);

@@ -25,9 +25,12 @@ import com.intellij.psi.statistics.StatisticsManager
 import com.intellij.psi.statistics.impl.StatisticsManagerImpl
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.IdeaTestUtil
+import com.intellij.testFramework.NeedsIndex
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.JavaCodeInsightFixtureTestCase
 import com.intellij.ui.JBColor
+import com.intellij.util.indexing.DumbModeAccessType
+import com.intellij.util.indexing.FileBasedIndex
 import groovy.transform.CompileStatic
 import org.jetbrains.annotations.NotNull
 /**
@@ -56,6 +59,7 @@ class HeavyCompletionTest extends JavaCodeInsightFixtureTestCase {
     assertTrue(JavaPsiFacade.getInstance(getProject()).findPackage("foo.bar.goo").isValid())
   }
 
+  @NeedsIndex.Full
   void testPreferTestCases() throws Throwable {
     myFixture.configureByFile("/codeInsight/completion/normal/" + getTestName(false) + ".java")
     ApplicationManager.application.runWriteAction {
@@ -76,6 +80,7 @@ class HeavyCompletionTest extends JavaCodeInsightFixtureTestCase {
     myFixture.assertPreferredCompletionItems(0, "SomeTestCase", "SomeAnchor", "SomeTestec")
   }
 
+  @NeedsIndex.Full
   void testAllClassesWhenNothingIsFound() throws Throwable {
     myFixture.addClass("package foo.bar; public class AxBxCxDxEx {}")
 
@@ -85,6 +90,7 @@ class HeavyCompletionTest extends JavaCodeInsightFixtureTestCase {
     myFixture.checkResultByFile("/codeInsight/completion/normal/" + getTestName(false) + "_after.java")
   }
 
+  @NeedsIndex.Full
   void testAllClassesOnSecondBasicCompletion() throws Throwable {
     myFixture.addClass("package foo.bar; public class AxBxCxDxEx {}")
 
@@ -116,6 +122,7 @@ class HeavyCompletionTest extends JavaCodeInsightFixtureTestCase {
     assert myFixture.completeBasic() == null
   }
 
+  @NeedsIndex.Full
   void testQualifyInaccessibleClassName() throws Exception {
     PsiTestUtil.addModule(getProject(), StdModuleTypes.JAVA, "second", myFixture.getTempDirFixture().findOrCreateDir("second"))
     myFixture.addFileToProject("second/foo/bar/AxBxCxDxEx.java", "package foo.bar; class AxBxCxDxEx {}")
@@ -125,11 +132,15 @@ class HeavyCompletionTest extends JavaCodeInsightFixtureTestCase {
     myFixture.checkResult("class Main { foo.bar.AxBxCxDxEx<caret> }")
   }
 
+  @NeedsIndex.ForStandardLibrary
   void testPreferOwnMethods() {
     def nanoUrls = IntelliJProjectConfiguration.getProjectLibraryClassesRootUrls("NanoXML")
     ModuleRootModificationUtil.addModuleLibrary(module, 'nano1', nanoUrls, [])
 
-    assert JavaPsiFacade.getInstance(project).findClass('net.n3.nanoxml.StdXMLParser', GlobalSearchScope.allScope(project))
+    def finalProject = project
+    FileBasedIndex.getInstance().ignoreDumbMode(DumbModeAccessType.RELIABLE_DATA_ONLY, { ->
+      assert JavaPsiFacade.getInstance(finalProject).findClass('net.n3.nanoxml.StdXMLParser', GlobalSearchScope.allScope(finalProject))
+    })
 
     myFixture.configureByText "a.java", """
 public class Test {
@@ -144,30 +155,31 @@ public class Test {
 
   void testNoJavaStructureModificationOnSecondInvocation() {
     myFixture.configureByText 'a.java', 'class Foo { Xxxxx<caret> }'
-    def oldCount = PsiManager.getInstance(project).modificationTracker.javaStructureModificationCount
+    def oldCount = PsiManager.getInstance(project).modificationTracker.modificationCount
     assert !myFixture.completeBasic()
     assert !myFixture.completeBasic()
-    assert oldCount == PsiManager.getInstance(project).modificationTracker.javaStructureModificationCount
+    assert oldCount == PsiManager.getInstance(project).modificationTracker.modificationCount
   }
 
   void testNoJavaStructureModificationOnSecondInvocationAfterTyping() {
     myFixture.configureByText 'a.java', 'class Foo { Xxxxx<caret> }'
 
     def tracker = PsiManager.getInstance(project).modificationTracker
-    def oldCount = tracker.javaStructureModificationCount
+    def oldCount = tracker.modificationCount
     assert !myFixture.completeBasic()
-    assert oldCount == tracker.javaStructureModificationCount
+    assert oldCount == tracker.modificationCount
 
     myFixture.type 'x'
     PsiDocumentManager.getInstance(project).commitAllDocuments()
-    assert oldCount != tracker.javaStructureModificationCount
-    oldCount = tracker.javaStructureModificationCount
+    assert oldCount != tracker.modificationCount
+    oldCount = tracker.modificationCount
 
     assert !myFixture.completeBasic()
     assert !myFixture.completeBasic()
-    assert oldCount == tracker.javaStructureModificationCount
+    assert oldCount == tracker.modificationCount
   }
 
+  @NeedsIndex.Full
   void testForbiddenApiVariants() {
     IdeaTestUtil.setModuleLanguageLevel(module, LanguageLevel.JDK_1_4)
     myFixture.addClass("""\
@@ -197,6 +209,7 @@ public class SocketChannel {
     assert p.itemTextForeground == JBColor.foreground()
   }
 
+  @NeedsIndex.ForStandardLibrary
   void "test seemingly scrambled subclass"() {
     PsiTestUtil.addLibrary(module, JavaTestUtil.getJavaTestDataPath() + "/codeInsight/completion/normal/seemsScrambled.jar")
     myFixture.configureByText 'a.java', '''import test.Books;
@@ -211,6 +224,7 @@ class Foo {{ Books.Test.v1<caret> }}
 
   }
 
+  @NeedsIndex.Full
   void "test different jdks in different modules"() {
     (StatisticsManager.instance as StatisticsManagerImpl).enableStatistics(myFixture.testRootDisposable)
 

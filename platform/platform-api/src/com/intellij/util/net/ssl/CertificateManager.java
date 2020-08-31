@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.net.ssl;
 
 import com.intellij.openapi.application.Application;
@@ -14,6 +14,7 @@ import com.intellij.openapi.util.AtomicNotNullLazyValue;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.StreamUtil;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -26,7 +27,9 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.*;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -60,11 +63,10 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * @author Mikhail Golubev
  */
-@State(name = "CertificateManager", storages = @Storage("certificates.xml"))
-public class CertificateManager implements PersistentStateComponent<CertificateManager.Config> {
-
+@State(name = "CertificateManager", storages = @Storage("certificates.xml"), reportStatistic = false)
+public final class CertificateManager implements PersistentStateComponent<CertificateManager.Config> {
   @NonNls public static final String COMPONENT_NAME = "Certificate Manager";
-  @NonNls public static final String DEFAULT_PATH = FileUtil.join(PathManager.getSystemPath(), "tasks", "cacerts");
+  @NonNls public static final String DEFAULT_PATH = FileUtil.join(PathManager.getConfigPath(), "ssl", "cacerts");
   @NonNls public static final String DEFAULT_PASSWORD = "changeit";
 
   private static final Logger LOG = Logger.getInstance(CertificateManager.class);
@@ -76,13 +78,36 @@ public class CertificateManager implements PersistentStateComponent<CertificateM
   static final long DIALOG_VISIBILITY_TIMEOUT = 5000; // ms
 
   public static CertificateManager getInstance() {
-    return ApplicationManager.getApplication().getComponent(CertificateManager.class);
+    return ApplicationManager.getApplication().getService(CertificateManager.class);
   }
 
   private final Config myConfig = new Config();
 
   private final AtomicNotNullLazyValue<ConfirmingTrustManager> myTrustManager =
-    AtomicNotNullLazyValue.createValue(() -> ConfirmingTrustManager.createForStorage(DEFAULT_PATH, DEFAULT_PASSWORD));
+    AtomicNotNullLazyValue.createValue(() -> ConfirmingTrustManager.createForStorage(tryMigratingDefaultTruststore(), DEFAULT_PASSWORD));
+
+  @NotNull
+  private static String tryMigratingDefaultTruststore() {
+    final Path legacySystemPath = Paths.get(PathManager.getSystemPath(), "tasks", "cacerts");
+    final Path configPath = Paths.get(DEFAULT_PATH);
+    if (!Files.exists(configPath) && Files.exists(legacySystemPath)) {
+      LOG.info("Migrating the default truststore from " + legacySystemPath + " to " + configPath);
+      try {
+        Files.createDirectories(configPath.getParent());
+        try {
+          Files.move(legacySystemPath, configPath);
+        }
+        catch (FileAlreadyExistsException | NoSuchFileException ignored) {
+          // The legacy truststore is either already copied or missing for some reason - use the new location.
+        }
+      }
+      catch (IOException e) {
+        LOG.error("Cannot move the default truststore from " + legacySystemPath + " to " + configPath, e);
+        return legacySystemPath.toString();
+      }
+    }
+    return DEFAULT_PATH;
+  }
 
   private final AtomicNotNullLazyValue<SSLContext> mySslContext = AtomicNotNullLazyValue.createValue(() -> calcSslContext());
 
@@ -90,7 +115,7 @@ public class CertificateManager implements PersistentStateComponent<CertificateM
    * Component initialization constructor
    */
   public CertificateManager() {
-    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+    AppExecutorUtil.getAppExecutorService().execute(() -> {
       try {
         // Don't do this: protocol created this way will ignore SSL tunnels. See IDEA-115708.
         // Protocol.registerProtocol("https", CertificateManager.createDefault().createProtocol());
@@ -163,8 +188,7 @@ public class CertificateManager implements PersistentStateComponent<CertificateM
    *
    * @return key managers or {@code null} in case of any error
    */
-  @Nullable
-  public static KeyManager[] getDefaultKeyManagers() {
+  public static KeyManager @Nullable [] getDefaultKeyManagers() {
     String keyStorePath = System.getProperty("javax.net.ssl.keyStore");
     if (keyStorePath != null) {
       LOG.info("Loading custom key store specified with VM options: " + keyStorePath);

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.formatter;
 
 import com.intellij.codeInsight.CodeInsightBundle;
@@ -15,17 +15,24 @@ import com.intellij.psi.impl.source.tree.*;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.util.CharTable;
-import com.intellij.util.containers.ContainerUtilRt;
+import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
 
-public class FormatterUtil {
+public final class FormatterUtil {
 
-  public static final String REFORMAT_BEFORE_COMMIT_COMMAND_NAME = CodeInsightBundle.message("process.reformat.code.before.commit");
-  public static final Collection<String> FORMATTER_ACTION_NAMES = Collections.unmodifiableCollection(ContainerUtilRt.newHashSet(
-    ReformatCodeProcessor.COMMAND_NAME, REFORMAT_BEFORE_COMMIT_COMMAND_NAME
+  /**
+   * @deprecated Use {@link #getReformatBeforeCommitCommandName()} instead
+   */
+  @Deprecated
+  public static final String REFORMAT_BEFORE_COMMIT_COMMAND_NAME = "Reformat Code Before Commit";
+
+  public static final Collection<String> FORMATTER_ACTION_NAMES = Collections.unmodifiableCollection(ContainerUtil.newHashSet(
+    ReformatCodeProcessor.getCommandName(), getReformatBeforeCommitCommandName()
   ));
 
   private FormatterUtil() {
@@ -37,7 +44,7 @@ public class FormatterUtil {
     return type == TokenType.WHITE_SPACE || (type != TokenType.ERROR_ELEMENT && node.getTextLength() == 0);
   }
 
-  public static boolean isOneOf(@Nullable ASTNode node, @NotNull IElementType... types) {
+  public static boolean isOneOf(@Nullable ASTNode node, IElementType @NotNull ... types) {
     if (node == null) return false;
     IElementType elementType = node.getElementType();
     for (IElementType each : types) {
@@ -47,17 +54,17 @@ public class FormatterUtil {
   }
 
   @Nullable
-  public static ASTNode getPrevious(@Nullable ASTNode node, @NotNull IElementType... typesToIgnore) {
+  public static ASTNode getPrevious(@Nullable ASTNode node, IElementType @NotNull ... typesToIgnore) {
     return getNextOrPrevious(node, false, typesToIgnore);
   }
 
   @Nullable
-  public static ASTNode getNext(@Nullable ASTNode node, @NotNull IElementType... typesToIgnore) {
+  public static ASTNode getNext(@Nullable ASTNode node, IElementType @NotNull ... typesToIgnore) {
     return getNextOrPrevious(node, true, typesToIgnore);
   }
 
   @Nullable
-  private static ASTNode getNextOrPrevious(@Nullable ASTNode node, boolean isNext, @NotNull IElementType... typesToIgnore) {
+  private static ASTNode getNextOrPrevious(@Nullable ASTNode node, boolean isNext, IElementType @NotNull ... typesToIgnore) {
     if (node == null) return null;
 
     ASTNode each = isNext ? node.getTreeNext() : node.getTreePrev();
@@ -81,7 +88,7 @@ public class FormatterUtil {
   }
 
   @Nullable
-  public static ASTNode getPreviousLeaf(@Nullable ASTNode node, @NotNull IElementType... typesToIgnore) {
+  public static ASTNode getPreviousLeaf(@Nullable ASTNode node, IElementType @NotNull ... typesToIgnore) {
     ASTNode prev = getPrevious(node, typesToIgnore);
     if (prev == null) {
       return null;
@@ -262,7 +269,7 @@ public class FormatterUtil {
       if (each instanceof LeafElement && !spacesOnly(each)) {
         return false;
       }
-      
+
       Collections.addAll(queue, each.getChildren(null));
     }
     return true;
@@ -492,5 +499,9 @@ public class FormatterUtil {
    */
   public static boolean isFormatterCalledExplicitly() {
     return FORMATTER_ACTION_NAMES.contains(CommandProcessor.getInstance().getCurrentCommandName());
+  }
+
+  public static String getReformatBeforeCommitCommandName() {
+    return CodeInsightBundle.message("process.reformat.code.before.commit");
   }
 }

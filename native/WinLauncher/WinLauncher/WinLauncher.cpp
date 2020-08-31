@@ -31,9 +31,6 @@ JNIEnv* env = NULL;
 volatile bool terminating = false;
 volatile int hookExitCode = 0;
 
-//tools.jar doesn't exist in jdk 9 and later. So check it for jdk 1.8 only.
-bool toolsArchiveExists = true;
-
 HANDLE hFileMapping;
 HANDLE hEvent;
 HANDLE hSingleInstanceWatcherThread;
@@ -85,9 +82,11 @@ bool Is64BitJRE(const char* path)
 {
   std::string cfgPath(path);
   std::string cfgJava9Path(path);
+  std::string accessbridgeVersion(path);
   cfgPath += "\\lib\\amd64\\jvm.cfg";
   cfgJava9Path += "\\lib\\jvm.cfg";
-  return FileExists(cfgPath) || FileExists(cfgJava9Path);
+  accessbridgeVersion += "\\bin\\windowsaccessbridge-32.dll";
+  return FileExists(cfgPath) || (FileExists(cfgJava9Path) && !FileExists(accessbridgeVersion));
 }
 
 bool FindValidJVM(const char* path)
@@ -233,32 +232,18 @@ bool FindJVMInRegistry()
   if (FindJVMInRegistryWithVersion("1.8", true))
     return true;
   if (FindJVMInRegistryWithVersion("9", true))
-    toolsArchiveExists = false;
     return true;
   if (FindJVMInRegistryWithVersion("10", true))
-    toolsArchiveExists = false;
-    return true;
-
-  //obsolete java versions
-  if (FindJVMInRegistryWithVersion("1.7", true))
-    return true;
-  if (FindJVMInRegistryWithVersion("1.6", true))
     return true;
 #endif
 
   if (FindJVMInRegistryWithVersion("1.8", false))
     return true;
   if (FindJVMInRegistryWithVersion("9", false))
-    toolsArchiveExists = false;
     return true;
   if (FindJVMInRegistryWithVersion("10", false))
-    toolsArchiveExists = false;
     return true;
-
-  //obsolete java versions
-  if (FindJVMInRegistryWithVersion("1.7", false))
-    return true;
-  if (FindJVMInRegistryWithVersion("1.6", false))
+  if (FindJVMInRegistryWithVersion("11", false))
     return true;
   return false;
 }
@@ -298,16 +283,9 @@ bool LocateJVM()
 
   if (FindJVMInSettings()) return true;
 
-  std::vector<std::string> jrePaths;
-  if(need64BitJRE) jrePaths.push_back(GetAdjacentDir("jbr"));
-  if(need64BitJRE) jrePaths.push_back(GetAdjacentDir("jre64"));
-  jrePaths.push_back(GetAdjacentDir("jre32"));
-  jrePaths.push_back(GetAdjacentDir("jre"));
-  for(std::vector<std::string>::iterator it = jrePaths.begin(); it != jrePaths.end(); ++it) {
-    if (FindValidJVM((*it).c_str()) && Is64BitJRE(jvmPath) == need64BitJRE)
-    {
-      return true;
-    }
+  if (FindValidJVM(GetAdjacentDir(need64BitJRE ? "jbr" : "jbr-x86").c_str()) && Is64BitJRE(jvmPath) == need64BitJRE)
+  {
+    return true;
   }
 
   if (FindJVMInEnvVar("JAVA_HOME", result))
@@ -438,7 +416,7 @@ std::string BuildClassPath()
   std::string classpathLibs = LoadStdString(IDS_CLASSPATH_LIBS);
   std::string result = CollectLibJars(classpathLibs);
 
-  if (toolsArchiveExists)
+  if (LoadStdString(IDS_JDK_ONLY) == std::string("true"))
   {
     std::string toolsJar = FindToolsJar();
     if (toolsJar.size() > 0)
@@ -608,6 +586,11 @@ bool LoadJVMLibrary()
     dllName = clientDllName;
   }
 
+  // Sometimes the parent process may call SetDllDirectory to change its own context, and this will be inherited by the
+  // launcher. In that case, we won't be able to load the libraries from the current directory that is set below. So, to
+  // fix such cases, we have to reset the DllDirectory to restore the default DLL loading order.
+  SetDllDirectoryW(nullptr);
+
   // Call SetCurrentDirectory to allow jvm.dll to load the corresponding runtime libraries.
   SetCurrentDirectoryA(binDir.c_str());
   hJVM = LoadLibraryA(dllName.c_str());
@@ -732,24 +715,6 @@ jobjectArray ArgsToJavaArray(std::vector<LPWSTR> args)
   return result;
 }
 
-void PrintUsage()
-{
-  char fullPath[_MAX_PATH];
-  GetModuleFileNameA(NULL, fullPath, _MAX_PATH);
-  std::string::size_type pos = std::string(fullPath).find_last_of("\\/");
-  std::string fileName = std::string(fullPath).substr(pos+1);
-
-  std::stringstream buf;
-  buf << "Usage:\n   ";
-  buf << fileName + " -h | -? | --help\n   ";
-  buf << fileName + " [project_dir]\n   ";
-  buf << fileName + " [-l|--line line] [project_dir|--temp-project] file[:line]\n   ";
-  buf << fileName + " diff <left> <right>\n   ";
-  buf << fileName + " merge <local> <remote> [base] <merged>";
-  std::string title = "Command line options.";
-  MessageBoxA(NULL, buf.str().c_str(), title.c_str(), MB_OK);
-}
-
 bool isNumber(std::string line)
 {
   char* p;
@@ -766,17 +731,10 @@ std::vector<LPWSTR> ParseCommandLine(LPCWSTR commandLine)
   std::vector<LPWSTR> result;
   for (int i = 1; i < numArgs; i++)
   {
-    if ((wcscmp(L"-h", argv[i]) == 0) ||
-        (wcscmp(L"-?", argv[i]) == 0) ||
-        (wcscmp(L"--help", argv[i]) == 0))
-    {
-      PrintUsage();
-      std::exit(0);
-    }
-
     std::wstring arg(argv[i]);
     std::string command(arg.begin(), arg.end());
-    if (command.find_last_of(":") != std::string::npos)
+    // IDEA-230983
+    if (command.find_last_of(":") != std::string::npos && command.rfind("jetbrains://", 0) != 0)
     {
       std::string line = command.substr(command.find_last_of(":") + 1);
       if (isNumber(line))
@@ -788,16 +746,11 @@ std::vector<LPWSTR> ParseCommandLine(LPCWSTR commandLine)
         std::string fileName = command.substr(0, command.find_last_of(":"));
         LPWSTR* fileNameArg = CommandLineToArgvW(std::wstring(fileName.begin(), fileName.end()).c_str(), &numArgs);
         result.push_back(fileNameArg[0]);
-      }
-      else
-      {
-        result.push_back(argv[i]);
+        continue;
       }
     }
-    else
-    {
-      result.push_back(argv[i]);
-    }
+    
+    result.push_back(argv[i]);
   }
   return result;
 }
@@ -1000,8 +953,7 @@ int CheckSingleInstance()
     int exitCode;
     if (view)
     {
-      std::wstring result(view);
-      exitCode = std::stoi(result);
+      exitCode = (int)wcstol(view, NULL, 10);
       UnmapViewOfFile(view);
     }
     else
@@ -1170,6 +1122,38 @@ std::wstring GetCurrentDirectoryAsString()
   return std::wstring(buffer.data(), sizeWithoutTerminatingZero);
 }
 
+static void SetPathVariable(const wchar_t *varName, REFKNOWNFOLDERID rfId)
+{
+  wchar_t env_var_buffer[1];
+  if (GetEnvironmentVariableW(varName, env_var_buffer, 1) == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND)
+  {
+    wchar_t *path = NULL;
+    if (SHGetKnownFolderPath(rfId, KF_FLAG_DONT_VERIFY, NULL, &path) == S_OK)
+    {
+      SetEnvironmentVariableW(varName, path);
+      CoTaskMemFree(path);
+    }
+  }
+}
+
+void PrintUsage()
+{
+  char fullPath[_MAX_PATH];
+  GetModuleFileNameA(NULL, fullPath, _MAX_PATH);
+  std::string::size_type pos = std::string(fullPath).find_last_of("\\/");
+  std::string fileName = std::string(fullPath).substr(pos+1);
+
+  std::stringstream buf;
+  buf << "Usage:\n   ";
+  buf << fileName + " -h | -? | --help\n   ";
+  buf << fileName + " [project_dir]\n   ";
+  buf << fileName + " [-l|--line line] [project_dir|--temp-project] file[:line]\n   ";
+  buf << fileName + " diff <left> <right>\n   ";
+  buf << fileName + " merge <local> <remote> [base] <merged>";
+
+  MessageBoxA(NULL, buf.str().c_str(), "Command-line Options", MB_OK);
+}
+
 int APIENTRY _tWinMain(HINSTANCE hInstance,
                        HINSTANCE hPrevInstance,
                        LPTSTR    lpCmdLine,
@@ -1191,6 +1175,19 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     CloseHandle(parentProcHandle);
     return 0;
   }
+
+  for (int i = 1; i < __argc; i++)
+  {
+    if (wcscmp(L"-h", __wargv[i]) == 0 || wcscmp(L"-?", __wargv[i]) == 0 || wcscmp(L"--help", __wargv[i]) == 0)
+    {
+      PrintUsage();
+      return 0;
+    }
+  }
+
+  // ensures path variables are defined
+  SetPathVariable(L"APPDATA", FOLDERID_RoamingAppData);
+  SetPathVariable(L"LOCALAPPDATA", FOLDERID_LocalAppData);
 
   //it's OK to return 0 here, because the control is transferred to the first instance
   int exitCode = CheckSingleInstance();

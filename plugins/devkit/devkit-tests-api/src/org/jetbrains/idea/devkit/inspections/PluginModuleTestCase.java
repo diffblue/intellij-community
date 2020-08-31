@@ -15,7 +15,6 @@
  */
 package org.jetbrains.idea.devkit.inspections;
 
-import com.intellij.openapi.module.ModuleType;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightProjectDescriptor;
 import com.intellij.testFramework.TestDataFile;
@@ -31,8 +30,8 @@ public abstract class PluginModuleTestCase extends LightJavaCodeInsightFixtureTe
 
     @NotNull
     @Override
-    public ModuleType getModuleType() {
-      return PluginModuleType.getInstance();
+    public String getModuleTypeId() {
+      return PluginModuleType.ID;
     }
   };
 

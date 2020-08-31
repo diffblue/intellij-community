@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.psi.*;
@@ -21,8 +7,8 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.ClassUtil;
 import com.intellij.psi.util.ConstantEvaluationOverflowException;
 import com.intellij.psi.util.ConstantExpressionUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.containers.Interner;
-import com.intellij.util.containers.StringInterner;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,9 +19,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
 @SuppressWarnings("UnnecessaryBoxing")
-class ConstantExpressionVisitor extends JavaElementVisitor implements PsiConstantEvaluationHelper.AuxEvaluator {
-  
-  private final Interner<String> myInterner = new StringInterner();
+final class ConstantExpressionVisitor extends JavaElementVisitor implements PsiConstantEvaluationHelper.AuxEvaluator {
+  private final Interner<String> myInterner = Interner.createStringInterner();
 
   private Set<PsiVariable> myVisitedVars;
   private final Map<PsiElement, Object> myCachedValues = new HashMap<>();
@@ -141,8 +126,8 @@ class ConstantExpressionVisitor extends JavaElementVisitor implements PsiConstan
     Object value = null;
     if (tokenType == JavaTokenType.PLUS) {
       if (lOperandValue instanceof String || rOperandValue instanceof String) {
-        String l = lOperandValue.toString();
-        String r = rOperandValue.toString();
+        String l = computeValueToString(lOperandValue);
+        String r = computeValueToString(rOperandValue);
         value = l + r;
       }
       else {
@@ -394,6 +379,21 @@ class ConstantExpressionVisitor extends JavaElementVisitor implements PsiConstan
     return value;
   }
 
+  private static String computeValueToString(Object value) {
+    if (value instanceof PsiType) {
+      if (value instanceof PsiArrayType) {
+        return "class " + ClassUtil.getClassObjectPresentation((PsiType)value);
+      }
+
+      PsiClass psiClass = PsiUtil.resolveClassInType((PsiType)value);
+      String prefix = psiClass == null ? "" : psiClass.isInterface() ? "interface " : "class ";
+      return prefix + ((PsiType)value).getCanonicalText();
+    }
+    else {
+      return value.toString();
+    }
+  }
+
   @Nullable
   private static Boolean handleEqualityComparison(Object lOperandValue, Object rOperandValue, IElementType tokenType) {
     if (lOperandValue instanceof String && rOperandValue instanceof String ||
@@ -545,7 +545,6 @@ class ConstantExpressionVisitor extends JavaElementVisitor implements PsiConstan
     PsiElement resolvedExpression = expression.resolve();
     if (resolvedExpression instanceof PsiEnumConstant) {
       String constant = ((PsiEnumConstant)resolvedExpression).getName();
-      if (constant == null) return;
       PsiReferenceExpression qualifier = (PsiReferenceExpression)expression.getQualifier();
       if (qualifier == null) return;
       PsiElement element = qualifier.resolve();

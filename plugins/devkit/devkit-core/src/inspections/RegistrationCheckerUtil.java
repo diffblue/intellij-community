@@ -1,20 +1,20 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.inspections;
 
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
-import com.intellij.openapi.paths.PathReference;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.*;
+import com.intellij.psi.JavaPsiFacade;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.psi.impl.include.FileIncludeManager;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.GlobalSearchScopesCore;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xml.DomFileElement;
-import com.intellij.util.xml.DomUtil;
-import com.intellij.util.xml.GenericAttributeValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.devkit.dom.Dependency;
@@ -26,11 +26,9 @@ import org.jetbrains.idea.devkit.util.ComponentType;
 import org.jetbrains.idea.devkit.util.DescriptorUtil;
 import org.jetbrains.idea.devkit.util.PsiUtil;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
-class RegistrationCheckerUtil {
+final class RegistrationCheckerUtil {
   enum RegistrationType {
     ALL,
     ALL_COMPONENTS,
@@ -99,15 +97,8 @@ class RegistrationCheckerUtil {
 
     // <depends> plugin.xml files
     for (Dependency dependency : pluginXml.getRootElement().getDependencies()) {
-      final GenericAttributeValue<PathReference> configFileAttribute = dependency.getConfigFile();
-      if (!DomUtil.hasXml(configFileAttribute)) continue;
-
-      final PathReference configFile = configFileAttribute.getValue();
-      if (configFile != null) {
-        final PsiElement resolve = configFile.resolve();
-        if (!(resolve instanceof XmlFile)) continue;
-        final XmlFile depPluginXml = (XmlFile)resolve;
-
+      XmlFile depPluginXml = dependency.getResolvedConfigFile();
+      if (depPluginXml != null) {
         final DomFileElement<IdeaPlugin> dependentIdeaPlugin = DescriptorUtil.getIdeaPluginFileElement(depPluginXml);
         if (dependentIdeaPlugin != null) {
           if (!finder.processScope(GlobalSearchScope.fileScope(dependentIdeaPlugin.getFile()))) {
@@ -151,12 +142,11 @@ class RegistrationCheckerUtil {
   }
 
 
-  private static class RegistrationTypeFinder {
-
+  private static final class RegistrationTypeFinder {
     private final PsiClass myPsiClass;
     private final RegistrationType myRegistrationType;
 
-    private final Set<PsiClass> myTypes = ContainerUtil.newIdentityTroveSet(1);
+    private final Set<PsiClass> myTypes = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private RegistrationTypeFinder(PsiClass psiClass, RegistrationType registrationType) {
       myPsiClass = psiClass;

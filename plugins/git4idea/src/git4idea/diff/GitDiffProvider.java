@@ -8,6 +8,7 @@ import com.intellij.openapi.vcs.CommittedChangesProvider;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.FileStatus;
 import com.intellij.openapi.vcs.VcsException;
+import com.intellij.openapi.vcs.changes.Change;
 import com.intellij.openapi.vcs.changes.ChangeListManager;
 import com.intellij.openapi.vcs.changes.ContentRevision;
 import com.intellij.openapi.vcs.diff.DiffMixin;
@@ -21,15 +22,23 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.vcsUtil.VcsUtil;
 import git4idea.GitContentRevision;
 import git4idea.GitFileRevision;
+import git4idea.GitUtil;
 import git4idea.GitVcs;
+import git4idea.changes.GitChangeUtils;
 import git4idea.history.GitFileHistory;
 import git4idea.history.GitHistoryUtils;
 import git4idea.i18n.GitBundle;
+import git4idea.repo.GitRepository;
 import git4idea.repo.GitRepositoryManager;
+import git4idea.stash.GitRevisionContentPreLoader;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
+
+import static com.intellij.openapi.vcs.history.VcsDiffUtil.createChangesWithCurrentContentForFile;
 
 /**
  * Git diff provider
@@ -194,5 +203,33 @@ public final class GitDiffProvider implements DiffProvider, DiffMixin {
   public VcsRevisionNumber getLatestCommittedRevision(VirtualFile vcsRoot) {
     // todo
     return null;
+  }
+
+  @Override
+  public void preloadBaseRevisions(@NotNull VirtualFile root, @NotNull Collection<Change> revisions) {
+    new GitRevisionContentPreLoader(myProject).preload(root, revisions);
+  }
+
+  @Override
+  public boolean canCompareWithWorkingDir() {
+    return true;
+  }
+
+  @NotNull
+  @Override
+  public Collection<Change> compareWithWorkingDir(@NotNull VirtualFile fileOrDir,
+                                                  @NotNull VcsRevisionNumber revNum) throws VcsException {
+
+    final GitRepository repo = GitUtil.getRepositoryManager(myProject).getRepositoryForFile(fileOrDir);
+    if (repo == null) {
+      throw new VcsException("Couldn't find Git Repository for " + fileOrDir.getName());
+    }
+    FilePath filePath = VcsUtil.getFilePath(fileOrDir);
+
+    final Collection<Change> changes = GitChangeUtils.getDiffWithWorkingDir(myProject, repo.getRoot(), revNum.asString(),
+                                                                            Collections.singletonList(filePath), false);
+    return changes.isEmpty() && !filePath.isDirectory()
+           ? createChangesWithCurrentContentForFile(filePath, GitContentRevision.createRevision(filePath, revNum, myProject))
+           : changes;
   }
 }

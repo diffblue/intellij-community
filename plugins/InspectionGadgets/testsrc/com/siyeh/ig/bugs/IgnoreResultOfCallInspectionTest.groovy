@@ -32,7 +32,7 @@ class IgnoreResultOfCallInspectionTest extends LightJavaInspectionTestCase {
   @NotNull
   @Override
   protected LightProjectDescriptor getProjectDescriptor() {
-    return JAVA_13
+    return JAVA_14
   }
 
   @Override
@@ -394,6 +394,18 @@ class X{
   void test(String foo) {
     if (foo == null) return;
     Validate.notNull(foo);
+  }
+}"""
+  }
+  
+  void testVoidType() {
+    doTest """class X {
+  void a() {
+    b();
+  }
+  
+  static Void b() {
+    return null;
   }
 }"""
   }

@@ -19,12 +19,12 @@ import com.intellij.psi.PsiArrayInitializerExpression;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiType;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.ExpressionUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.NotNull;
 
 public class OctalAndDecimalIntegersMixedInspection extends BaseInspection {
@@ -37,19 +37,12 @@ public class OctalAndDecimalIntegersMixedInspection extends BaseInspection {
 
   @Override
   @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("octal.and.decimal.integers.in.same.array.display.name");
-  }
-
-  @Override
-  @NotNull
   public String buildErrorString(Object... infos) {
     return InspectionGadgetsBundle.message("octal.and.decimal.integers.in.same.array.problem.descriptor");
   }
 
-  @NotNull
   @Override
-  protected InspectionGadgetsFix[] buildFixes(Object... infos) {
+  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
     return new InspectionGadgetsFix[]{
       new ConvertOctalLiteralsToDecimalsFix(),
       new RemoveLeadingZeroesFix()
@@ -70,7 +63,7 @@ public class OctalAndDecimalIntegersMixedInspection extends BaseInspection {
       boolean hasDecimalLiteral = false;
       boolean hasOctalLiteral = false;
       for (PsiExpression initializer : initializers) {
-        initializer = ParenthesesUtils.stripParentheses(initializer);
+        initializer = PsiUtil.skipParenthesizedExprDown(initializer);
         if (initializer instanceof PsiLiteralExpression) {
           final PsiLiteralExpression literal = (PsiLiteralExpression)initializer;
           if (isDecimalLiteral(literal)) {

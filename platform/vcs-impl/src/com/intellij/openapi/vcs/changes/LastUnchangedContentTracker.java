@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2012 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -31,8 +17,8 @@ import java.io.IOException;
 /**
  * @author peter
  */
-public class LastUnchangedContentTracker {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vcs.changes.LastUnchangedContentTracker");
+public final class LastUnchangedContentTracker {
+  private static final Logger LOG = Logger.getInstance(LastUnchangedContentTracker.class);
   private static final Key<Long> LAST_TS_KEY = Key.create("LAST_TS_KEY");
   private static final FileAttribute LAST_TS_ATTR = new FileAttribute("LAST_TS_ATTR", 0, true);
   private static final FileAttribute ACQUIRED_CONTENT_ATTR = new FileAttribute("ACQUIRED_CONTENT_ATTR", 1, true);
@@ -73,8 +59,7 @@ public class LastUnchangedContentTracker {
     file.putUserData(VCS_INVALID_FILE_STATUS, null);
   }
 
-  @Nullable
-  public static byte[] getLastUnchangedContent(@NotNull VirtualFile file) {
+  public static byte @Nullable [] getLastUnchangedContent(@NotNull VirtualFile file) {
     final Integer id = getSavedContentId(file);
     try {
       return id == null ? null : getFS().contentsToByteArray(id);

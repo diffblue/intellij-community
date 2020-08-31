@@ -15,6 +15,7 @@
  */
 package com.intellij.codeInsight.daemon.impl.analysis;
 
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
@@ -26,6 +27,7 @@ import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.JavaPsiConstructorUtil;
 import com.intellij.util.ObjectUtils;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -58,29 +60,33 @@ public class JavaHighlightUtil {
     if (method.hasModifierProperty(PsiModifier.STATIC)) return false;
     @NonNls String name = method.getName();
     PsiParameter[] parameters = method.getParameterList().getParameters();
-    PsiType returnType = method.getReturnType();
     if ("readObjectNoData".equals(name)) {
+      PsiType returnType = method.getReturnType();
       return parameters.length == 0 && TypeConversionUtil.isVoidType(returnType) && isSerializable(containingClass);
     }
     if ("readObject".equals(name)) {
+      PsiType returnType = method.getReturnType();
       return parameters.length == 1
              && parameters[0].getType().equalsToText("java.io.ObjectInputStream")
              && TypeConversionUtil.isVoidType(returnType) && method.hasModifierProperty(PsiModifier.PRIVATE)
              && isSerializable(containingClass);
     }
     if ("readResolve".equals(name)) {
+      PsiType returnType = method.getReturnType();
       return parameters.length == 0
              && returnType != null
              && returnType.equalsToText(CommonClassNames.JAVA_LANG_OBJECT)
              && (containingClass.hasModifierProperty(PsiModifier.ABSTRACT) || isSerializable(containingClass));
     }
     if ("writeReplace".equals(name)) {
+      PsiType returnType = method.getReturnType();
       return parameters.length == 0
              && returnType != null
              && returnType.equalsToText(CommonClassNames.JAVA_LANG_OBJECT)
              && (containingClass.hasModifierProperty(PsiModifier.ABSTRACT) || isSerializable(containingClass));
     }
     if ("writeObject".equals(name)) {
+      PsiType returnType = method.getReturnType();
       return parameters.length == 1
              && TypeConversionUtil.isVoidType(returnType)
              && parameters[0].getType().equalsToText("java.io.ObjectOutputStream")
@@ -102,7 +108,7 @@ public class JavaHighlightUtil {
   }
 
   @Nullable
-  public static PsiType sameType(@NotNull PsiExpression[] expressions) {
+  public static PsiType sameType(PsiExpression @NotNull [] expressions) {
     PsiType type = null;
     for (PsiExpression expression : expressions) {
       final PsiType currentType;
@@ -179,7 +185,13 @@ public class JavaHighlightUtil {
     if (type instanceof PsiArrayType) return checkPsiTypeUseInContext(((PsiArrayType) type).getComponentType(), context);
     if (PsiUtil.resolveClassInType(type) != null) return null;
     if (type instanceof PsiClassType) return checkClassType((PsiClassType)type, context);
-    return "Invalid Java type";
+    return invalidJavaTypeMessage();
+  }
+
+  @NotNull
+  @Nls
+  public static String invalidJavaTypeMessage() {
+    return JavaAnalysisBundle.message("error.message.invalid.java.type");
   }
 
   @NotNull
@@ -188,7 +200,7 @@ public class JavaHighlightUtil {
     if (classExists(context, className)) {
       return getClassInaccessibleMessage(context, className);
     }
-    return "Invalid Java type";
+    return invalidJavaTypeMessage();
   }
 
   private static boolean classExists(@NotNull PsiElement context, @NotNull String className) {
@@ -196,9 +208,13 @@ public class JavaHighlightUtil {
   }
 
   @NotNull
+  @Nls
   private static String getClassInaccessibleMessage(@NotNull PsiElement context, @NotNull String className) {
     Module module = ModuleUtilCore.findModuleForPsiElement(context);
-    return "Class '" + className + "' is not accessible " + (module == null ? "here" : "from module '" + module.getName() + "'");
+    if (module == null) {
+      return JavaAnalysisBundle.message("message.class.inaccessible", className);
+    }
+    return JavaAnalysisBundle.message("message.class.inaccessible.from.module", className, module.getName());
   }
 
   static class ConstructorVisitorInfo {

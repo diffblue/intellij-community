@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.remoteServer.impl.runtime.ui.tree;
 
 import com.intellij.execution.Executor;
@@ -10,9 +10,7 @@ import com.intellij.execution.impl.RunDialog;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.projectView.PresentationData;
-import com.intellij.ide.projectView.TreeStructureProvider;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
-import com.intellij.ide.util.treeView.AbstractTreeStructureBase;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
@@ -21,6 +19,7 @@ import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.util.BaseListPopupStep;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.remoteServer.CloudBundle;
 import com.intellij.remoteServer.ServerType;
 import com.intellij.remoteServer.configuration.RemoteServer;
 import com.intellij.remoteServer.configuration.ServerConfiguration;
@@ -31,7 +30,6 @@ import com.intellij.remoteServer.impl.configuration.deployment.DeployToServerRun
 import com.intellij.remoteServer.impl.runtime.deployment.DeploymentTaskImpl;
 import com.intellij.remoteServer.impl.runtime.log.DeploymentLogManagerImpl;
 import com.intellij.remoteServer.impl.runtime.log.LoggingHandlerBase;
-import com.intellij.remoteServer.impl.runtime.ui.RemoteServersViewContribution;
 import com.intellij.remoteServer.runtime.ConnectionStatus;
 import com.intellij.remoteServer.runtime.Deployment;
 import com.intellij.remoteServer.runtime.ServerConnection;
@@ -39,10 +37,8 @@ import com.intellij.remoteServer.runtime.ServerConnectionManager;
 import com.intellij.remoteServer.runtime.deployment.DeploymentRuntime;
 import com.intellij.remoteServer.runtime.deployment.DeploymentStatus;
 import com.intellij.remoteServer.runtime.deployment.DeploymentTask;
-import com.intellij.remoteServer.util.CloudBundle;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.awt.RelativePoint;
-import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import icons.RemoteServersIcons;
 import org.jetbrains.annotations.NotNull;
@@ -55,23 +51,11 @@ import java.util.*;
 /**
  * @author michael.golubev
  */
-public class ServersTreeStructure extends AbstractTreeStructureBase {
+public final class ServersTreeStructure {
   // 1st level: servers (RunnerAndConfigurationSettings (has CommonStrategy (extends RunConfiguration)) or RemoteServer)
   // 2nd level: deployments (DeploymentModel or Deployment)
 
-  private final ServersTreeRootNode myRootElement;
-  private final Project myProject;
-  private final RemoteServersViewContribution myContribution;
-  private final ServersTreeNodeSelector myNodeSelector;
-
-  public ServersTreeStructure(@NotNull Project project,
-                              @NotNull RemoteServersViewContribution contribution,
-                              @NotNull ServersTreeNodeSelector nodeSelector) {
-    super(project);
-    myProject = project;
-    myContribution = contribution;
-    myNodeSelector = nodeSelector;
-    myRootElement = new ServersTreeRootNode();
+  private ServersTreeStructure() {
   }
 
   public static Icon getServerNodeIcon(@NotNull Icon itemIcon, @Nullable Icon statusIcon) {
@@ -85,66 +69,12 @@ public class ServersTreeStructure extends AbstractTreeStructureBase {
     return icon;
   }
 
-  @Override
-  public List<TreeStructureProvider> getProviders() {
-    return Collections.emptyList();
-  }
-
-  @NotNull
-  protected Project doGetProject() {
-    return myProject;
-  }
-
-  @NotNull
-  @Override
-  public Object getRootElement() {
-    return myRootElement;
-  }
-
-  protected ServersTreeNodeSelector getNodeSelector() {
-    return myNodeSelector;
-  }
-
-  @Override
-  public void commit() {
-  }
-
-  @Override
-  public boolean hasSomethingToCommit() {
-    return false;
-  }
-
-  protected AbstractTreeNode<?> createDeploymentNode(ServerConnection<?> connection, RemoteServerNode serverNode, Deployment deployment) {
-    return new DeploymentNodeImpl(myProject, connection, serverNode, deployment, this::createDeploymentNode);
-  }
-
   public interface LogProvidingNode {
     @Nullable
     JComponent getComponent();
 
     @NotNull
     String getLogId();
-  }
-
-  private class ServersTreeRootNode extends AbstractTreeNode<Object> {
-    ServersTreeRootNode() {
-      super(doGetProject(), new Object());
-    }
-
-    @NotNull
-    @Override
-    public Collection<? extends AbstractTreeNode<?>> getChildren() {
-      List<AbstractTreeNode<?>> result = new ArrayList<>();
-      result.addAll(myContribution.createServerNodes(doGetProject()));
-      result.addAll(ContainerUtil.map(myContribution.getRemoteServers(),
-                                      (Function<RemoteServer<?>, AbstractTreeNode<?>>)server ->
-                                        new RemoteServerNode(doGetProject(), server, ServersTreeStructure.this::createDeploymentNode)));
-      return result;
-    }
-
-    @Override
-    protected void update(@NotNull PresentationData presentation) {
-    }
   }
 
   public static class RemoteServerNode extends AbstractTreeNode<RemoteServer<?>> implements ServerNode {
@@ -240,9 +170,9 @@ public class ServersTreeStructure extends AbstractTreeStructureBase {
             }
             if (runConfigOrSourceType instanceof SingletonDeploymentSourceType) {
               String displayName = ((SingletonDeploymentSourceType)runConfigOrSourceType).getPresentableName();
-              return CloudBundle.getText("create.new.deployment.configuration.for.singleton.type", displayName);
+              return CloudBundle.message("create.new.deployment.configuration.for.singleton.type", displayName);
             }
-            return CloudBundle.getText("create.new.deployment.configuration.generic");
+            return CloudBundle.message("create.new.deployment.configuration.generic");
           }
 
           @Override
@@ -375,7 +305,7 @@ public class ServersTreeStructure extends AbstractTreeStructureBase {
       if (task != null) {
         RunnerAndConfigurationSettings settings = task.getExecutionEnvironment().getRunnerAndConfigurationSettings();
         if (settings != null) {
-          RunDialog.editConfiguration(myProject, settings, "Edit Deployment Configuration");
+          RunDialog.editConfiguration(myProject, settings, CloudBundle.message("dialog.title.edit.deployment.configuration"));
         }
       }
     }

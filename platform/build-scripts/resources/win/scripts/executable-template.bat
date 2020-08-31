@@ -20,9 +20,9 @@ IF EXIST "%@@product_uc@@_JDK%" SET JDK=%@@product_uc@@_JDK%
 IF EXIST "%JDK%" GOTO check
 
 SET BITS=64
-SET USER_JDK64_FILE=%USERPROFILE%\.@@system_selector@@\config\@@vm_options@@.jdk
+SET USER_JDK64_FILE=%APPDATA%\@@product_vendor@@\@@system_selector@@\@@vm_options@@.jdk
 SET BITS=
-SET USER_JDK_FILE=%USERPROFILE%\.@@system_selector@@\config\@@vm_options@@.jdk
+SET USER_JDK_FILE=%APPDATA%\@@product_vendor@@\@@system_selector@@\@@vm_options@@.jdk
 IF EXIST "%USER_JDK64_FILE%" (
   SET /P JDK=<%USER_JDK64_FILE%
 ) ELSE (
@@ -33,13 +33,11 @@ IF NOT "%JDK%" == "" (
   IF EXIST "%JDK%" GOTO check
 )
 
-IF EXIST "%IDE_HOME%\jbr" SET JDK=%IDE_HOME%\jbr
-IF EXIST "%JDK%" GOTO check
-IF EXIST "%IDE_HOME%\jre64" SET JDK=%IDE_HOME%\jre64
-IF EXIST "%JDK%" GOTO check
-IF EXIST "%IDE_HOME%\jre32" SET JDK=%IDE_HOME%\jre32
-IF EXIST "%JDK%" GOTO check
-IF EXIST "%IDE_HOME%\jre" SET JDK=%IDE_HOME%\jre
+IF "%PROCESSOR_ARCHITECTURE%" == "AMD64" (
+  IF EXIST "%IDE_HOME%\jbr" SET JDK=%IDE_HOME%\jbr
+  IF EXIST "%JDK%" GOTO check
+)
+IF EXIST "%IDE_HOME%\jbr-x86" SET JDK=%IDE_HOME%\jbr-x86
 IF EXIST "%JDK%" GOTO check
 
 IF EXIST "%JDK_HOME%" SET JDK=%JDK_HOME%
@@ -61,7 +59,7 @@ IF EXIST "%JRE%\jre" SET JRE=%JDK%\jre
 IF EXIST "%JRE%\lib\amd64" (
   SET BITS=64
 ) ELSE (
-  IF EXIST "%JRE%\lib\jrt-fs.jar" SET BITS=64
+  IF EXIST "%JRE%\bin\windowsaccessbridge-64.dll" SET BITS=64
 )
 
 :: ---------------------------------------------------------------------
@@ -77,7 +75,7 @@ IF NOT EXIST "%VM_OPTIONS_FILE%" (
 )
 IF NOT EXIST "%VM_OPTIONS_FILE%" (
   :: user-overridden
-  SET VM_OPTIONS_FILE=%USERPROFILE%\.@@system_selector@@\config\@@vm_options@@.vmoptions
+  SET VM_OPTIONS_FILE=%APPDATA%\@@product_vendor@@\@@system_selector@@\@@vm_options@@.vmoptions
 )
 IF NOT EXIST "%VM_OPTIONS_FILE%" (
   :: default, standard installation
@@ -95,7 +93,7 @@ SET ACC=
 FOR /F "eol=# usebackq delims=" %%i IN ("%VM_OPTIONS_FILE%") DO CALL "%IDE_BIN_DIR%\append.bat" "%%i"
 IF EXIST "%VM_OPTIONS_FILE%" SET ACC=%ACC% -Djb.vmOptionsFile="%VM_OPTIONS_FILE%"
 
-SET COMMON_JVM_ARGS="-XX:ErrorFile=%USERPROFILE%\java_error_in_@@product_uc@@_%%p.log" "-XX:HeapDumpPath=%USERPROFILE%\java_error_in_@@product_uc@@.hprof" -Didea.paths.selector=@@system_selector@@ %IDE_PROPERTIES_PROPERTY%
+SET COMMON_JVM_ARGS="-XX:ErrorFile=%USERPROFILE%\java_error_in_@@product_uc@@_%%p.log" "-XX:HeapDumpPath=%USERPROFILE%\java_error_in_@@product_uc@@.hprof" -Didea.vendor.name=@@product_vendor@@ -Didea.paths.selector=@@system_selector@@ %IDE_PROPERTIES_PROPERTY%
 SET IDE_JVM_ARGS=@@ide_jvm_args@@
 SET ALL_JVM_ARGS=%ACC% %COMMON_JVM_ARGS% %IDE_JVM_ARGS%
 

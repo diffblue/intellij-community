@@ -1,7 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.tabs.impl.singleRow;
 
-import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.ActionToolbar;
 import com.intellij.ui.tabs.impl.JBTabsImpl;
 import com.intellij.ui.tabs.impl.ShapeTransform;
 import com.intellij.ui.tabs.impl.TabLabel;
@@ -84,12 +84,14 @@ public abstract class SingleRowLayoutStrategy {
 
     @Override
     public boolean isDragOut(TabLabel tabLabel, int deltaX, int deltaY) {
+      Rectangle bounds = tabLabel.getBounds();
+      if (bounds.x + bounds.width + deltaX < 0 || bounds.x + bounds.width > tabLabel.getParent().getWidth()) return true;
       return Math.abs(deltaY) > tabLabel.getHeight() * TabLayout.getDragOutMultiplier();
     }
 
     @Override
     public int getMoreRectAxisSize() {
-      return AllIcons.General.MoreTabs.getIconWidth() + 15;
+      return ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE.width + 6;
     }
 
     @Override
@@ -104,7 +106,7 @@ public abstract class SingleRowLayoutStrategy {
 
     @Override
     public int getLengthIncrement(final Dimension labelPrefSize) {
-      return myTabs.isEditorTabs() ? labelPrefSize.width < MIN_TAB_WIDTH ? MIN_TAB_WIDTH : labelPrefSize.width : labelPrefSize.width;
+      return myTabs.isEditorTabs() ? Math.max(labelPrefSize.width, MIN_TAB_WIDTH) : labelPrefSize.width;
     }
 
     @Override
@@ -173,8 +175,7 @@ public abstract class SingleRowLayoutStrategy {
       else {
         x = data.position;
       }
-      return new Rectangle(x, data.insets.top + JBTabsImpl.getSelectionTabVShift(),
-                           data.moreRectAxisSize - 1, myTabs.myHeaderFitSize.height);
+      return new Rectangle(x, 1, data.moreRectAxisSize - 1, myTabs.myHeaderFitSize.height);
     }
 
 
@@ -258,7 +259,9 @@ public abstract class SingleRowLayoutStrategy {
 
     @Override
     public boolean isDragOut(TabLabel tabLabel, int deltaX, int deltaY) {
-      return Math.abs(deltaX) > tabLabel.getHeight() * TabLayout.getDragOutMultiplier();
+      Rectangle bounds = tabLabel.getBounds();
+      if (bounds.y + bounds.height + deltaX < 0 || bounds.y + bounds.height > tabLabel.getParent().getHeight()) return true;
+      return Math.abs(deltaX) > tabLabel.getWidth() * TabLayout.getDragOutMultiplier();
     }
 
     @Override
@@ -268,7 +271,7 @@ public abstract class SingleRowLayoutStrategy {
 
     @Override
     int getMoreRectAxisSize() {
-      return AllIcons.General.MoreTabs.getIconHeight() + 4;
+      return ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE.width + 2;
     }
 
     @Override

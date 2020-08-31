@@ -2,6 +2,7 @@
   <name>YAML</name>
   <id>org.jetbrains.plugins.yaml</id>
   <vendor>JetBrains</vendor>
+  <category>Languages</category>
   <description><![CDATA[
   Adds support for the <a href="https://yaml.org/">YAML</a> language.
   ]]></description>
@@ -38,10 +39,13 @@
 
     <completion.contributor order="first" language="yaml" id="YamlJsonSchema"
                             implementationClass="org.jetbrains.yaml.schema.YamlJsonSchemaCompletionContributor"/>
-    <lang.documentationProvider language="yaml" implementationClass="org.jetbrains.yaml.schema.YamlJsonSchemaDocumentationProvider" order="first"/>
+    <lang.documentationProvider language="yaml" implementationClass="org.jetbrains.yaml.schema.YamlJsonSchemaDocumentationProvider"
+                                id="YamlJsonSchemaDocumentationProvider" order="first"/>
     <gotoDeclarationHandler implementation="org.jetbrains.yaml.schema.YamlJsonSchemaGotoDeclarationHandler" order="last"/>
     <lang.elementManipulator forClass="org.jetbrains.yaml.psi.impl.YAMLScalarImpl"
                              implementationClass="org.jetbrains.yaml.psi.impl.YAMLScalarElementManipulator"/>
+    <lang.elementManipulator forClass="org.jetbrains.yaml.psi.YAMLKeyValue"
+                             implementationClass="org.jetbrains.yaml.psi.impl.YAMLKeyValueKeyManipulator"/>
     <breadcrumbsInfoProvider implementation="org.jetbrains.yaml.breadcrumbs.YAMLBreadcrumbsInfoProvider"/>
     <elementDescriptionProvider implementation="org.jetbrains.yaml.psi.impl.YAMLElementDescriptionProvider"/>
     <readWriteAccessDetector implementation="org.jetbrains.yaml.resolve.YAMLAnchorReadWriteAccessDetector"/>
@@ -104,7 +108,8 @@
 
   <extensionPoints>
     <extensionPoint qualifiedName="com.intellij.yaml.customStructureViewFactory"
-                    interface="org.jetbrains.yaml.structureView.YAMLCustomStructureViewFactory">
+                    interface="org.jetbrains.yaml.structureView.YAMLCustomStructureViewFactory"
+                    dynamic="true">
     </extensionPoint>
   </extensionPoints>
 

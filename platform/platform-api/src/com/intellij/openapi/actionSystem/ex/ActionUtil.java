@@ -1,39 +1,29 @@
-/*
- * Copyright 2000-2019 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem.ex;
 
 import com.intellij.ide.DataManager;
 import com.intellij.ide.actions.ActionsCollector;
+import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
-import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.keymap.KeymapUtil;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.util.Comparing;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.ComponentUtil;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.PausesStat;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.ui.UIUtil;
+import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -42,22 +32,27 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 
-public class ActionUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.actionSystem.ex.ActionUtil");
+import static java.awt.event.InputEvent.ALT_DOWN_MASK;
+import static java.awt.event.InputEvent.CTRL_DOWN_MASK;
+
+public final class ActionUtil {
+  private static final Logger LOG = Logger.getInstance(ActionUtil.class);
   @NonNls private static final String WAS_ENABLED_BEFORE_DUMB = "WAS_ENABLED_BEFORE_DUMB";
   @NonNls public static final String WOULD_BE_ENABLED_IF_NOT_DUMB_MODE = "WOULD_BE_ENABLED_IF_NOT_DUMB_MODE";
   @NonNls private static final String WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE = "WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE";
-  @NonNls private static final String ACTION_UPDATE_DATA = ActionUtil.class.getName() + "ACTION_UPDATE_DATA";
+  @NonNls private static final Key<ActionUpdateData> ACTION_UPDATE_DATA = Key.create("ACTION_UPDATE_DATA");
 
   private ActionUtil() {
   }
 
-  public static void showDumbModeWarning(@NotNull AnActionEvent... events) {
+  public static void showDumbModeWarning(AnActionEvent @NotNull ... events) {
     Project project = null;
     List<String> actionNames = new ArrayList<>();
     for (final AnActionEvent event : events) {
@@ -113,7 +108,7 @@ public class ActionUtil {
    */
   public static void performFastUpdate(boolean isInModalContext, @NotNull AnAction action, @NotNull AnActionEvent event, boolean forceUseCached) {
     final Presentation templatePresentation = action.getTemplatePresentation();
-    ActionUpdateData ud = (ActionUpdateData)templatePresentation.getClientProperty(ACTION_UPDATE_DATA);
+    ActionUpdateData ud = templatePresentation.getClientProperty(ACTION_UPDATE_DATA);
     if (ud == null)
       templatePresentation.putClientProperty(ACTION_UPDATE_DATA, ud = new ActionUpdateData());
 
@@ -151,6 +146,11 @@ public class ActionUtil {
    */
   public static boolean performDumbAwareUpdate(boolean isInModalContext, @NotNull AnAction action, @NotNull AnActionEvent e, boolean beforeActionPerformed) {
     final Presentation presentation = e.getPresentation();
+    if (LightEdit.owns(e.getProject()) && !LightEdit.isActionCompatible(action)) {
+      presentation.setEnabledAndVisible(false);
+      return false;
+    }
+
     final Boolean wasEnabledBefore = (Boolean)presentation.getClientProperty(WAS_ENABLED_BEFORE_DUMB);
     final boolean dumbMode = isDumbMode(e.getProject());
     if (wasEnabledBefore != null && !dumbMode) {
@@ -168,6 +168,9 @@ public class ActionUtil {
     if (edt && insidePerformDumbAwareUpdate++ == 0) {
       ActionPauses.STAT.started();
     }
+
+    action.applyTextOverride(e);
+
     try {
       if (beforeActionPerformed) {
         action.beforeActionPerformedUpdate(e);
@@ -207,7 +210,24 @@ public class ActionUtil {
     return performDumbAwareUpdate(false, action, e, beforeActionPerformed);
   }
 
-  public static class ActionPauses {
+  /**
+   * Show a cancellable modal progress running the given computation under read action with the same {@link DumbService#isAlternativeResolveEnabled()}
+   * as the caller. To be used in actions which need to perform potentially long-running computations synchronously without freezing UI.
+   * @throws ProcessCanceledException if the user has canceled the progress. If the action can be safely stopped at this point
+   *   without leaving inconsistent data behind, this exception doesn't need to be caught and processed.
+   */
+  public static <T> T underModalProgress(@NotNull Project project,
+                                         @NotNull @Nls(capitalization = Nls.Capitalization.Title) String progressTitle,
+                                         @NotNull Computable<T> computable) throws ProcessCanceledException {
+    DumbService dumbService = DumbService.getInstance(project);
+    boolean useAlternativeResolve = dumbService.isAlternativeResolveEnabled();
+    ThrowableComputable<T, RuntimeException> inReadAction = () -> ApplicationManager.getApplication().runReadAction(computable);
+    ThrowableComputable<T, RuntimeException> prioritizedRunnable = () -> ProgressManager.getInstance().computePrioritized(inReadAction);
+    ThrowableComputable<T, RuntimeException> process = useAlternativeResolve ? () -> dumbService.computeWithAlternativeResolveEnabled(prioritizedRunnable) : prioritizedRunnable;
+    return ProgressManager.getInstance().runProcessWithProgressSynchronously(process, progressTitle, true, project);
+  }
+
+  public static final class ActionPauses {
     public static final PausesStat STAT = new PausesStat("AnAction.update()");
   }
 
@@ -258,28 +278,12 @@ public class ActionUtil {
   }
 
   public static void performActionDumbAware(AnAction action, AnActionEvent e) {
-    Runnable runnable = new Runnable() {
-      @Override
-      public void run() {
-        try {
-          action.actionPerformed(e);
-        }
-        catch (IndexNotReadyException ex) {
-          LOG.info(ex);
-          showDumbModeWarning(e);
-        }
-      }
-
-      @Override
-      public String toString() {
-        return action + " of " + action.getClass();
-      }
-    };
-
-    if (action.startInTransaction()) {
-      TransactionGuard.getInstance().submitTransactionAndWait(runnable);
-    } else {
-      runnable.run();
+    try {
+      action.actionPerformed(e);
+    }
+    catch (IndexNotReadyException ex) {
+      LOG.info(ex);
+      showDumbModeWarning(e);
     }
   }
   @NotNull
@@ -298,7 +302,7 @@ public class ActionUtil {
                                   @NotNull String actionText,
                                   @NotNull String targetActionText,
                                   boolean before) {
-    if (Comparing.equal(actionText, targetActionText)) {
+    if (Objects.equals(actionText, targetActionText)) {
       return;
     }
 
@@ -306,12 +310,13 @@ public class ActionUtil {
     int targetIndex = -1;
     for (int i = 0; i < list.size(); i++) {
       AnAction action = list.get(i);
-      if (actionIndex == -1 && Comparing.equal(actionText, action.getTemplateText())) actionIndex = i;
-      if (targetIndex == -1 && Comparing.equal(targetActionText, action.getTemplateText())) targetIndex = i;
+      if (actionIndex == -1 && Objects.equals(actionText, action.getTemplateText())) actionIndex = i;
+      if (targetIndex == -1 && Objects.equals(targetActionText, action.getTemplateText())) targetIndex = i;
       if (actionIndex != -1 && targetIndex != -1) {
         if (actionIndex < targetIndex) targetIndex--;
         AnAction anAction = list.remove(actionIndex);
-        list.add(before ? Math.max(0, targetIndex) : targetIndex + 1, anAction);
+        assert targetIndex >= 0;
+        list.add(before ? targetIndex : targetIndex + 1, anAction);
         return;
       }
     }
@@ -319,11 +324,11 @@ public class ActionUtil {
 
   @NotNull
   public static List<AnAction> getActions(@NotNull JComponent component) {
-    return ContainerUtil.notNullize(UIUtil.getClientProperty(component, AnAction.ACTIONS_KEY));
+    return ContainerUtil.notNullize(ComponentUtil.getClientProperty(component, AnAction.ACTIONS_KEY));
   }
 
   public static void clearActions(@NotNull JComponent component) {
-    UIUtil.putClientProperty(component, AnAction.ACTIONS_KEY, null);
+    ComponentUtil.putClientProperty(component, AnAction.ACTIONS_KEY, null);
   }
 
   public static void copyRegisteredShortcuts(@NotNull JComponent to, @NotNull JComponent from) {
@@ -381,7 +386,7 @@ public class ActionUtil {
    *
    * @param actionId action id
    */
-  public static AnAction copyFrom(@NotNull AnAction action, @NotNull String actionId) {
+  public static AnAction copyFrom(@NotNull AnAction action, @NotNull @NonNls String actionId) {
     AnAction from = ActionManager.getInstance().getAction(actionId);
     if (from != null) {
       action.copyFrom(from);
@@ -458,9 +463,9 @@ public class ActionUtil {
     };
   }
 
-  @NotNull
-  public static ActionListener createActionListener(@NotNull AnAction action, @NotNull Component component, @NotNull String place) {
-    return e -> invokeAction(action, component, place, null, null);
+  @Nullable
+  public static ShortcutSet getMnemonicAsShortcut(@NotNull AnAction action) {
+    return KeymapUtil.getMnemonicAsShortcut(action.getTemplatePresentation().getMnemonic());
   }
 
   private static class ActionUpdateData {

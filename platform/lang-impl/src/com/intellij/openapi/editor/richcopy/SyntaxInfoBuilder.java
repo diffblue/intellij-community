@@ -198,6 +198,9 @@ public final class SyntaxInfoBuilder {
         }
         myCurrentEnd = Math.min(myCurrentEnd, nearestBound);
       }
+      assert myCurrentStart <= myCurrentEnd : "Unexpected range: " + myCurrentStart + ":" + myCurrentEnd +
+                                              ", iterators: " + Arrays.toString(myIterators) +
+                                              ", overlappingRanges: " + overlappingRangesCount;
       for (overlappingRangesCount = 1; overlappingRangesCount < myIterators.length; overlappingRangesCount++) {
         IteratorWrapper wrapper = myIterators[overlappingRangesCount];
         if (wrapper == null || wrapper.iterator.getRangeStart() > myCurrentStart) {
@@ -273,6 +276,11 @@ public final class SyntaxInfoBuilder {
       private IteratorWrapper(RangeIterator iterator, int order) {
         this.iterator = iterator;
         this.order = order;
+      }
+
+      @Override
+      public String toString() {
+        return iterator + " (" + iterator.getRangeStart() + ":" + iterator.getRangeEnd() + ")";
       }
     }
   }
@@ -354,9 +362,7 @@ public final class SyntaxInfoBuilder {
             HighlightInfoType type = info.type;
             key = type.getAttributesKey();
           }
-          if (key != null) {
-            attributes = myColorsScheme.getAttributes(key);
-          }
+          attributes = myColorsScheme.getAttributes(key);
         }
         if (attributes == null) {
           continue;
@@ -369,6 +375,9 @@ public final class SyntaxInfoBuilder {
           continue;
         }
         myNextAttributes = attributes;
+        assert myNextStart <= myNextEnd : "Unexpected range: " + myNextStart + ":" + myNextEnd +
+                                          ", target range: " + myStartOffset + ":" + myEndOffset +
+                                          ", highlighter: " + highlighter.getStartOffset() + ":" + highlighter.getEndOffset();
         break;
       }
     }
@@ -407,6 +416,7 @@ public final class SyntaxInfoBuilder {
   static class HighlighterRangeIterator implements RangeIterator {
     private static final TextAttributes EMPTY_ATTRIBUTES = new TextAttributes();
 
+    private final EditorHighlighter myHighlighter;
     private final HighlighterIterator myIterator;
     private final int myStartOffset;
     private final int myEndOffset;
@@ -416,6 +426,7 @@ public final class SyntaxInfoBuilder {
     private TextAttributes myCurrentAttributes;
 
     HighlighterRangeIterator(@NotNull EditorHighlighter highlighter, int startOffset, int endOffset) {
+      myHighlighter = highlighter;
       myStartOffset = startOffset;
       myEndOffset = endOffset;
       myIterator = highlighter.createIterator(startOffset);
@@ -436,8 +447,16 @@ public final class SyntaxInfoBuilder {
 
     @Override
     public void advance() {
+      int prevEnd = myCurrentEnd;
       myCurrentStart = getCurrentStart();
       myCurrentEnd = getCurrentEnd();
+      assert prevEnd <= myCurrentStart && myCurrentStart <= myCurrentEnd
+        : "Unexpected range returned by highlighter: " +
+          myIterator.getStart() + ":" + myIterator.getEnd() +
+          ", prevEnd: " + prevEnd +
+          ", scanned range: " + myStartOffset + ":" + myEndOffset +
+          ", resulting range: " + myCurrentStart + ":" + myCurrentEnd +
+          ", highlighter: " + myHighlighter;
       myCurrentAttributes = myIterator.getTokenType() == TokenType.BAD_CHARACTER ? EMPTY_ATTRIBUTES : myIterator.getTextAttributes();
       myIterator.advance();
     }
@@ -459,6 +478,11 @@ public final class SyntaxInfoBuilder {
 
     @Override
     public void dispose() {
+    }
+
+    @Override
+    public String toString() {
+      return "HighlighterRangeIterator[" + myHighlighter + "]";
     }
   }
 

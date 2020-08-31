@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.data;
 
 import com.intellij.openapi.Disposable;
@@ -9,6 +9,7 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.Consumer;
@@ -16,6 +17,7 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.log.CommitId;
+import com.intellij.vcs.log.VcsLogBundle;
 import com.intellij.vcs.log.VcsLogProvider;
 import com.intellij.vcs.log.VcsShortCommitDetails;
 import com.intellij.vcs.log.data.index.IndexDataGetter;
@@ -137,40 +139,49 @@ abstract class AbstractDataGetter<T extends VcsShortCommitDetails> implements Di
     }
 
     if (toLoad.isEmpty()) {
-      sortCommitsByRow(result, commits);
-      consumer.consume(result);
+      Runnable process = () -> {
+        sortCommitsByRow(result, commits);
+        consumer.consume(result);
+      };
+      if (indicator != null) {
+        ProgressManager.getInstance().runProcess(process, indicator);
+      }
+      else {
+        process.run();
+      }
     }
     else {
-      Task.Backgroundable task =
-        new Task.Backgroundable(null, "Loading Selected Details", true, PerformInBackgroundOption.ALWAYS_BACKGROUND) {
-          @Override
-          public void run(@NotNull ProgressIndicator indicator) {
-            indicator.checkCanceled();
-            try {
-              TIntObjectHashMap<T> map = preLoadCommitData(toLoad);
-              map.forEachValue(value -> {
-                result.add(value);
-                return true;
-              });
-              sortCommitsByRow(result, commits);
-              notifyLoaded();
-            }
-            catch (VcsException e) {
-              LOG.warn(e);
-              throw new RuntimeException(e);
-            }
+      Task.Backgroundable task = new Task.Backgroundable(null,
+                                                         VcsLogBundle.message("vcs.log.loading.selected.details.process"),
+                                                         true, PerformInBackgroundOption.ALWAYS_BACKGROUND) {
+        @Override
+        public void run(@NotNull ProgressIndicator indicator) {
+          indicator.checkCanceled();
+          try {
+            TIntObjectHashMap<T> map = preLoadCommitData(toLoad);
+            map.forEachValue(value -> {
+              result.add(value);
+              return true;
+            });
+            sortCommitsByRow(result, commits);
+            notifyLoaded();
           }
+          catch (VcsException e) {
+            LOG.warn(e);
+            throw new RuntimeException(e);
+          }
+        }
 
-          @Override
-          public void onSuccess() {
-            consumer.consume(result);
-          }
+        @Override
+        public void onSuccess() {
+          consumer.consume(result);
+        }
 
-          @Override
-          public void onThrowable(@NotNull Throwable error) {
-            errorConsumer.consume(error);
-          }
-        };
+        @Override
+        public void onThrowable(@NotNull Throwable error) {
+          errorConsumer.consume(error);
+        }
+      };
       if (indicator != null) {
         ProgressManager.getInstance().runProcessWithProgressAsynchronously(task, indicator);
       }
@@ -235,7 +246,7 @@ abstract class AbstractDataGetter<T extends VcsShortCommitDetails> implements Di
     // even if it will be loaded within a previous query
     if (!myCache.isKeyCached(commitId)) {
       IndexDataGetter dataGetter = myIndex.getDataGetter();
-      if (dataGetter != null) {
+      if (dataGetter != null && Registry.is("vcs.log.use.indexed.details")) {
         myCache.put(commitId, (T)new IndexedDetails(dataGetter, myStorage, commitId, taskNumber));
       }
       else {

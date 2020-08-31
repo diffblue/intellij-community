@@ -2,16 +2,17 @@
 package com.intellij.codeInsight.hints.presentation
 
 import com.intellij.openapi.editor.markup.TextAttributes
+import org.jetbrains.annotations.ApiStatus
 import java.awt.Dimension
 import java.awt.Graphics2D
 import java.awt.Rectangle
 
 /**
- * Building block of inlay view. Note, that you have to use [updateState] if your presentation has state to preserve it between passes.
- * It's implementations are not expected to throw exceptions.
- * Most useful methods for presentation creation are placed in PresentationFactory
+ * Building block of inlay view. It's implementations are not expected to throw exceptions.
+ * Most useful methods for presentation creation are placed in [com.intellij.codeInsight.hints.InlayPresentationFactory]
  * If you implement new presentation, consider using [BasePresentation] as base class.
  */
+@ApiStatus.Experimental
 interface InlayPresentation : InputHandler {
   val width: Int
   val height: Int

@@ -3,6 +3,25 @@ package com.siyeh.igtest.controlflow.pointless_null_check;
 import org.jetbrains.annotations.NotNull;
 
 public class ConditionCoveredByFurtherCondition {
+    static class C {
+        public static final Object C1 = new C();
+        public static final Object C2 = new C();
+        public void m() {
+            if (this == C1 || this == C2) { /* ...*/ }
+        }
+        
+        public static final Object C3 = getC();
+        public static final Object C4 = getC();
+        
+        public void m2() {
+            if (this == C3 || this == C4) {}
+        }
+        
+        private static Object getC() {
+            return new C();
+        }
+    }
+    
     public void testInstanceOf(Object arg) {
         if (<warning descr="Condition 'arg != null' covered by subsequent condition 'arg instanceof String'">arg != null</warning> && arg instanceof String) {
             System.out.println("this should trigger a warning");
@@ -149,12 +168,39 @@ public class ConditionCoveredByFurtherCondition {
     void testIncompleteLambda2(Object x) {
         if (x != null && () -> x instanceof<error descr="')' expected"><error descr="Type expected"> </error></error>
     }
+    
+    void testBooleanChain(boolean b1, boolean b2) {
+        if (<warning descr="Condition '(b1 || b2)' covered by subsequent condition 'b1 != b2'">(b1 || b2)</warning> && b1 != b2) {}
+    }
+
+    void testTwoInstanceOf(Object object) {
+        if (<warning descr="Condition 'object != null' covered by subsequent condition 'object instanceof String || object instanceof Number'">object != null</warning> && (object instanceof String || object instanceof Number)) {}
+    }
 
     class A {int value;}
     class AA extends A {}
 
     public boolean testDerefInBetween(A x) {
         return x != null && x.value > 0 && x instanceof AA;
+    }
+
+    native Object getFoo();
+
+    public void testOr(@NotNull Object obj) {
+        obj = getFoo();
+        if (obj == null || obj instanceof String) {}
+    }
+    static void test(Object obj) {
+        if (obj == Holder.x || obj instanceof CharSequence) {}
+    }
+
+    static class Holder {
+        static final Object x = new Object();
+    }
+
+    void testChainInstanceof(String arg) {
+        if ((<error descr="Inconvertible types; cannot cast 'java.lang.String' to 'java.lang.Integer'">arg instanceof Integer</error>) || <error descr="Inconvertible types; cannot cast 'java.lang.String' to 'java.lang.Long'">arg instanceof Long</error>) {}
+        if (<error descr="Inconvertible types; cannot cast 'java.lang.String' to 'java.lang.Integer'">arg instanceof Integer</error> || <error descr="Inconvertible types; cannot cast 'java.lang.String' to 'java.lang.Long'">arg instanceof Long</error>) {}
     }
 }
 enum X {A, B, C}

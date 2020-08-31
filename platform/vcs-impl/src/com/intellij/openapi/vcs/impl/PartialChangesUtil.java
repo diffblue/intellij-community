@@ -1,12 +1,10 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.impl;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.TransactionGuard;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vcs.changes.*;
 import com.intellij.openapi.vcs.changes.conflicts.ChangelistConflictTracker;
@@ -22,14 +20,11 @@ import com.intellij.util.ui.ThreeStateCheckBox;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.intellij.openapi.diagnostic.Logger.getInstance;
 
-public class PartialChangesUtil {
+public final class PartialChangesUtil {
   private static final Logger LOG = getInstance(PartialChangesUtil.class);
 
   @Nullable
@@ -103,7 +98,7 @@ public class PartialChangesUtil {
     };
 
     if (executeOnEDT && !ApplicationManager.getApplication().isDispatchThread()) {
-      TransactionGuard.getInstance().submitTransactionAndWait(task);
+      ApplicationManager.getApplication().invokeAndWait(task);
     }
     else {
       task.run();
@@ -164,7 +159,7 @@ public class PartialChangesUtil {
                                         @NotNull LocalChangeList targetChangeList,
                                         @NotNull LocalChangeList oldDefaultList) {
     LocalChangeList defaultChangeList = clm.getDefaultChangeList();
-    if (Comparing.equal(defaultChangeList.getId(), targetChangeList.getId())) {
+    if (Objects.equals(defaultChangeList.getId(), targetChangeList.getId())) {
       clm.setDefaultChangeList(oldDefaultList, true);
       LOG.debug(String.format("Active changelist restored: %s -> %s", targetChangeList.getName(), oldDefaultList.getName()));
     }

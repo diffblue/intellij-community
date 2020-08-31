@@ -2,11 +2,14 @@
 package com.intellij.sh.parser;
 
 import com.intellij.lang.ASTNode;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.sh.ShTypes;
 import com.intellij.sh.psi.ShFile;
 import com.intellij.util.PathUtil;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -17,7 +20,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class ShShebangParserUtil {
-  private static final List<String> KNOWN_EXTENSIONS = Arrays.asList("exe", "bat", "cmd");
+  @NonNls private static final List<String> KNOWN_EXTENSIONS = Arrays.asList("exe", "bat", "cmd");
   private static final String PREFIX = "#!";
 
   private ShShebangParserUtil() {
@@ -42,7 +45,8 @@ public class ShShebangParserUtil {
 
   @NotNull
   public static String getInterpreter(@NotNull ShFile file, @NotNull List<String> knownShells, @NotNull String defaultShell) {
-    String shebang = file.findShebang();
+    String shebang = ApplicationManager.getApplication().isDispatchThread() ? file.findShebang()
+                                                                            : ReadAction.compute(() -> file.findShebang());
     String detectedInterpreter = shebang != null ? detectInterpreter(shebang) : null;
     return detectedInterpreter != null && knownShells.contains(detectedInterpreter) ? detectedInterpreter : defaultShell;
   }
@@ -60,7 +64,7 @@ public class ShShebangParserUtil {
   @NotNull
   private static String getInterpreterPath(@NotNull String shebang) {
     int index = shebang.indexOf(" ");
-    String possiblePath = index < 0 ? shebang : shebang.substring(0, index);
+    @NonNls String possiblePath = index < 0 ? shebang : shebang.substring(0, index);
     if (!possiblePath.equals("/usr/bin/env")) return possiblePath;
 
     String interpreterPath = shebang.substring(index + 1);

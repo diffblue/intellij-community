@@ -27,7 +27,10 @@ import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
 import com.siyeh.ig.InspectionGadgetsFix;
-import com.siyeh.ig.psiutils.*;
+import com.siyeh.ig.psiutils.DeclarationSearchUtils;
+import com.siyeh.ig.psiutils.ExpressionUtils;
+import com.siyeh.ig.psiutils.HighlightUtils;
+import com.siyeh.ig.psiutils.TypeUtils;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -41,13 +44,6 @@ public class UnnecessaryInitCauseInspection extends BaseInspection implements Cl
   @Override
   protected InspectionGadgetsFix buildFix(Object... infos) {
     return new UnnecessaryInitCauseFix();
-  }
-
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("unnecessary.initcause.display.name");
   }
 
   @NotNull
@@ -99,7 +95,7 @@ public class UnnecessaryInitCauseInspection extends BaseInspection implements Cl
         return;
       }
       final PsiReferenceExpression methodExpression = methodCallExpression.getMethodExpression();
-      final PsiExpression qualifier = ParenthesesUtils.stripParentheses(methodExpression.getQualifierExpression());
+      final PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(methodExpression.getQualifierExpression());
       if (qualifier == null) {
         return;
       }
@@ -148,7 +144,7 @@ public class UnnecessaryInitCauseInspection extends BaseInspection implements Cl
       if (aClass == null || !CommonClassNames.JAVA_LANG_THROWABLE.equals(aClass.getQualifiedName())) {
         return;
       }
-      final PsiExpression qualifier = ParenthesesUtils.stripParentheses(methodExpression.getQualifierExpression());
+      final PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(methodExpression.getQualifierExpression());
       final PsiNewExpression newExpression = findNewExpression(qualifier);
       if (!isCauseConstructorAvailable(newExpression, argument.getType()) || !canExpressionBeMovedBackwards(argument, newExpression)) {
         return;

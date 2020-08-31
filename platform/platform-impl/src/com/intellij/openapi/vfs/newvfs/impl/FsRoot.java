@@ -24,9 +24,8 @@ public class FsRoot extends VirtualDirectoryImpl {
     VfsData.initFile(id, mySegment, nameId, myData);
   }
 
-  @NotNull
   @Override
-  protected char[] appendPathOnFileSystem(int pathLength, int[] position) {
+  protected char @NotNull [] appendPathOnFileSystem(int pathLength, int[] position) {
     int myLength = myPathWithOneSlash.length() - 1;
     char[] chars = new char[pathLength + myLength];
     CharArrayUtil.getChars(myPathWithOneSlash, chars, 0, position[0], myLength);
@@ -64,8 +63,10 @@ public class FsRoot extends VirtualDirectoryImpl {
     while (true) {
       int i = pathBeforeSlash.indexOf("..", start);
       if (i == -1) break;
-      if (i != 0 && pathBeforeSlash.charAt(i-1) == '/') return false; // /..
-      if (i < pathBeforeSlash.length() - 2 && pathBeforeSlash.charAt(i+2) == '/') return false; // ../
+      if ((i == 0 || pathBeforeSlash.charAt(i-1) == '/') // /..
+          && (i == pathBeforeSlash.length() - 2 || pathBeforeSlash.charAt(i+2) == '/')) { // ../
+        return false;
+      }
       start = i+1;
     }
     return true;

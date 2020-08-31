@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source.xml;
 
 import com.intellij.lang.ASTNode;
@@ -26,24 +12,21 @@ import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.xml.XmlAttributeDescriptor;
 import com.intellij.xml.util.XmlUtil;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static com.intellij.codeInsight.completion.CompletionUtilCore.DUMMY_IDENTIFIER_TRIMMED;
 
-/**
- * @author Mike
- */
 public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, HintedReferenceHost {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.xml.XmlAttributeImpl");
+  private static final Logger LOG = Logger.getInstance(XmlAttributeImpl.class);
 
+  @SuppressWarnings("AssignmentToStaticFieldFromInstanceMethod")
   private final int myHC = ourHC++;
 
   //cannot be final because of clone implementation
   @Nullable
-  private volatile XmlAttributeDelegateImpl myImpl;
+  private volatile XmlAttributeDelegate myImpl;
 
   @Override
   public final int hashCode() {
@@ -54,20 +37,23 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
     super(XmlElementType.XML_ATTRIBUTE);
   }
 
+  protected XmlAttributeImpl(@NotNull IElementType elementType) {
+    super(elementType);
+  }
+
   @NotNull
-  private XmlAttributeDelegateImpl getImpl() {
-    XmlAttributeDelegateImpl impl = myImpl;
+  private XmlAttributeDelegate getImpl() {
+    XmlAttributeDelegate impl = myImpl;
     if (impl != null) return impl;
-    impl = new XmlAttributeDelegateImpl(this,
-                                        this::createAttribute,
-                                        this::appendChildToDisplayValue);
+    impl = createDelegate();
     myImpl = impl;
 
     return impl;
   }
 
-  protected XmlAttributeImpl(@NotNull IElementType elementType) {
-    super(elementType);
+  @NotNull
+  protected XmlAttributeDelegate createDelegate() {
+    return new XmlAttributeImplDelegate();
   }
 
   @Override
@@ -93,11 +79,6 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
   @Override
   public void setValue(@NotNull String valueText) throws IncorrectOperationException {
     getImpl().setValue(valueText);
-  }
-
-  @NotNull
-  protected XmlAttribute createAttribute(@NotNull String valueText, String name) {
-    return XmlElementFactory.getInstance(getProject()).createAttribute(name, valueText, this);
   }
 
   @Override
@@ -147,15 +128,10 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
     return valueElement != null ? valueElement.getValue() : null;
   }
 
-
-  protected void appendChildToDisplayValue(@NotNull StringBuilder buffer, @NotNull ASTNode child) {
-    buffer.append(child.getChars());
-  }
-
   @Override
   @Nullable
   public String getDisplayValue() {
-    final XmlAttributeDelegateImpl.VolatileState state = getImpl().getFreshState();
+    final XmlAttributeDelegate.VolatileState state = getImpl().getFreshState();
     return state == null ? null : state.myDisplayText;
   }
 
@@ -172,7 +148,7 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
   @NotNull
   @Override
   public TextRange getValueTextRange() {
-    final XmlAttributeDelegateImpl.VolatileState state = getImpl().getFreshState();
+    final XmlAttributeDelegate.VolatileState state = getImpl().getFreshState();
     return state == null ? TextRange.EMPTY_RANGE : state.myValueTextRange;
   }
 
@@ -215,15 +191,13 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
    * @deprecated use {@link #getReferences(PsiReferenceService.Hints)} instead of calling or overriding this method.
    */
   @Deprecated
-  @NotNull
   @Override
-  public final PsiReference[] getReferences() {
+  public final PsiReference @NotNull [] getReferences() {
     return getReferences(PsiReferenceService.Hints.NO_HINTS);
   }
 
-  @NotNull
   @Override
-  public PsiReference[] getReferences(@NotNull PsiReferenceService.Hints hints) {
+  public PsiReference @NotNull [] getReferences(@NotNull PsiReferenceService.Hints hints) {
     return getImpl().getDefaultReferences(hints);
   }
 
@@ -233,17 +207,16 @@ public class XmlAttributeImpl extends XmlElementImpl implements XmlAttribute, Hi
     return getImpl().getDescriptor();
   }
 
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
-  @Deprecated
-  @NotNull
-  public String getRealLocalName() {
-    XmlAttribute attribute = this;
-    return getRealName(attribute);
-  }
-
   @NotNull
   public static String getRealName(@NotNull XmlAttribute attribute) {
     final String name = attribute.getLocalName();
     return name.endsWith(DUMMY_IDENTIFIER_TRIMMED) ? name.substring(0, name.length() - DUMMY_IDENTIFIER_TRIMMED.length()) : name;
+  }
+
+  protected class XmlAttributeImplDelegate extends XmlAttributeDelegate {
+
+    public XmlAttributeImplDelegate() {
+      super(XmlAttributeImpl.this);
+    }
   }
 }

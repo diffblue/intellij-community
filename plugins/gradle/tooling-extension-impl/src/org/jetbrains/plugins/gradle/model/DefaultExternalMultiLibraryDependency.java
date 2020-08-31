@@ -4,15 +4,11 @@ package org.jetbrains.plugins.gradle.model;
 import org.gradle.internal.impldep.com.google.common.base.Objects;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.gradle.tooling.util.BooleanBiFunction;
-import org.jetbrains.plugins.gradle.tooling.util.ContainerUtil;
-import org.jetbrains.plugins.gradle.tooling.util.HashCodeAggregateFunction;
+import org.jetbrains.plugins.gradle.tooling.util.GradleContainerUtil;
 
 import java.io.File;
 import java.util.Collection;
 import java.util.LinkedHashSet;
-
-import static org.jetbrains.plugins.gradle.tooling.util.ContainerUtil.aggregate;
-import static org.jetbrains.plugins.gradle.tooling.util.FunctionUtils.FILE_TO_PATH;
 
 public final class DefaultExternalMultiLibraryDependency extends AbstractExternalDependency implements ExternalMultiLibraryDependency {
   private static final long serialVersionUID = 1L;
@@ -57,7 +53,7 @@ public final class DefaultExternalMultiLibraryDependency extends AbstractExterna
     if (!(o instanceof DefaultExternalMultiLibraryDependency)) return false;
     if (!super.equals(o)) return false;
     DefaultExternalMultiLibraryDependency that = (DefaultExternalMultiLibraryDependency)o;
-    return ContainerUtil.match(files.iterator(), that.files.iterator(), new BooleanBiFunction<File, File>() {
+    return GradleContainerUtil.match(files.iterator(), that.files.iterator(), new BooleanBiFunction<File, File>() {
       @Override
       public Boolean fun(File o1, File o2) {
         return Objects.equal(o1.getPath(), o2.getPath());
@@ -67,7 +63,7 @@ public final class DefaultExternalMultiLibraryDependency extends AbstractExterna
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(super.hashCode(), aggregate(files, new HashCodeAggregateFunction<File>(FILE_TO_PATH)));
+    return Objects.hashCode(super.hashCode(), calcFilesPathsHashCode(files));
   }
 
   @Override

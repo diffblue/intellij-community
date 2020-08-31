@@ -1,11 +1,13 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.fileEditor.impl;
 
+import com.intellij.diagnostic.PluginException;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileEditorPolicy;
 import com.intellij.openapi.fileEditor.FileEditorProvider;
 import com.intellij.openapi.fileEditor.WeighedFileEditorProvider;
@@ -34,8 +36,7 @@ public final class FileEditorProviderManagerImpl extends FileEditorProviderManag
   implements PersistentStateComponent<FileEditorProviderManagerImpl> {
 
   @Override
-  @NotNull
-  public FileEditorProvider[] getProviders(@NotNull final Project project, @NotNull final VirtualFile file) {
+  public FileEditorProvider @NotNull [] getProviders(@NotNull final Project project, @NotNull final VirtualFile file) {
     // Collect all possible editors
     List<FileEditorProvider> sharedProviders = new ArrayList<>();
     boolean hideDefaultEditor = false;
@@ -48,6 +49,10 @@ public final class FileEditorProviderManagerImpl extends FileEditorProviderManag
       })) {
         sharedProviders.add(provider);
         hideDefaultEditor |= provider.getPolicy() == FileEditorPolicy.HIDE_DEFAULT_EDITOR;
+        if (provider.getPolicy() == FileEditorPolicy.HIDE_DEFAULT_EDITOR && !DumbService.isDumbAware(provider)) {
+          String message = "HIDE_DEFAULT_EDITOR is supported only for DumbAware providers; " + provider.getClass() + " is not DumbAware.";
+          Logger.getInstance(FileEditorProviderManagerImpl.class).error(PluginException.createByClass(message, null, provider.getClass()));
+        }
       }
     }
 
@@ -86,21 +91,21 @@ public final class FileEditorProviderManagerImpl extends FileEditorProviderManag
 
   private final Map<String, String> mySelectedProviders = new HashMap<>();
 
-  void providerSelected(EditorComposite composite) {
+  void providerSelected(@NotNull EditorComposite composite) {
     FileEditorProvider[] providers = composite.getProviders();
     if (providers.length < 2) return;
     mySelectedProviders.put(computeKey(providers),
                             composite.getSelectedWithProvider().getProvider().getEditorTypeId());
   }
 
-  private static String computeKey(FileEditorProvider[] providers) {
+  private static @NotNull String computeKey(FileEditorProvider[] providers) {
     return StringUtil.join(ContainerUtil.map(providers, FileEditorProvider::getEditorTypeId), ",");
   }
 
   @Nullable
-  FileEditorProvider getSelectedFileEditorProvider(EditorHistoryManager editorHistoryManager,
-                                                   VirtualFile file,
-                                                   FileEditorProvider[] providers) {
+  FileEditorProvider getSelectedFileEditorProvider(@NotNull EditorHistoryManager editorHistoryManager,
+                                                   @NotNull VirtualFile file,
+                                                   FileEditorProvider @NotNull [] providers) {
     FileEditorProvider provider = editorHistoryManager.getSelectedProvider(file);
     if (provider != null || providers.length < 2) {
       return provider;
@@ -136,9 +141,8 @@ public final class FileEditorProviderManagerImpl extends FileEditorProviderManag
 
     @Override
     public int compare(FileEditorProvider provider1, FileEditorProvider provider2) {
-      final int i1 = provider1.getPolicy().ordinal();
-      final int i2 = provider2.getPolicy().ordinal();
-      if (i1 != i2) return i1 - i2;
+      int c = provider1.getPolicy().compareTo(provider2.getPolicy());
+      if (c != 0) return c;
       final double value = getWeight(provider1) - getWeight(provider2);
       return value > 0 ? 1 : value < 0 ? -1 : 0;
     }

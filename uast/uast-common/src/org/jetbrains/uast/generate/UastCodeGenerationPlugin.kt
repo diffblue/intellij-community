@@ -2,20 +2,22 @@
 package org.jetbrains.uast.generate
 
 import com.intellij.lang.Language
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiType
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.uast.*
+import kotlin.streams.asSequence
 
 @ApiStatus.Experimental
 interface UastCodeGenerationPlugin {
   companion object {
-    val extensionPointName = ExtensionPointName<UastCodeGenerationPlugin>("org.jetbrains.uast.generate.uastCodeGenerationPlugin")
-    private val extensions by lazy { extensionPointName.extensionList }
+    private val extensionPointName = ExtensionPointName<UastCodeGenerationPlugin>("org.jetbrains.uast.generate.uastCodeGenerationPlugin")
 
     @JvmStatic
-    fun byLanguage(language: Language) = extensions.firstOrNull { it.language == language }
+    fun byLanguage(language: Language) = extensionPointName.extensions().asSequence().firstOrNull { it.language == language }
   }
 
   fun getElementFactory(project: Project): UastElementFactory
@@ -27,43 +29,60 @@ interface UastCodeGenerationPlugin {
 
 @ApiStatus.Experimental
 interface UastElementFactory {
-  fun createBinaryExpression(leftOperand: UExpression, rightOperand: UExpression, operator: UastBinaryOperator): UBinaryExpression?
+  fun createBinaryExpression(leftOperand: UExpression, rightOperand: UExpression, operator: UastBinaryOperator,
+                             context: PsiElement?): UBinaryExpression?
 
   /**
    * Create binary expression, and possibly remove unnecessary parenthesis, so it could become [UPolyadicExpression], e.g
-   * [createFlatBinaryExpression](1 + 2, 2, +) could produce 1 + 2 + 2, which is polyadic expression
+   * [createFlatBinaryExpression] (1 + 2, 2, +) could produce 1 + 2 + 2, which is polyadic expression
    */
   @JvmDefault
-  fun createFlatBinaryExpression(leftOperand: UExpression, rightOperand: UExpression, operator: UastBinaryOperator): UPolyadicExpression? =
-    createBinaryExpression(leftOperand, rightOperand, operator)
+  fun createFlatBinaryExpression(leftOperand: UExpression,
+                                 rightOperand: UExpression,
+                                 operator: UastBinaryOperator,
+                                 context: PsiElement?): UPolyadicExpression? =
+    createBinaryExpression(leftOperand, rightOperand, operator, context)
 
-  fun createSimpleReference(name: String): USimpleNameReferenceExpression?
+  fun createSimpleReference(name: String, context: PsiElement?): USimpleNameReferenceExpression?
 
-  fun createSimpleReference(variable: UVariable): USimpleNameReferenceExpression?
+  fun createSimpleReference(variable: UVariable, context: PsiElement?): USimpleNameReferenceExpression?
 
   fun createQualifiedReference(qualifiedName: String, context: UElement?): UQualifiedReferenceExpression?
 
-  fun createParenthesizedExpression(expression: UExpression): UParenthesizedExpression?
+  fun createParenthesizedExpression(expression: UExpression,
+                                    context: PsiElement?): UParenthesizedExpression?
 
   fun createReturnExpresion(expression: UExpression?,
-                            inLambda: Boolean = false): UReturnExpression?
+                            inLambda: Boolean = false,
+                            context: PsiElement?): UReturnExpression?
 
-  fun createLocalVariable(suggestedName: String?, type: PsiType?, initializer: UExpression, immutable: Boolean = false): ULocalVariable?
+  fun createLocalVariable(suggestedName: String?,
+                          type: PsiType?,
+                          initializer: UExpression,
+                          immutable: Boolean = false,
+                          context: PsiElement?): ULocalVariable?
 
-  fun createBlockExpression(expressions: List<UExpression>): UBlockExpression?
+  fun createBlockExpression(expressions: List<UExpression>, context: PsiElement?): UBlockExpression?
 
-  fun createLambdaExpression(parameters: List<UParameterInfo>, body: UExpression): ULambdaExpression?
+  fun createLambdaExpression(parameters: List<UParameterInfo>, body: UExpression, context: PsiElement?): ULambdaExpression?
 
-  fun createDeclarationExpression(declarations: List<UDeclaration>): UDeclarationsExpression?
+  fun createDeclarationExpression(declarations: List<UDeclaration>, context: PsiElement?): UDeclarationsExpression?
 
+  /**
+   * For providing additional information pass it via [context] only, otherwise it can be lost
+   */
   fun createCallExpression(receiver: UExpression?,
                            methodName: String,
                            parameters: List<UExpression>,
                            expectedReturnType: PsiType?,
-                           kind: UastCallKind): UCallExpression?
+                           kind: UastCallKind,
+                           context: PsiElement? = null): UCallExpression?
 
-  fun createIfExpression(condition: UExpression, thenBranch: UExpression, elseBranch: UExpression? = null): UIfExpression?
+  fun createIfExpression(condition: UExpression, thenBranch: UExpression, elseBranch: UExpression?, context: PsiElement?): UIfExpression?
 
+  fun createStringLiteralExpression(text: String, context: PsiElement?): ULiteralExpression?
+
+  fun createNullLiteral(context: PsiElement?): ULiteralExpression?
 }
 
 @ApiStatus.Experimental
@@ -75,10 +94,17 @@ infix fun String?.ofType(type: PsiType?): UParameterInfo = UParameterInfo(type, 
 @ApiStatus.Experimental
 inline fun <reified T : UElement> UElement.replace(newElement: T): T? =
   UastCodeGenerationPlugin.byLanguage(this.lang)
-    ?.replace(this, newElement, T::class.java)
+    ?.replace(this, newElement, T::class.java).also {
+      if (it == null) {
+        logger<UastCodeGenerationPlugin>().warn("failed replacing the $this with $newElement")
+      }
+    }
 
 @ApiStatus.Experimental
-inline fun <reified T : UElement> T.refreshed() = sourcePsi?.toUElementOfType<T>()
+inline fun <reified T : UElement> T.refreshed() = sourcePsi?.also {
+  logger<UastCodeGenerationPlugin>().assertTrue(it.isValid,
+                                                "psi $it of class ${it.javaClass} should be valid, containing file = ${it.containingFile}")
+}?.toUElementOfType<T>()
 
 val UElement.generationPlugin: UastCodeGenerationPlugin?
   @ApiStatus.Experimental

@@ -19,12 +19,10 @@ import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.daemon.impl.HighlightInfoFilter;
 import com.intellij.lang.annotation.AnnotationSession;
 import com.intellij.lang.annotation.HighlightSeverity;
-import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.colors.TextAttributesScheme;
-import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,15 +31,13 @@ import java.util.Collection;
 import java.util.List;
 
 public class HighlightInfoHolder {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.daemon.impl.analysis.HighlightInfoHolder");
-
   private final PsiFile myContextFile;
   private final HighlightInfoFilter[] myFilters;
   private final AnnotationSession myAnnotationSession;
   private int myErrorCount;
   private final List<HighlightInfo> myInfos = new ArrayList<>(5);
 
-  public HighlightInfoHolder(@NotNull final PsiFile contextFile, @NotNull final HighlightInfoFilter... filters) {
+  public HighlightInfoHolder(@NotNull PsiFile contextFile, HighlightInfoFilter @NotNull ... filters) {
     myContextFile = contextFile;
     myAnnotationSession = new AnnotationSession(contextFile);
     myFilters = filters;
@@ -72,9 +68,7 @@ public class HighlightInfoHolder {
     return myErrorCount != 0;
   }
 
-  public boolean addAll(@Nullable Collection<? extends HighlightInfo> highlightInfos) {
-    if (highlightInfos == null) return false;
-    LOG.assertTrue(highlightInfos != this);
+  public boolean addAll(@NotNull Collection<? extends HighlightInfo> highlightInfos) {
     boolean added = false;
     for (final HighlightInfo highlightInfo : highlightInfos) {
       added |= add(highlightInfo);
@@ -86,6 +80,7 @@ public class HighlightInfoHolder {
     return myInfos.size();
   }
 
+  @NotNull
   public HighlightInfo get(final int i) {
     return myInfos.get(i);
   }
@@ -109,11 +104,13 @@ public class HighlightInfoHolder {
 
   @NotNull
   public TextAttributesScheme getColorsScheme() {
-    return new TextAttributesScheme() {
-      @Override
-      public TextAttributes getAttributes(TextAttributesKey key) {
-        return key.getDefaultAttributes();
-      }
-    };
+    return key -> key.getDefaultAttributes();
   }
+
+  // internal optimization method to reduce latency between creating HighlightInfo and showing it on screen
+  // (Do not) call this method to
+  // 1. state that all HighlightInfos in this holder are final (no further HighlightInfo.setXXX() or .registerFix() are following) and
+  // 2. queue them all for converting to RangeHighlighters in EDT
+  @ApiStatus.Internal
+  public void queueToUpdateIncrementally() {}
 }

@@ -45,9 +45,8 @@ public class MagicNumberInspection extends BaseInspection {
   @SuppressWarnings("PublicField")
   public boolean ignoreInitialCapacity = false;
 
-  @NotNull
   @Override
-  protected InspectionGadgetsFix[] buildFixes(Object... infos) {
+  protected InspectionGadgetsFix @NotNull [] buildFixes(Object... infos) {
     final PsiElement context = (PsiElement)infos[0];
     final InspectionGadgetsFix fix = SuppressForTestsScopeFix.build(this, context);
     if (fix == null) {
@@ -59,12 +58,6 @@ public class MagicNumberInspection extends BaseInspection {
   @Override
   protected boolean buildQuickFixesOnlyForOnTheFlyErrors() {
     return true;
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("magic.number.display.name");
   }
 
   @Override
@@ -116,7 +109,7 @@ public class MagicNumberInspection extends BaseInspection {
         return;
       }
       final PsiField field = PsiTreeUtil.getParentOfType(expression, PsiField.class, true, PsiCallExpression.class);
-      if (field != null && PsiUtil.isCompileTimeConstant((PsiVariable)field)) {
+      if (field != null && PsiUtil.isCompileTimeConstant(field)) {
         return;
       }
       final PsiElement parent = expression.getParent();

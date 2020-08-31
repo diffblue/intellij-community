@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -19,7 +19,6 @@ import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.editor.actionSystem.EditorActionManager;
 import com.intellij.openapi.editor.actionSystem.TypedAction;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.impl.DocumentImpl;
@@ -29,8 +28,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
@@ -55,14 +52,13 @@ import org.junit.runners.Parameterized;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
-public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTestCase {
+public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTestCase implements TestIndexingModeSupporter {
   private Editor myEditor;
   private PsiFile myFile;
   private VirtualFile myVFile;
+  private TestIndexingModeSupporter.IndexingMode myIndexingMode = IndexingMode.SMART;
 
   @Override
   protected void runTest() throws Throwable {
@@ -113,6 +109,11 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
     }
   }
 
+  @NotNull
+  protected String getAnswerFilePath() {
+    return getTestDataPath() + myFileSuffix + ".txt";
+  }
+
   private static void checkCaseSensitiveFS(@NotNull String fullOrRelativePath, @NotNull File ioFile) throws IOException {
     fullOrRelativePath = FileUtil.toSystemDependentName(FileUtil.toCanonicalPath(fullOrRelativePath));
     if (!ioFile.getCanonicalPath().endsWith(fullOrRelativePath)) {
@@ -156,8 +157,8 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
    */
   @NotNull
   protected Document configureFromFileText(@NonNls @NotNull final String fileName,
-                                                  @NonNls @NotNull final String fileText,
-                                                  boolean checkCaret) {
+                                           @NonNls @NotNull final String fileText,
+                                           boolean checkCaret) {
     return WriteCommandAction.writeCommandAction(null).compute(() -> {
       final Document fakeDocument = new DocumentImpl(fileText);
 
@@ -176,6 +177,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
       }
       EditorTestUtil.setCaretsAndSelection(getEditor(), caretsState);
       setupEditorForInjectedLanguage();
+      myIndexingMode.ensureIndexingStatus(getProject());
       return document;
     });
   }
@@ -192,6 +194,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
       ((EditorImpl)editor).setCaretActive();
 
       EditorTestUtil.setCaretsAndSelection(editor, caretsState);
+      myIndexingMode.ensureIndexingStatus(getProject());
       return editor;
     });
   }
@@ -203,22 +206,20 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
     DaemonCodeAnalyzer.getInstance(getProject()).restart();
     assertNotNull(editor);
     ((EditorImpl)editor).setCaretActive();
+    myIndexingMode.ensureIndexingStatus(getProject());
     return editor;
   }
 
   @NotNull
-  private Document setupFileEditorAndDocument(@NotNull String fileName, @NotNull String fileText) throws IOException {
+  private Document setupFileEditorAndDocument(@NotNull String relativePath, @NotNull String fileText) throws IOException {
     EncodingProjectManager.getInstance(getProject()).setEncoding(null, StandardCharsets.UTF_8);
-    if (ProjectManagerEx.getInstanceEx().isDefaultProjectInitialized()) {
-      EncodingProjectManager.getInstance(ProjectManager.getInstance().getDefaultProject()).setEncoding(null, StandardCharsets.UTF_8);
-    }
     PostprocessReformattingAspect.getInstance(getProject()).doPostponedFormatting();
     deleteVFile();
 
-    myEditor = createSaveAndOpenFile(fileName, fileText);
+    myEditor = createSaveAndOpenFile(relativePath, fileText);
     myVFile = FileDocumentManager.getInstance().getFile(getEditor().getDocument());
     myFile = getPsiManager().findFile(myVFile);
-
+    myIndexingMode.ensureIndexingStatus(getProject());
     return getEditor().getDocument();
   }
 
@@ -226,6 +227,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
   protected Editor createSaveAndOpenFile(@NotNull String relativePath, @NotNull String fileText) {
     Editor editor = createEditor(VfsTestUtil.createFile(getSourceRoot(), relativePath, fileText));
     PsiDocumentManager.getInstance(getProject()).commitAllDocuments();
+    myIndexingMode.ensureIndexingStatus(getProject());
     return editor;
   }
 
@@ -262,7 +264,14 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
         FileEditorManager.getInstance(getProject()).closeFile(myVFile);
         myVFile.delete(getProject());
       });
+      myIndexingMode.ensureIndexingStatus(getProject());
     }
+  }
+
+  @Override
+  protected void setUp() throws Exception {
+    super.setUp();
+    myIndexingMode.setUpTest(getProject(), getTestRootDisposable());
   }
 
   @Override
@@ -473,8 +482,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
       executeAction(IdeActions.ACTION_EDITOR_ENTER, editor,project);
     }
     else {
-      EditorActionManager actionManager = EditorActionManager.getInstance();
-      final DataContext dataContext = DataManager.getInstance().getDataContext();
+      DataContext dataContext = DataManager.getInstance().getDataContext();
       TypedAction action = TypedAction.getInstance();
       action.actionPerformed(editor, c, dataContext);
     }
@@ -661,7 +669,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
    * @see FileBasedTestCaseHelperEx
    * @Parameterized.Parameter fields are injected on parameterized test creation.
    */
-  @Parameterized.Parameter()
+  @Parameterized.Parameter
   public String myFileSuffix;
 
   /**
@@ -716,12 +724,23 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
       fail("Test files not found in " + testDir.getPath());
     }
 
+    final Set<String> beforeFileSuffixes = new HashSet<>();
+    final Set<String> afterFileSuffixes = new HashSet<>();
     final List<Object[]> result = new ArrayList<>();
     for (File file : files) {
       final String fileSuffix = fileBasedTestCase.getFileSuffix(file.getName());
+      String fileAfterSuffix = fileBasedTestCase.getBaseName(file.getName());
+      if (fileAfterSuffix != null) {
+        afterFileSuffixes.add(fileAfterSuffix);
+      }
       if (fileSuffix != null) {
+        beforeFileSuffixes.add(fileSuffix);
         result.add(new Object[] {fileSuffix, testDataPath});
       }
+    }
+    afterFileSuffixes.removeAll(beforeFileSuffixes);
+    if (!afterFileSuffixes.isEmpty()) {
+      fail("'After' file has no corresponding 'before' file: " + String.join(", ", afterFileSuffixes));
     }
     return result;
   }
@@ -741,6 +760,7 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
     invokeTestRunnable(() -> {
       try {
         setUp();
+        myIndexingMode.ensureIndexingStatus(getProject());
       }
       catch (Throwable e) {
         throwables[0] = e;
@@ -796,5 +816,15 @@ public abstract class LightPlatformCodeInsightTestCase extends LightPlatformTest
 
   protected void setVFile(VirtualFile virtualFile) {
     myVFile = virtualFile;
+  }
+
+  @Override
+  public void setIndexingMode(@NotNull IndexingMode mode) {
+    myIndexingMode = mode;
+  }
+
+  @Override
+  public @NotNull IndexingMode getIndexingMode() {
+    return myIndexingMode;
   }
 }

@@ -28,18 +28,19 @@ public class JsonSchemaPerformanceTest extends JsonSchemaHeavyAbstractTest {
   }
 
   public void testSwaggerHighlighting() {
-    doPerformanceTest(8900, "swagger");
+    doPerformanceTest(20_000, "swagger");
   }
 
   public void testTsLintSchema() {
-    doPerformanceTest(7500, "tslint-schema");
+    doPerformanceTest(20_000, "tslint-schema");
   }
 
   private void doPerformanceTest(int expectedMs, String jsonFileNameWithoutExtension) {
+    myFixture.configureByFiles("/" + jsonFileNameWithoutExtension + ".json");
     final ThrowableRunnable<Exception> test = () -> skeleton(new Callback() {
       @Override
       public void registerSchemes() {
-        final String moduleDir = getModuleDir(getProject());
+        final String moduleDir = getUrlUnderTestRoot(getTestName(true));
         addSchema(new UserDefinedJsonSchemaConfiguration(jsonFileNameWithoutExtension, JsonSchemaVersion.SCHEMA_4,
                                                          moduleDir + "/" + jsonFileNameWithoutExtension + ".json", false,
                                                          Collections.emptyList()));
@@ -48,42 +49,41 @@ public class JsonSchemaPerformanceTest extends JsonSchemaHeavyAbstractTest {
 
       @Override
       public void configureFiles() {
-        configureByFiles(null, "/" + jsonFileNameWithoutExtension + ".json");
+        // files have been configured before the performance test started to not influence the results
       }
 
       @Override
       public void doCheck() {
-        doHighlighting();
+        myFixture.doHighlighting();
       }
     });
-    PlatformTestUtil.startPerformanceTest(getTestName(false), expectedMs, test).attempts(1).usesAllCPUCores().assertTiming();
+    PlatformTestUtil.startPerformanceTest(getTestName(false), expectedMs, test).reattemptUntilJitSettlesDown().usesAllCPUCores().assertTiming();
   }
 
 
-  public void testEslintHighlightingPerformance() throws Exception {
-    configureByFile(getTestName(true) + "/.eslintrc.json");
-    PsiFile psiFile = getFile();
-    PlatformTestUtil.startPerformanceTest(getTestName(true), (int)TimeUnit.SECONDS.toMillis(15),
-                                          () -> {
-                                            for (int i = 0; i < 10; i++) {
-                                              doHighlighting();
+  public void testEslintHighlightingPerformance() {
+    myFixture.configureByFile(getTestName(true) + "/.eslintrc.json");
+    PsiFile psiFile = myFixture.getFile();
+    PlatformTestUtil.startPerformanceTest(getTestName(true), (int)TimeUnit.SECONDS.toMillis(15), () -> {
+      for (int i = 0; i < 10; i++) {
+        myFixture.doHighlighting();
 
-                                              Assert.assertTrue(psiFile instanceof JsonFile);
-                                              final JsonValue value = ((JsonFile)psiFile).getTopLevelValue();
-                                              Assert.assertTrue(value instanceof JsonObject);
-                                              final JsonProperty rules = ((JsonObject)value).findProperty("rules");
-                                              Assert.assertNotNull(rules);
-                                              Assert.assertTrue(rules.getValue() instanceof JsonObject);
+        Assert.assertTrue(psiFile instanceof JsonFile);
+        final JsonValue value = ((JsonFile)psiFile).getTopLevelValue();
+        Assert.assertTrue(value instanceof JsonObject);
+        final JsonProperty rules = ((JsonObject)value).findProperty("rules");
+        Assert.assertNotNull(rules);
+        Assert.assertTrue(rules.getValue() instanceof JsonObject);
 
-                                              final JsonProperty camelcase = ((JsonObject)rules.getValue()).findProperty("camelcase");
-                                              Assert.assertNotNull(camelcase);
-                                              final PsiFile dummyFile = PsiFileFactory.getInstance(getProject())
-                                                .createFileFromText("1.json", JsonFileType.INSTANCE, "{\"a\": " + (i % 2 == 0 ? 1 : 2) + "}");
-                                              final JsonProperty a = ((JsonObject)((JsonFile)dummyFile).getTopLevelValue()).findProperty("a");
-                                              Assert.assertNotNull(a);
-                                              WriteCommandAction.runWriteCommandAction(getProject(), (Runnable) () -> camelcase.getValue().replace(a.getValue()));
-                                              doHighlighting();
-                                            }
-                                          }).attempts(10).assertTiming();
+        final JsonProperty camelcase = ((JsonObject)rules.getValue()).findProperty("camelcase");
+        Assert.assertNotNull(camelcase);
+        final PsiFile dummyFile = PsiFileFactory.getInstance(getProject())
+          .createFileFromText("1.json", JsonFileType.INSTANCE, "{\"a\": " + (i % 2 == 0 ? 1 : 2) + "}");
+        final JsonProperty a = ((JsonObject)((JsonFile)dummyFile).getTopLevelValue()).findProperty("a");
+        Assert.assertNotNull(a);
+        WriteCommandAction.runWriteCommandAction(getProject(), (Runnable)() -> camelcase.getValue().replace(a.getValue()));
+        myFixture.doHighlighting();
+      }
+    }).reattemptUntilJitSettlesDown().assertTiming();
   }
 }

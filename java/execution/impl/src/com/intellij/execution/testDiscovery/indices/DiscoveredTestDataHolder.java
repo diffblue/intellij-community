@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.testDiscovery.indices;
 
 import com.intellij.openapi.Disposable;
@@ -9,12 +9,14 @@ import com.intellij.openapi.util.LowMemoryWatcher;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.indexing.StorageException;
 import com.intellij.util.io.*;
-import gnu.trove.TIntArrayList;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.DataInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -41,13 +43,13 @@ public final class DiscoveredTestDataHolder {
   public DiscoveredTestDataHolder(@NotNull Path basePath) {
     final Path versionFile = getVersionFile(basePath);
     PathKt.createDirectories(basePath);
-    final File discoveredTestsIndexFile = basePath.resolve("discoveredTests.index").toFile();
-    final File testFilesIndexFile = basePath.resolve("testFiles.index").toFile();
+    final Path discoveredTestsIndexFile = basePath.resolve("discoveredTests.index");
+    final Path testFilesIndexFile = basePath.resolve("testFiles.index");
 
-    final File classNameEnumeratorFile = basePath.resolve("className.enum").toFile();
-    final File methodNameEnumeratorFile = basePath.resolve("methodName.enum").toFile();
-    final File pathEnumeratorFile = basePath.resolve("path.enum").toFile();
-    final File testNameEnumeratorFile = basePath.resolve("testName.enum").toFile();
+    final Path classNameEnumeratorFile = basePath.resolve("className.enum");
+    final Path methodNameEnumeratorFile = basePath.resolve("methodName.enum");
+    final Path pathEnumeratorFile = basePath.resolve("path.enum");
+    final Path testNameEnumeratorFile = basePath.resolve("testName.enum");
 
     try {
       int version = readVersion(versionFile);
@@ -163,7 +165,7 @@ public final class DiscoveredTestDataHolder {
   public void removeTestTrace(@NotNull String testClassName, @NotNull String testMethodName, byte frameworkId) throws IOException {
     int testId = myTestEnumerator.tryEnumerate(createTestId(testClassName, testMethodName, frameworkId));
     if (testId != 0) {
-      myDiscoveredTestsIndex.update(testId, null).compute();
+      myDiscoveredTestsIndex.mapInputAndPrepareUpdate(testId, null).compute();
       myTestModuleIndex.removeTest(testId);
     }
   }
@@ -183,18 +185,17 @@ public final class DiscoveredTestDataHolder {
                              @NotNull List<String> usedFiles,
                              @Nullable String moduleName,
                              byte frameworkId) throws IOException {
-
     final int testNameId = myTestEnumerator.enumerate(createTestId(testClassName, testMethodName, frameworkId));
-    Map<Integer, TIntArrayList> result = new HashMap<>();
+    Int2ObjectMap<IntList> result = new Int2ObjectOpenHashMap<>();
     for (Map.Entry<String, Collection<String>> e : usedMethods.entrySet()) {
-      TIntArrayList methodIds = new TIntArrayList(e.getValue().size());
+      IntArrayList methodIds = new IntArrayList(e.getValue().size());
       result.put(myClassEnumerator.enumerate(e.getKey()), methodIds);
       for (String methodName : e.getValue()) {
         methodIds.add(myMethodEnumerator.enumerate(methodName));
       }
     }
 
-    Map<Integer, Void> usedVirtualFileIds = new HashMap<>();
+    Int2ObjectMap<Void> usedVirtualFileIds = new Int2ObjectOpenHashMap<>();
     for (String file : usedFiles) {
       if (file.contains("testData") || file.contains("test-data") || file.contains("test_data")) {
         int fileId = myPathEnumerator.enumerate(file);
@@ -203,8 +204,8 @@ public final class DiscoveredTestDataHolder {
     }
 
     UsedSources usedSources = new UsedSources(result, usedVirtualFileIds);
-    myDiscoveredTestsIndex.update(testNameId, usedSources).compute();
-    myTestFilesIndex.update(testNameId, usedSources).compute();
+    myDiscoveredTestsIndex.mapInputAndPrepareUpdate(testNameId, usedSources).compute();
+    myTestFilesIndex.mapInputAndPrepareUpdate(testNameId, usedSources).compute();
     myTestModuleIndex.appendModuleData(testNameId, moduleName);
   }
 
@@ -291,7 +292,7 @@ public final class DiscoveredTestDataHolder {
     return new TestId(myClassEnumerator.enumerate(className), myMethodEnumerator.enumerate(methodName), frameworkPrefix);
   }
 
-  private boolean consumeDiscoveredTest(int testId, byte frameworkId, @NotNull MultiMap<String, String> result, @NotNull IOException[] exceptionRef) {
+  private boolean consumeDiscoveredTest(int testId, byte frameworkId, @NotNull MultiMap<String, String> result, IOException @NotNull [] exceptionRef) {
     try {
       TestId test = myTestEnumerator.valueOf(testId);
       if (test.getFrameworkId() == frameworkId) {

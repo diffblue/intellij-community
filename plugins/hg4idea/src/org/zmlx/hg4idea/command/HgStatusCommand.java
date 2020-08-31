@@ -16,13 +16,14 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.FilePath;
-import com.intellij.openapi.vcs.ObjectsConvertor;
 import com.intellij.openapi.vcs.VcsNotifier;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.vcsUtil.VcsFileUtil;
+import com.intellij.vcsUtil.VcsUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.zmlx.hg4idea.HgBundle;
 import org.zmlx.hg4idea.HgChange;
 import org.zmlx.hg4idea.HgFile;
 import org.zmlx.hg4idea.HgFileStatusEnum;
@@ -205,7 +206,7 @@ public class HgStatusCommand {
     List<String> errors = result.getErrorLines();
     if (!errors.isEmpty()) {
       if (result.getExitValue() != 0 && !myProject.isDisposed()) {
-        String title = "Could not execute hg status command ";
+        String title = HgBundle.message("action.hg4idea.status.error");
         LOG.warn(title + errors.toString());
         VcsNotifier.getInstance(myProject).logInfo(title, errors.toString());
         return changes;
@@ -244,7 +245,8 @@ public class HgStatusCommand {
 
   @NotNull
   public Collection<VirtualFile> getFiles(@NotNull VirtualFile repo, @Nullable List<VirtualFile> files) {
-    return getFiles(repo, files != null ? ObjectsConvertor.vf2fp(files): null);
+    //noinspection RedundantTypeArguments incorrect inspection, javac fails
+    return getFiles(repo, files != null ? ContainerUtil.<VirtualFile, FilePath>map(files, VcsUtil::getFilePath) : null);
   }
 
   @NotNull

@@ -22,8 +22,8 @@ import org.jetbrains.annotations.NotNull;
  * <p/>
  * Instead of {@link PsiElement#getReferences()}, clients can call {@link #getReferences(PsiReferenceService.Hints)} and the implementation
  * may use the hints for performance optimizations, e.g. to avoid finding and creating references that won't intersect the given offset
- * ({@link com.intellij.psi.PsiReferenceService.Hints#offsetInElement}) or that have no chance of resolving to a particular target
- * ({@link com.intellij.psi.PsiReferenceService.Hints#target}).
+ * ({@link PsiReferenceService.Hints#offsetInElement}) or that have no chance of resolving to a particular target
+ * ({@link PsiReferenceService.Hints#target}).
  *
  * @author peter
  */
@@ -36,8 +36,7 @@ public interface HintedReferenceHost extends PsiElement {
    * @param hints the hints about the desired references
    * @return the array of references, or an empty array if the element has no associated references.
    */
-  @NotNull
-  PsiReference[] getReferences(@NotNull PsiReferenceService.Hints hints);
+  PsiReference @NotNull [] getReferences(@NotNull PsiReferenceService.Hints hints);
 
   /**
    * Normally in {@link PsiElement#findReferenceAt(int)}, all tree hierarchy is traversed bottom-up and each element is asked for references.

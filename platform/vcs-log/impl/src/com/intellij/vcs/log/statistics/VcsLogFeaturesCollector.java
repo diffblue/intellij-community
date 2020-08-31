@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.vcs.log.statistics;
 
 import com.intellij.internal.statistic.beans.MetricEvent;
@@ -8,14 +8,14 @@ import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesColle
 import com.intellij.internal.statistic.service.fus.collectors.UsageDescriptorKeyValidator;
 import com.intellij.internal.statistic.utils.PluginInfoDetectorKt;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.vcs.log.VcsLogFilterCollection;
 import com.intellij.vcs.log.impl.*;
-import com.intellij.vcs.log.ui.VcsLogUiImpl;
+import com.intellij.vcs.log.ui.MainVcsLogUi;
 import com.intellij.vcs.log.ui.highlighters.VcsLogHighlighterFactory;
-import com.intellij.vcs.log.ui.table.GraphTableModel;
+import com.intellij.vcs.log.ui.table.VcsLogColumn;
 import kotlin.jvm.functions.Function1;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -27,13 +27,14 @@ import static com.intellij.vcs.log.impl.CommonUiProperties.*;
 import static com.intellij.vcs.log.impl.MainVcsLogUiProperties.*;
 import static com.intellij.vcs.log.ui.VcsLogUiImpl.LOG_HIGHLIGHTER_FACTORY_EP;
 
+@NonNls
 public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
   @NotNull
   @Override
   public Set<MetricEvent> getMetrics(@NotNull Project project) {
     VcsProjectLog projectLog = VcsProjectLog.getInstance(project);
     if (projectLog != null) {
-      VcsLogUiImpl ui = projectLog.getMainLogUi();
+      MainVcsLogUi ui = projectLog.getMainLogUi();
       if (ui != null) {
         MainVcsLogUiProperties properties = ui.getProperties();
         VcsLogUiProperties defaultProperties = createDefaultPropertiesInstance();
@@ -42,6 +43,7 @@ public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
 
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(SHOW_DETAILS), "details");
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(SHOW_DIFF_PREVIEW), "diffPreview");
+        addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(DIFF_PREVIEW_VERTICAL_SPLIT), "diffPreviewOnTheBottom");
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(SHOW_CHANGES_FROM_PARENTS), "parentChanges");
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(SHOW_ONLY_AFFECTED_CHANGES), "onlyAffectedChanges");
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(SHOW_LONG_EDGES), "long.edges");
@@ -59,7 +61,7 @@ public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(TEXT_FILTER_REGEX), "textFilter.regex");
         addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(TEXT_FILTER_MATCH_CASE), "textFilter.matchCase");
 
-        for (VcsLogHighlighterFactory factory : LOG_HIGHLIGHTER_FACTORY_EP.getExtensions(project)) {
+        for (VcsLogHighlighterFactory factory : LOG_HIGHLIGHTER_FACTORY_EP.getExtensionList()) {
           if (factory.showMenuItem()) {
             addBoolIfDiffers(metricEvents, properties, defaultProperties, getter(VcsLogHighlighterProperty.get(factory.getId())),
                              "highlighter", new FeatureUsageData().addData("id", getFactoryIdSafe(factory)));
@@ -74,13 +76,13 @@ public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
 
         Set<Integer> currentColumns = new HashSet<>(properties.get(COLUMN_ORDER));
         Set<Integer> defaultColumns = new HashSet<>(defaultProperties.get(COLUMN_ORDER));
-        for (int column : GraphTableModel.DYNAMIC_COLUMNS) {
-          String columnName = StringUtil.toLowerCase(GraphTableModel.COLUMN_NAMES[column]);
-          addBoolIfDiffers(metricEvents, currentColumns, defaultColumns, p -> p.contains(column),
+        for (VcsLogColumn column : VcsLogColumn.DYNAMIC_COLUMNS) {
+          String columnName = column.getStableName();
+          addBoolIfDiffers(metricEvents, currentColumns, defaultColumns, p -> p.contains(column.ordinal()),
                            "column", new FeatureUsageData().addData("name", columnName));
         }
 
-        List<String> tabs = projectLog.getTabsManager().getTabs();
+        Collection<String> tabs = projectLog.getTabsManager().getTabs();
         metricEvents.add(MetricEventFactoryKt.newCounterMetric("additionalTabs", tabs.size()));
 
         return metricEvents;
@@ -107,7 +109,7 @@ public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
 
   @NotNull
   private static VcsLogUiProperties createDefaultPropertiesInstance() {
-    return new VcsLogUiPropertiesImpl(new VcsLogApplicationSettings()) {
+    return new VcsLogUiPropertiesImpl<VcsLogUiPropertiesImpl.State>(new VcsLogApplicationSettings()) {
       @NotNull private final State myState = new State();
 
       @NotNull
@@ -128,7 +130,7 @@ public class VcsLogFeaturesCollector extends ProjectUsagesCollector {
       }
 
       @Override
-      public void loadState(@NotNull Object state) {
+      public void loadState(@NotNull State state) {
         throw new UnsupportedOperationException();
       }
     };

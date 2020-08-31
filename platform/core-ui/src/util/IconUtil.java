@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util;
 
 import com.intellij.icons.AllIcons;
@@ -18,6 +18,7 @@ import com.intellij.ui.icons.CompositeIcon;
 import com.intellij.ui.icons.CopyableIcon;
 import com.intellij.ui.scale.*;
 import com.intellij.util.ui.*;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -29,7 +30,6 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.RGBImageFilter;
 import java.lang.ref.WeakReference;
-import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -40,6 +40,7 @@ import static com.intellij.ui.scale.ScaleType.USR_SCALE;
  * @author max
  * @author Konstantin Bulenkov
  */
+@ApiStatus.NonExtendable
 public class IconUtil {
   private static final Key<Boolean> PROJECT_WAS_EVER_INITIALIZED = Key.create("iconDeferrer:projectWasEverInitialized");
 
@@ -145,7 +146,7 @@ public class IconUtil {
     Icon icon = providersIcon != null ? providersIcon : getBaseIcon(file);
 
     boolean dumb = project != null && DumbService.getInstance(project).isDumb();
-    for (FileIconPatcher patcher : getPatchers()) {
+    for (FileIconPatcher patcher : FileIconPatcher.EP_NAME.getExtensionList()) {
       if (dumb && !DumbService.isDumbAware(patcher)) {
         continue;
       }
@@ -168,7 +169,7 @@ public class IconUtil {
   };
 
   @Iconable.IconFlags
-  private static int filterFileIconFlags(VirtualFile file, @Iconable.IconFlags int flags) {
+  private static int filterFileIconFlags(@NotNull VirtualFile file, @Iconable.IconFlags int flags) {
     UserDataHolder fileTypeDataHolder = ObjectUtils.tryCast(file.getFileType(), UserDataHolder.class);
     int fileTypeFlagIgnoreMask = Iconable.ICON_FLAG_IGNORE_MASK.get(fileTypeDataHolder, 0);
     int flagIgnoreMask = Iconable.ICON_FLAG_IGNORE_MASK.get(file, fileTypeFlagIgnoreMask);
@@ -182,21 +183,21 @@ public class IconUtil {
     return IconDeferrer.getInstance().defer(base, new FileIconKey(file, project, flags), ICON_NULLABLE_FUNCTION);
   }
 
-  private static Icon getBaseIcon(VirtualFile vFile) {
+  private static Icon getBaseIcon(@NotNull VirtualFile vFile) {
     Icon icon = TypePresentationService.getService().getIcon(vFile);
     if (icon != null) {
       return icon;
     }
     FileType fileType = vFile.getFileType();
     if (vFile.isDirectory() && !(fileType instanceof DirectoryFileType)) {
-      return PlatformIcons.FOLDER_ICON;
+      return IconWithToolTip.tooltipOnlyIfComposite(PlatformIcons.FOLDER_ICON);
     }
     return fileType.getIcon();
   }
 
   @Nullable
   private static Icon getProvidersIcon(@NotNull VirtualFile file, @Iconable.IconFlags int flags, Project project) {
-    for (FileIconProvider provider : getProviders()) {
+    for (FileIconProvider provider : FileIconProvider.EP_NAME.getExtensionList()) {
       final Icon icon = provider.getIcon(file, flags, project);
       if (icon != null) return icon;
     }
@@ -211,24 +212,6 @@ public class IconUtil {
       baseIcon.setIcon(EmptyIcon.create(PlatformIcons.PUBLIC_ICON), 1);
     }
     return baseIcon;
-  }
-
-  private static class FileIconProviderHolder {
-    private static final List<FileIconProvider> myProviders = FileIconProvider.EP_NAME.getExtensionList();
-  }
-
-  @NotNull
-  private static List<FileIconProvider> getProviders() {
-    return FileIconProviderHolder.myProviders;
-  }
-
-  private static class FileIconPatcherHolder {
-    private static final List<FileIconPatcher> ourPatchers = FileIconPatcher.EP_NAME.getExtensionList();
-  }
-
-  @NotNull
-  private static List<FileIconPatcher> getPatchers() {
-    return FileIconPatcherHolder.ourPatchers;
   }
 
   public static Image toImage(@NotNull Icon icon) {
@@ -300,24 +283,14 @@ public class IconUtil {
   }
 
   @NotNull
-  public static Icon getAddFolderIcon() {
-    return AllIcons.ToolbarDecorator.AddFolder;
-  }
-
-  @NotNull
   public static Icon getAnalyzeIcon() {
-    return getToolbarDecoratorIcon("analyze.png");
+    return IconLoader.getIcon(getToolbarDecoratorIconsFolder() + "analyze.png");
   }
 
   public static void paintInCenterOf(@NotNull Component c, @NotNull Graphics g, @NotNull Icon icon) {
     final int x = (c.getWidth() - icon.getIconWidth()) / 2;
     final int y = (c.getHeight() - icon.getIconHeight()) / 2;
     icon.paintIcon(c, g, x, y);
-  }
-
-  @NotNull
-  private static Icon getToolbarDecoratorIcon(@NotNull String name) {
-    return IconLoader.getIcon(getToolbarDecoratorIconsFolder() + name);
   }
 
   @NotNull
@@ -328,8 +301,7 @@ public class IconUtil {
   /**
    * Result icons look like original but have equal (maximum) size
    */
-  @NotNull
-  public static Icon[] getEqualSizedIcons(@NotNull Icon... icons) {
+  public static Icon @NotNull [] getEqualSizedIcons(Icon @NotNull ... icons) {
     Icon[] result = new Icon[icons.length];
     int width = 0;
     int height = 0;
@@ -382,7 +354,7 @@ public class IconUtil {
     }
   }
 
-  private static class CropIcon implements Icon {
+  private static final class CropIcon implements Icon {
     private final Icon mySrc;
     private final Rectangle myCrop;
 
@@ -422,6 +394,20 @@ public class IconUtil {
     public int getIconHeight() {
       return myCrop.height;
     }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (!(o instanceof CropIcon)) return false;
+      CropIcon icon = (CropIcon)o;
+      return mySrc.equals(icon.mySrc) &&
+             myCrop.equals(icon.myCrop);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(mySrc, myCrop);
+    }
   }
 
   /**
@@ -430,7 +416,7 @@ public class IconUtil {
   @Deprecated
   @NotNull
   public static Icon scale(@NotNull final Icon source, double _scale) {
-    final double scale = Math.min(32, Math.max(.1, _scale));
+    final double scale = MathUtil.clamp(_scale, .1, 32);
     return new Icon() {
       @Override
       public void paintIcon(Component c, Graphics g, int x, int y) {
@@ -616,7 +602,7 @@ public class IconUtil {
     return createImageIcon((Image)img);
   }
 
-  private static class ColorFilter extends RGBImageFilter {
+  private static final class ColorFilter extends RGBImageFilter {
     private final float[] myBase;
     private final boolean myKeepGray;
 
@@ -708,7 +694,7 @@ public class IconUtil {
 
   @NotNull
   public static Icon textToIcon(@NotNull final String text, @NotNull final Component component, final float fontSize) {
-    class MyIcon extends JBScalableIcon {
+    final class MyIcon extends JBScalableIcon {
       private @NotNull final String myText;
       private Font myFont;
       private FontMetrics myMetrics;

@@ -5,30 +5,23 @@ import com.intellij.history.LocalHistory;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
-import com.intellij.openapi.compiler.CompilerBundle;
+import com.intellij.openapi.compiler.JavaCompilerBundle;
 import com.intellij.openapi.project.Project;
-import com.intellij.task.ProjectTaskContext;
 import com.intellij.task.ProjectTaskManager;
-import com.intellij.task.ProjectTaskNotification;
-import com.intellij.task.ProjectTaskResult;
 import org.jetbrains.annotations.NotNull;
 
 public class CompileProjectAction extends CompileActionBase {
   @Override
   protected void doAction(DataContext dataContext, final Project project) {
-    ProjectTaskManager.getInstance(project).rebuildAllModules(new ProjectTaskNotification() {
-      @Override
-      public void finished(@NotNull ProjectTaskContext context, @NotNull ProjectTaskResult executionResult) {
-        if (executionResult.isAborted() || project.isDisposed()) {
-          return;
+    ProjectTaskManager.getInstance(project)
+      .rebuildAllModules()
+      .onSuccess(result -> {
+        if (!result.isAborted() && !project.isDisposed()) {
+          String text = getTemplatePresentation().getText();
+          LocalHistory.getInstance().putSystemLabel(
+            project, JavaCompilerBundle.message(result.hasErrors() ? "rebuild.lvcs.label.with.errors" : "rebuild.lvcs.label.no.errors", text));
         }
-
-        String text = getTemplatePresentation().getText();
-        LocalHistory.getInstance().putSystemLabel(
-          project, CompilerBundle
-            .message(executionResult.getErrors() == 0 ? "rebuild.lvcs.label.no.errors" : "rebuild.lvcs.label.with.errors", text));
-      }
-    });
+      });
   }
 
   @Override

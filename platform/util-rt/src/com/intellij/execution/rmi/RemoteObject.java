@@ -15,7 +15,6 @@
  */
 package com.intellij.execution.rmi;
 
-import com.intellij.util.containers.ContainerUtilRt;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,6 +30,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RemoteObject implements Remote, Unreferenced {
+
+  public static final boolean IN_PROCESS = "true".equals(System.getProperty("idea.rmi.server.in.process"));
+
   private final WeakReference<RemoteObject> myWeakRef;
   private RemoteObject myParent;
   private final Map<RemoteObject, Remote> myChildren = new ConcurrentHashMap<RemoteObject, Remote>();
@@ -45,6 +47,7 @@ public class RemoteObject implements Remote, Unreferenced {
 
   @Contract("!null->!null")
   public synchronized <T extends Remote> T export(@Nullable T child) throws RemoteException {
+    if (IN_PROCESS) return child;
     if (child == null) return null;
     @SuppressWarnings("unchecked") final T result = (T)UnicastRemoteObject.exportObject(child, 0);
     myChildren.put((RemoteObject)child, result);
@@ -58,6 +61,7 @@ public class RemoteObject implements Remote, Unreferenced {
   }
 
   public synchronized void unexportChildren() throws RemoteException {
+    if (IN_PROCESS) return;
     final ArrayList<RemoteObject> childrenRefs = new ArrayList<RemoteObject>(myChildren.keySet());
     myChildren.clear();
     for (RemoteObject child : childrenRefs) {
@@ -66,10 +70,14 @@ public class RemoteObject implements Remote, Unreferenced {
   }
 
   public synchronized void unexportChildren(@NotNull Collection<? extends WeakReference<RemoteObject>> children) throws RemoteException {
+    if (IN_PROCESS) return;
     if (children.isEmpty()) return;
     final ArrayList<RemoteObject> list = new ArrayList<RemoteObject>(children.size());
     for (WeakReference<? extends RemoteObject> child : children) {
-      ContainerUtilRt.addIfNotNull(list, child.get());
+      RemoteObject element = child.get();
+      if (element != null) {
+        list.add(element);
+      }
     }
     myChildren.keySet().removeAll(list);
     for (RemoteObject child : list) {
@@ -78,6 +86,7 @@ public class RemoteObject implements Remote, Unreferenced {
   }
 
   public synchronized void unreferenced() {
+    if (IN_PROCESS) return;
     if (myParent != null) {
       myParent.myChildren.remove(this);
       myParent = null;
@@ -104,9 +113,8 @@ public class RemoteObject implements Remote, Unreferenced {
     }
 
     if (foreignException) {
-      final RuntimeException wrapper = new RuntimeException(ex.toString());
+      final RuntimeException wrapper = new RuntimeException(ex.toString(), wrapException(ex.getCause()));
       wrapper.setStackTrace(ex.getStackTrace());
-      wrapper.initCause(wrapException(ex.getCause()));
       ex = wrapper;
     }
     return ex;

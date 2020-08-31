@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.daemon.impl
 
 
@@ -23,9 +23,6 @@ import java.awt.font.FontRenderContext
 import javax.swing.UIManager
 import kotlin.math.roundToInt
 
-/**
- * @author egor
- */
 open class HintRenderer(var text: String?) : EditorCustomElementRenderer {
   var widthAdjustment: HintWidthAdjustment? = null
 
@@ -174,7 +171,7 @@ open class HintRenderer(var text: String?) : EditorCustomElementRenderer {
                          - calcHintTextWidth(text, fontMetrics))
     }
 
-    protected class MyFontMetrics constructor(editor: Editor, familyName: String, size: Int) {
+    class MyFontMetrics internal constructor(editor: Editor, familyName: String, size: Int) {
       val metrics: FontMetrics
       val lineHeight: Int
 
@@ -234,4 +231,9 @@ open class HintRenderer(var text: String?) : EditorCustomElementRenderer {
     private val HINT_FONT_METRICS = Key.create<MyFontMetrics>("ParameterHintFontMetrics")
     private const val BACKGROUND_ALPHA = 0.55f
   }
+
+  // workaround for KT-12063 "IllegalAccessError when accessing @JvmStatic protected member of a companion object from a subclass"
+  @JvmSynthetic
+  @JvmName("getFontMetrics$")
+  protected fun getFontMetrics(editor: Editor): MyFontMetrics = Companion.getFontMetrics(editor)
 }

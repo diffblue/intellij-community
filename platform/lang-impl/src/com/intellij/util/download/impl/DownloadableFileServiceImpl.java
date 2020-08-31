@@ -13,10 +13,7 @@ import javax.swing.*;
 import java.net.URL;
 import java.util.List;
 
-/**
- * @author nik
- */
-public class DownloadableFileServiceImpl extends DownloadableFileService {
+class DownloadableFileServiceImpl extends DownloadableFileService {
   @NotNull
   @Override
   public DownloadableFileDescription createFileDescription(@NotNull String downloadUrl, @NotNull String fileName) {
@@ -26,7 +23,7 @@ public class DownloadableFileServiceImpl extends DownloadableFileService {
   @NotNull
   @Override
   public DownloadableFileSetVersions<DownloadableFileSetDescription> createFileSetVersions(@Nullable String groupId,
-                                                                                           @NotNull URL... localUrls) {
+                                                                                           URL @NotNull ... localUrls) {
     return new FileSetVersionsFetcherBase<DownloadableFileSetDescription, DownloadableFileDescription>(groupId, localUrls) {
       @Override
       protected DownloadableFileSetDescription createVersion(Artifact version, List<DownloadableFileDescription> files) {

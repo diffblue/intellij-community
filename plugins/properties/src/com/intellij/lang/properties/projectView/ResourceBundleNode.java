@@ -1,6 +1,4 @@
-// Copyright 2000-2017 JetBrains s.r.o.
-// Use of this source code is governed by the Apache 2.0 license that can be
-// found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.lang.properties.projectView;
 
@@ -13,23 +11,19 @@ import com.intellij.ide.projectView.impl.nodes.DropTargetNode;
 import com.intellij.ide.projectView.impl.nodes.PsiFileNode;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.ide.util.treeView.ValidateableNode;
-import com.intellij.lang.properties.PropertiesBundle;
-import com.intellij.lang.properties.PropertiesImplUtil;
 import com.intellij.lang.properties.ResourceBundle;
-import com.intellij.lang.properties.ResourceBundleManager;
+import com.intellij.lang.properties.*;
 import com.intellij.lang.properties.editor.ResourceBundleAsVirtualFile;
 import com.intellij.lang.properties.psi.PropertiesFile;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileSystemItem;
 import com.intellij.psi.PsiManager;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
 import org.jetbrains.annotations.NotNull;
@@ -46,9 +40,9 @@ public class ResourceBundleNode extends ProjectViewNode<ResourceBundle> implemen
 
   @Override
   @NotNull
-  public Collection<AbstractTreeNode> getChildren() {
+  public Collection<AbstractTreeNode<?>> getChildren() {
     List<PropertiesFile> propertiesFiles = getResourceBundle().getPropertiesFiles();
-    Collection<AbstractTreeNode> children = new ArrayList<>();
+    Collection<AbstractTreeNode<?>> children = new ArrayList<>();
     for (PropertiesFile propertiesFile : propertiesFiles) {
       AbstractTreeNode node = new PsiFileNode(myProject, propertiesFile.getContainingFile(), getSettings());
       children.add(node);
@@ -109,7 +103,7 @@ public class ResourceBundleNode extends ProjectViewNode<ResourceBundle> implemen
 
   @Override
   public Comparable getTypeSortKey() {
-    return new PsiFileNode.ExtensionSortKey(StdFileTypes.PROPERTIES.getDefaultExtension());
+    return new PsiFileNode.ExtensionSortKey(PropertiesFileType.INSTANCE.getDefaultExtension());
   }
 
   @Override
@@ -131,7 +125,7 @@ public class ResourceBundleNode extends ProjectViewNode<ResourceBundle> implemen
   }
 
   @Override
-  public boolean canDrop(@NotNull TreeNode[] sourceNodes) {
+  public boolean canDrop(TreeNode @NotNull [] sourceNodes) {
     for (TreeNode node : sourceNodes) {
       if (extractPropertiesFileFromNode(node) == null) return false;
     }
@@ -139,7 +133,7 @@ public class ResourceBundleNode extends ProjectViewNode<ResourceBundle> implemen
   }
 
   @Override
-  public void drop(@NotNull TreeNode[] sourceNodes, @NotNull DataContext dataContext) {
+  public void drop(TreeNode @NotNull [] sourceNodes, @NotNull DataContext dataContext) {
     MultiMap<ResourceBundle, PropertiesFile> bundleGrouping = new MultiMap<>();
     for (TreeNode sourceNode : sourceNodes) {
       final PropertiesFile propertiesFile = extractPropertiesFileFromNode(sourceNode);
@@ -190,7 +184,7 @@ public class ResourceBundleNode extends ProjectViewNode<ResourceBundle> implemen
   @NotNull
   @Override
   public ResourceBundle getResourceBundle() {
-    return ObjectUtils.notNull(getValue());
+    return Objects.requireNonNull(getValue());
   }
 
   @Nullable

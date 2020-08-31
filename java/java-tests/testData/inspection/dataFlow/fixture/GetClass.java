@@ -3,6 +3,15 @@ import java.util.*;
 class GetClass {
   native void unknown();
 
+  public static void testIntClass() {
+    Class<?> cls = someIntClass();
+    System.out.println(Object.class.isAssignableFrom(cls));
+  }
+
+  public static Class<?> someIntClass() {
+    return int.class;
+  }
+
   void testStability(Object obj, Class<?> c) {
     if (obj.getClass().equals(c)) {
       unknown();
@@ -46,6 +55,17 @@ class GetClass {
       if (<warning descr="Condition 'obj.getClass() == c' is always 'false'">obj.getClass() == c</warning>) {}
     }
   }
+  
+  void testPrimitive(Object obj) {
+    Class<?> c = int.class;
+    if (<warning descr="Condition 'obj.getClass() == c' is always 'false'">obj.getClass() == c</warning>) {}
+    if (<warning descr="Condition 'obj.getClass() == void.class' is always 'false'">obj.getClass() == void.class</warning>) {}
+    if (obj.getClass() == int[].class) {}
+  }
+  
+  void testVoidType(Object obj) {
+    if (<warning descr="Condition 'obj.getClass() == Void.class' is always 'false'">obj.getClass() == Void.class</warning>) {}
+  }
 
   void testIntermediateVar(Object obj) {
     Class<?> c = obj.getClass();
@@ -68,6 +88,16 @@ class GetClass {
       }
       if (o1 instanceof CharSequence) {
         if (<warning descr="Condition 'o2 instanceof Integer' is always 'false'">o2 instanceof Integer</warning>) {}
+      }
+    }
+  }
+  
+  void testGetSimpleName(Object obj) {
+    if (obj.getClass() == Integer.class || obj.getClass() == Long.class) {
+      Class<?> cls = obj.getClass();
+      if (<warning descr="Condition 'cls.getSimpleName().startsWith(\"X\")' is always 'false'">cls.getSimpleName().startsWith("X")</warning>) {}
+      if (cls.getSimpleName().startsWith("I")) {
+        System.out.println((<warning descr="Casting 'obj' to 'Long' will produce 'ClassCastException' for any non-null value">Long</warning>)obj);
       }
     }
   }

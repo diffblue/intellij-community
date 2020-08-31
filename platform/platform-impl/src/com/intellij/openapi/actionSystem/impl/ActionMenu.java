@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.actionSystem.impl;
 
 import com.intellij.ide.DataManager;
@@ -7,6 +7,7 @@ import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.impl.actionholder.ActionRef;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.ui.JBPopupMenu;
@@ -23,6 +24,7 @@ import com.intellij.ui.mac.foundation.NSDefaults;
 import com.intellij.ui.plaf.beg.IdeaMenuUI;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.SingleAlarm;
+import com.intellij.util.ui.JBSwingUtilities;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -76,6 +78,12 @@ public final class ActionMenu extends JBMenu {
 
     // Triggering initialization of private field "popupMenu" from JMenu with our own JBPopupMenu
     getPopupMenu();
+  }
+
+  @Override
+  protected Graphics getComponentGraphics(Graphics graphics) {
+    if (!(getParent() instanceof JMenuBar)) return super.getComponentGraphics(graphics);
+    return JBSwingUtilities.runGlobalCGTransform(this, super.getComponentGraphics(graphics));
   }
 
   public void updateContext(DataContext context) {
@@ -211,12 +219,10 @@ public final class ActionMenu extends JBMenu {
   }
 
   private class MenuListenerImpl implements MenuListener {
+    boolean myIsHidden = false;
     @Override
     public void menuCanceled(MenuEvent e) {
-      if (!KEEP_MENU_HIERARCHY) {
-        clearItems();
-        addStubItem();
-      }
+      onMenuHidden();
     }
 
     @Override
@@ -225,9 +231,41 @@ public final class ActionMenu extends JBMenu {
         Disposer.dispose(myDisposable);
         myDisposable = null;
       }
-      if (!KEEP_MENU_HIERARCHY) {
+      onMenuHidden();
+    }
+
+    private void onMenuHidden() {
+      if (KEEP_MENU_HIERARCHY) {
+        return;
+      }
+
+      Runnable clearSelf = () -> {
         clearItems();
         addStubItem();
+      };
+
+      if (SystemInfo.isMacSystemMenu && myPlace.equals(ActionPlaces.MAIN_MENU)) {
+        // Menu items may contain mnemonic and they can affect key-event dispatching (when Alt pressed)
+        // To avoid influence of mnemonic it's necessary to clear items when menu was hidden.
+        // When user selects item of system menu (under MacOs) AppKit generates such sequence: CloseParentMenu -> PerformItemAction
+        // So we can destroy menu-item before item's action performed, and because of that action will not be executed.
+        // Defer clearing to avoid this problem.
+        Disposable listenerHolder = Disposer.newDisposable();
+        Disposer.register(ApplicationManager.getApplication(), listenerHolder);
+        IdeEventQueue.getInstance().addDispatcher(e -> {
+          if (e instanceof KeyEvent) {
+            if (myIsHidden) {
+              clearSelf.run();
+            }
+            ApplicationManager.getApplication().invokeLater(() -> Disposer.dispose(listenerHolder));
+          }
+          return false;
+        }, listenerHolder);
+
+        myIsHidden = true;
+      }
+      else {
+        clearSelf.run();
       }
     }
 
@@ -238,8 +276,10 @@ public final class ActionMenu extends JBMenu {
         myDisposable = Disposer.newDisposable();
       }
       Disposer.register(myDisposable, helper);
-      if (KEEP_MENU_HIERARCHY)
+      if (KEEP_MENU_HIERARCHY || myIsHidden) {
         clearItems();
+      }
+      myIsHidden = false;
       fillMenu();
     }
   }
@@ -273,11 +313,12 @@ public final class ActionMenu extends JBMenu {
       context = myContext;
     }
     else {
-      @SuppressWarnings("deprecation") DataContext contextFromFocus = DataManager.getInstance().getDataContext();
+      DataManager dataManager = DataManager.getInstance();
+      @SuppressWarnings("deprecation") DataContext contextFromFocus = dataManager.getDataContext();
       context = contextFromFocus;
       if (PlatformDataKeys.CONTEXT_COMPONENT.getData(context) == null) {
         IdeFrame frame = ComponentUtil.getParentOfType((Class<? extends IdeFrame>)IdeFrame.class, (Component)this);
-        context = DataManager.getInstance().getDataContext(IdeFocusManager.getGlobalInstance().getLastFocusedFor(frame));
+        context = dataManager.getDataContext(IdeFocusManager.getGlobalInstance().getLastFocusedFor((Window)frame));
       }
     }
 

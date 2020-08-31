@@ -1,17 +1,18 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.status;
 
 import com.intellij.ide.ui.UISettings;
 import com.intellij.openapi.util.IconLoader;
+import com.intellij.openapi.util.NlsContexts.StatusBarText;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.ui.JBFont;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import sun.swing.SwingUtilities2;
 
 import javax.accessibility.Accessible;
 import javax.accessibility.AccessibleContext;
@@ -19,7 +20,7 @@ import javax.accessibility.AccessibleRole;
 import javax.swing.*;
 import java.awt.*;
 
-public class TextPanel extends JComponent implements Accessible {
+public class TextPanel extends NonOpaquePanel implements Accessible {
   @Nullable private String myText;
 
   private Integer myPrefHeight;
@@ -28,8 +29,15 @@ public class TextPanel extends JComponent implements Accessible {
   protected float myAlignment;
 
   protected TextPanel() {
-    setOpaque(true);
+    updateUI();
+  }
+
+  @Override
+  public void updateUI() {
     UISettings.setupComponentAntialiasing(this);
+    Object value = UIManager.getDefaults().get(RenderingHints.KEY_FRACTIONALMETRICS);
+    if (value == null) value = RenderingHints.VALUE_FRACTIONALMETRICS_OFF;
+    putClientProperty(RenderingHints.KEY_FRACTIONALMETRICS, value);
   }
 
   @Override
@@ -55,21 +63,17 @@ public class TextPanel extends JComponent implements Accessible {
     String s = getText();
     int panelWidth = getWidth();
     int panelHeight = getHeight();
-    Color background = getBackground();
-    if (background != null && isOpaque()) {
-      g.setColor(background);
-      g.fillRect(0, 0, panelWidth, panelHeight);
-    }
     if (s == null) return;
 
     Graphics2D g2 = (Graphics2D)g;
     g2.setFont(getFont());
+    UISettings.setupAntialiasing(g);
 
     Rectangle bounds = new Rectangle(panelWidth, panelHeight);
-    int x = getTextX(g2);
-    int maxWidth = panelWidth - x - getInsets().right;
     FontMetrics fm = g.getFontMetrics();
     int textWidth = fm.stringWidth(s);
+    int x = textWidth > panelWidth ? getInsets().left : getTextX(g2);
+    int maxWidth = panelWidth - x - getInsets().right;
     if (textWidth > maxWidth) {
       s = truncateText(s, bounds, fm, new Rectangle(), new Rectangle(), maxWidth);
     }
@@ -77,7 +81,7 @@ public class TextPanel extends JComponent implements Accessible {
     int y = UIUtil.getStringY(s, bounds, g2);
     Color foreground = isEnabled() ? getForeground() : UIUtil.getInactiveTextColor();
     g2.setColor(foreground);
-    SwingUtilities2.drawString(this, g2, s, x, y);
+    g2.drawString(s, x, y);
   }
 
   protected int getTextX(Graphics g) {
@@ -109,7 +113,7 @@ public class TextPanel extends JComponent implements Accessible {
     myAlignment = alignment;
   }
 
-  public final void setText(@Nullable String text) {
+  public final void setText(@Nullable @StatusBarText String text) {
     text = StringUtil.notNullize(text);
     if (text.equals(myText)) {
       return;
@@ -151,7 +155,7 @@ public class TextPanel extends JComponent implements Accessible {
 
   private Dimension getPanelDimensionFromFontMetrics(String text) {
     Insets insets = getInsets();
-    int width = insets.left + insets.right + (text != null ? SwingUtilities2.stringWidth(this, getFontMetrics(getFont()), text) : 0);
+    int width = insets.left + insets.right + (text != null ? getFontMetrics(getFont()).stringWidth(text) : 0);
     int height = (myPrefHeight == null) ? getMinimumSize().height : myPrefHeight;
     return new Dimension(width, height);
   }

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.vcs.changes.patch;
 
 import com.google.common.base.Charsets;
@@ -18,7 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 
-public class BlobIndexUtil {
+public final class BlobIndexUtil {
 
   public static final String NOT_COMMITTED_HASH = StringUtil.repeat("0", 40);
 
@@ -32,8 +32,8 @@ public class BlobIndexUtil {
    * Generate sha1 for file content using git-like algorithm
    */
   @NotNull
-  public static String getSha1(@NotNull byte[] bytes) {
-    String prefix = "blob " + bytes.length + '\u0000';
+  public static String getSha1(byte @NotNull [] bytes) {
+    String prefix = "blob " + bytes.length + '\u0000'; //NON-NLS
     return Hashing.sha1().newHasher().putBytes(prefix.getBytes(Charsets.UTF_8)).putBytes(bytes).hash().toString();
   }
 
@@ -49,8 +49,7 @@ public class BlobIndexUtil {
     return new Couple<>(before, after);
   }
 
-  @NotNull
-  private static byte[] getContentBytes(@NotNull ContentRevision revision, @NotNull Charset charset) throws VcsException {
+  private static byte @NotNull [] getContentBytes(@NotNull ContentRevision revision, @NotNull Charset charset) throws VcsException {
     byte[] binaryContent;
     if (revision instanceof ByteBackedContentRevision) {
       binaryContent = ((ByteBackedContentRevision)revision).getContentAsBytes();

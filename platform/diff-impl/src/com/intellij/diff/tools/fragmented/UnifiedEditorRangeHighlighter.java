@@ -21,7 +21,6 @@ import com.intellij.openapi.editor.ex.MarkupModelEx;
 import com.intellij.openapi.editor.ex.RangeHighlighterEx;
 import com.intellij.openapi.editor.impl.DocumentMarkupModel;
 import com.intellij.openapi.editor.markup.MarkupModel;
-import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import org.jetbrains.annotations.NotNull;
@@ -33,26 +32,10 @@ import java.util.List;
 class UnifiedEditorRangeHighlighter {
   @NotNull private final List<Element> myPieces = new ArrayList<>();
 
-  UnifiedEditorRangeHighlighter(@Nullable Project project, @NotNull Document document) {
-    ApplicationManager.getApplication().assertReadAccessAllowed();
-
-    MarkupModelEx model = (MarkupModelEx)DocumentMarkupModel.forDocument(document, project, false);
-    if (model == null) return;
-
-    model.processRangeHighlightersOverlappingWith(0, document.getTextLength(), marker -> {
-      int newStart = marker.getStartOffset();
-      int newEnd = marker.getEndOffset();
-
-      myPieces.add(new Element(marker, newStart, newEnd));
-
-      return true;
-    });
-  }
-
   UnifiedEditorRangeHighlighter(@Nullable Project project,
-                                       @NotNull Document document1,
-                                       @NotNull Document document2,
-                                       @NotNull List<HighlightRange> ranges) {
+                                @NotNull Document document1,
+                                @NotNull Document document2,
+                                @NotNull List<HighlightRange> ranges) {
     ApplicationManager.getApplication().assertReadAccessAllowed();
 
     MarkupModelEx model1 = (MarkupModelEx)DocumentMarkupModel.forDocument(document1, project, false);
@@ -99,24 +82,17 @@ class UnifiedEditorRangeHighlighter {
   }
 
   public void apply(@Nullable Project project, @NotNull Document document) {
-    MarkupModel model = DocumentMarkupModel.forDocument(document, project, true);
+    MarkupModelEx model = (MarkupModelEx)DocumentMarkupModel.forDocument(document, project, true);
 
     for (Element piece : myPieces) {
       RangeHighlighterEx delegate = piece.getDelegate();
       if (!delegate.isValid()) continue;
 
-      RangeHighlighter highlighter = model
-        .addRangeHighlighter(piece.getStart(), piece.getEnd(), delegate.getLayer(), delegate.getTextAttributes(), delegate.getTargetArea());
-      highlighter.setEditorFilter(delegate.getEditorFilter());
-      highlighter.setCustomRenderer(delegate.getCustomRenderer());
-      highlighter.setErrorStripeMarkColor(delegate.getErrorStripeMarkColor());
-      highlighter.setErrorStripeTooltip(delegate.getErrorStripeTooltip());
-      highlighter.setGutterIconRenderer(delegate.getGutterIconRenderer());
-      highlighter.setLineMarkerRenderer(delegate.getLineMarkerRenderer());
-      highlighter.setLineSeparatorColor(delegate.getLineSeparatorColor());
-      highlighter.setThinErrorStripeMark(delegate.isThinErrorStripeMark());
-      highlighter.setLineSeparatorPlacement(delegate.getLineSeparatorPlacement());
-      highlighter.setLineSeparatorRenderer(delegate.getLineSeparatorRenderer());
+      model.addRangeHighlighterAndChangeAttributes(
+        delegate.getTextAttributesKey(), piece.getStart(), piece.getEnd(), delegate.getLayer(),
+        delegate.getTargetArea(), false, ex -> {
+          ex.copyFrom(delegate);
+        });
     }
   }
 

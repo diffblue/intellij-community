@@ -23,6 +23,7 @@ import com.intellij.lang.Language;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.impl.DebugUtil;
 import com.intellij.psi.impl.PsiDocumentManagerBase;
 import com.intellij.psi.impl.SharedPsiElementImplUtil;
 import com.intellij.psi.impl.source.PsiFileImpl;
@@ -39,11 +40,11 @@ import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
 public abstract class MultiplePsiFilesPerDocumentFileViewProvider extends AbstractFileViewProvider {
-  private final ConcurrentMap<Language, PsiFileImpl> myRoots = ContainerUtil.newConcurrentMap(1, 0.75f, 1);
+  protected final ConcurrentMap<Language, PsiFileImpl> myRoots = ContainerUtil.newConcurrentMap(1, 0.75f, 1);
   private MultiplePsiFilesPerDocumentFileViewProvider myOriginal;
 
   public MultiplePsiFilesPerDocumentFileViewProvider(@NotNull PsiManager manager, @NotNull VirtualFile virtualFile, boolean eventSystemEnabled) {
-    super(manager, virtualFile, eventSystemEnabled, virtualFile.getFileType());
+    super(manager, virtualFile, eventSystemEnabled);
   }
 
   @Override
@@ -183,7 +184,7 @@ public abstract class MultiplePsiFilesPerDocumentFileViewProvider extends Abstra
       final PsiReference reference = SharedPsiElementImplUtil.findReferenceAt(psiRoot, offset, language);
       if (reference == null) continue;
       final TextRange textRange = reference.getRangeInElement().shiftRight(reference.getElement().getTextRange().getStartOffset());
-      if (minRange.contains(textRange) && !textRange.contains(minRange)) {
+      if (minRange.contains(textRange) && (!textRange.contains(minRange) || ret == null)) {
         minRange = textRange;
         ret = reference;
       }
@@ -199,7 +200,7 @@ public abstract class MultiplePsiFilesPerDocumentFileViewProvider extends Abstra
       if (!languages.contains(entry.getKey())) {
         PsiFileImpl file = entry.getValue();
         iterator.remove();
-        file.markInvalidated();
+        DebugUtil.performPsiModification(getClass().getName() + " root change", () -> file.markInvalidated());
       }
     }
     super.contentsSynchronized();

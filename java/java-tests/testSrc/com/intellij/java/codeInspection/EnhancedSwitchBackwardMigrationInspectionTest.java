@@ -8,9 +8,8 @@ import com.intellij.pom.java.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 
 public class EnhancedSwitchBackwardMigrationInspectionTest extends LightQuickFixParameterizedTestCase {
-  @NotNull
   @Override
-  protected LocalInspectionTool[] configureLocalInspectionTools() {
+  protected LocalInspectionTool @NotNull [] configureLocalInspectionTools() {
     return new LocalInspectionTool[]{new EnhancedSwitchBackwardMigrationInspection()};
   }
 
@@ -21,6 +20,6 @@ public class EnhancedSwitchBackwardMigrationInspectionTest extends LightQuickFix
 
   @Override
   protected LanguageLevel getLanguageLevel() {
-    return LanguageLevel.JDK_13_PREVIEW;
+    return LanguageLevel.JDK_14;
   }
 }

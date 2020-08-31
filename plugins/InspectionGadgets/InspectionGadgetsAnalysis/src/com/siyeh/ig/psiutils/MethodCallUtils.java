@@ -95,7 +95,7 @@ public class MethodCallUtils {
   }
 
   public static boolean isSimpleCallToMethod(@NotNull PsiMethodCallExpression expression, @NonNls @Nullable String calledOnClassName,
-    @Nullable PsiType returnType, @NonNls @Nullable String methodName, @NonNls @Nullable String... parameterTypeStrings) {
+    @Nullable PsiType returnType, @NonNls @Nullable String methodName, @NonNls String @Nullable ... parameterTypeStrings) {
     if (parameterTypeStrings == null) {
       return isCallToMethod(expression, calledOnClassName, returnType, methodName, (PsiType[])null);
     }
@@ -129,7 +129,7 @@ public class MethodCallUtils {
   }
 
   public static boolean isCallToMethod(@NotNull PsiMethodCallExpression expression, @NonNls @Nullable String calledOnClassName,
-    @Nullable PsiType returnType, @Nullable Pattern methodNamePattern, @Nullable PsiType... parameterTypes) {
+    @Nullable PsiType returnType, @Nullable Pattern methodNamePattern, PsiType @Nullable ... parameterTypes) {
     final PsiReferenceExpression methodExpression = expression.getMethodExpression();
     if (methodNamePattern != null) {
       final String referenceName = methodExpression.getReferenceName();
@@ -158,7 +158,7 @@ public class MethodCallUtils {
   }
 
   public static boolean isCallToMethod(@NotNull PsiMethodCallExpression expression, @NonNls @Nullable String calledOnClassName,
-    @Nullable PsiType returnType, @NonNls @Nullable String methodName, @Nullable PsiType... parameterTypes) {
+    @Nullable PsiType returnType, @NonNls @Nullable String methodName, PsiType @Nullable ... parameterTypes) {
     if (!checkMethodName(expression, methodName)) return false;
     final PsiMethod method = expression.resolveMethod();
     if (method == null) {
@@ -201,13 +201,10 @@ public class MethodCallUtils {
     if (containingClass == null || containingClass.hasModifierProperty(PsiModifier.FINAL)) {
       return false;
     }
-    if (member instanceof PsiClassInitializer) {
-      final PsiClassInitializer classInitializer = (PsiClassInitializer)member;
-      if (!classInitializer.hasModifierProperty(PsiModifier.STATIC)) {
-        return true;
-      }
+    if (member instanceof PsiClassInitializer || member instanceof PsiField) {
+      return !member.hasModifierProperty(PsiModifier.STATIC);
     }
-    else if (member instanceof PsiMethod) {
+    if (member instanceof PsiMethod) {
       final PsiMethod method = (PsiMethod)member;
       if (method.isConstructor()) {
         return true;
@@ -220,12 +217,6 @@ public class MethodCallUtils {
       }
       return MethodUtils.simpleMethodMatches(method, null, "void", "readObjectNoData");
     }
-    else if (member instanceof PsiField) {
-      final PsiField field = (PsiField)member;
-      if (!field.hasModifierProperty(PsiModifier.STATIC)) {
-        return true;
-      }
-    }
     return false;
   }
 
@@ -237,7 +228,7 @@ public class MethodCallUtils {
     if (!methodName.equals(name)) {
       return false;
     }
-    final PsiExpression qualifier = ParenthesesUtils.stripParentheses(methodExpression.getQualifierExpression());
+    final PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(methodExpression.getQualifierExpression());
     if (!(qualifier instanceof PsiReferenceExpression)) {
       return false;
     }
@@ -312,7 +303,7 @@ public class MethodCallUtils {
   }
 
   public static boolean hasSuperQualifier(@NotNull PsiMethodCallExpression expression) {
-    return ParenthesesUtils.stripParentheses(expression.getMethodExpression().getQualifierExpression()) instanceof PsiSuperExpression;
+    return PsiUtil.skipParenthesizedExprDown(expression.getMethodExpression().getQualifierExpression()) instanceof PsiSuperExpression;
   }
 
   /**
@@ -363,7 +354,7 @@ public class MethodCallUtils {
       return false;
     }
     final PsiExpressionList argumentList = expression.getArgumentList();
-    final PsiExpression argument = ParenthesesUtils.stripParentheses(ExpressionUtils.getFirstExpressionInList(argumentList));
+    final PsiExpression argument = PsiUtil.skipParenthesizedExprDown(ExpressionUtils.getFirstExpressionInList(argumentList));
     if (argument == null) {
       return false;
     }
@@ -466,7 +457,7 @@ public class MethodCallUtils {
     final PsiExpression[] arguments = argumentList.getExpressions();
     for (int i = 0; i < arguments.length; i++) {
       PsiExpression argument = arguments[i];
-      argument = ParenthesesUtils.stripParentheses(argument);
+      argument = PsiUtil.skipParenthesizedExprDown(argument);
       if (argument instanceof PsiReferenceExpression) {
         final PsiElement target = ((PsiReferenceExpression)argument).resolve();
         if (target == parameter) {

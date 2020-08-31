@@ -3,33 +3,26 @@ package com.intellij.completion.ml
 
 import com.intellij.codeInsight.completion.ml.ContextFeatures
 import com.intellij.codeInsight.completion.ml.MLFeatureValue
-import com.intellij.openapi.util.Key
-import com.intellij.psi.PsiElement
-import java.util.*
+import com.intellij.openapi.util.UserDataHolderBase
 
-class ContextFeaturesStorage(private val featuresSnapshot: Map<String, MLFeatureValue>): ContextFeatures {
+class ContextFeaturesStorage(private val featuresSnapshot: Map<String, MLFeatureValue>) : ContextFeatures, UserDataHolderBase() {
   companion object {
-    private val CONTEXT_FEATURES_KEY = Key.create<ContextFeaturesStorage>("com.intellij.completion.ml.context_features")
-    private val EMPTY = ContextFeaturesStorage(emptyMap())
-
-    fun extract(element: PsiElement): ContextFeaturesStorage {
-      return element.getUserData(CONTEXT_FEATURES_KEY) ?: EMPTY
-    }
-
-    fun setContextFeatures(element: PsiElement, features: Map<String, MLFeatureValue>) {
-      element.putUserData(CONTEXT_FEATURES_KEY,
-                          ContextFeaturesStorage(Collections.unmodifiableMap(features)))
-    }
-
-    fun clear(element: PsiElement) {
-      element.putUserData(CONTEXT_FEATURES_KEY, null)
-    }
+    val EMPTY = ContextFeaturesStorage(emptyMap())
   }
 
-  override fun binaryValue(name: String): Boolean? = (featuresSnapshot[name])?.asBinary()
+  override fun binaryValue(name: String): Boolean? = findValue<MLFeatureValue.BinaryValue>(name)?.value
 
-  override fun floatValue(name: String): Double? = (featuresSnapshot[name])?.asFloat()
+  override fun floatValue(name: String): Double? = findValue<MLFeatureValue.FloatValue>(name)?.value
 
-  override fun categoricalValue(name: String): String? = (featuresSnapshot[name])?.asCategorical()
+  override fun categoricalValue(name: String): String? = findValue<MLFeatureValue.CategoricalValue>(name)?.value
+
+  override fun classNameValue(name: String): String? = findValue<MLFeatureValue.ClassNameValue>(name)
+    ?.let { MLFeaturesUtil.valueAsString(it) }
+
+  override fun asMap(): Map<String, String> = featuresSnapshot.mapValues { MLFeaturesUtil.valueAsString(it.value) }
+
+  private inline fun <reified T : MLFeatureValue> findValue(name: String): T? {
+    return featuresSnapshot[name] as? T
+  }
 }
 

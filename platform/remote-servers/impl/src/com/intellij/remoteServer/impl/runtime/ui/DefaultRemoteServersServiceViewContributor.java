@@ -26,24 +26,24 @@ public class DefaultRemoteServersServiceViewContributor extends RemoteServersSer
     new SimpleServiceViewDescriptor("Clouds", AllIcons.General.Balloon) {
       @Override
       public ActionGroup getToolbarActions() {
-        return RemoteServersServiceViewContributor.getToolbarActions(ServersToolWindowContent.ActionGroups.SHARED_ACTION_GROUPS);
+        return RemoteServersServiceViewContributor.getToolbarActions(RemoteServersServiceViewContributor.ActionGroups.SHARED_ACTION_GROUPS);
       }
 
       @Override
       public ActionGroup getPopupActions() {
-        return RemoteServersServiceViewContributor.getPopupActions(ServersToolWindowContent.ActionGroups.SHARED_ACTION_GROUPS);
+        return RemoteServersServiceViewContributor.getPopupActions(RemoteServersServiceViewContributor.ActionGroups.SHARED_ACTION_GROUPS);
       }
     };
 
   @NotNull
   @Override
-  public ServiceViewDescriptor getViewDescriptor() {
+  public ServiceViewDescriptor getViewDescriptor(@NotNull Project project) {
     return CONTRIBUTOR_DESCRIPTOR;
   }
 
   @Override
   public boolean accept(@NotNull RemoteServer server) {
-    return RemoteServersViewContribution.getRemoteServerToolWindowId(server) == null;
+    return isDefaultRemoteServer(server);
   }
 
   @Override
@@ -61,15 +61,15 @@ public class DefaultRemoteServersServiceViewContributor extends RemoteServersSer
     for (LoggingHandlerBase loggingComponent : logManager.getAdditionalLoggingHandlers()) {
       if (logName.equals(loggingComponent.getPresentableName())) {
         DeploymentLogNode logNode = new DeploymentLogNode(project, loggingComponent, node);
-        ServiceViewManager.getInstance(project).select(logNode, DefaultRemoteServersServiceViewContributor.class, false, false);
+        ServiceViewManager.getInstance(project).select(logNode, DefaultRemoteServersServiceViewContributor.class, true, true);
       }
     }
   }
 
   @NotNull
   @Override
-  public ServersToolWindowContent.ActionGroups getActionGroups() {
-    return ServersToolWindowContent.ActionGroups.SHARED_ACTION_GROUPS;
+  public ActionGroups getActionGroups() {
+    return RemoteServersServiceViewContributor.ActionGroups.SHARED_ACTION_GROUPS;
   }
 
   @Override
@@ -77,5 +77,13 @@ public class DefaultRemoteServersServiceViewContributor extends RemoteServersSer
                                                   ServersTreeStructure.RemoteServerNode serverNode,
                                                   Deployment deployment) {
     return new DeploymentNodeImpl(serverNode.getProject(), connection, serverNode, deployment, this);
+  }
+
+  private static boolean isDefaultRemoteServer(RemoteServer<?> server) {
+    String toolWindowId = server.getConfiguration().getCustomToolWindowId();
+    if (toolWindowId == null) {
+      toolWindowId = server.getType().getCustomToolWindowId();
+    }
+    return toolWindowId == null;
   }
 }

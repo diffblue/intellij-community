@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.structuralsearch.plugin.ui.filters;
 
 import com.intellij.psi.PsiElement;
@@ -8,6 +8,7 @@ import com.intellij.structuralsearch.SSRBundle;
 import com.intellij.structuralsearch.StructuralSearchProfile;
 import com.intellij.structuralsearch.plugin.ui.UIUtil;
 import com.intellij.ui.SimpleColoredComponent;
+import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.fields.IntegerField;
 
 import javax.swing.*;
@@ -22,7 +23,7 @@ public class CountFilter extends FilterAction {
   boolean myMaxUnlimited;
 
   public CountFilter(FilterTable filterTable) {
-    super("Count", filterTable);
+    super(SSRBundle.messagePointer("count.filter.name"), filterTable);
   }
 
   @Override
@@ -69,7 +70,10 @@ public class CountFilter extends FilterAction {
     final MatchVariableConstraint constraint = (MatchVariableConstraint)myTable.getVariable();
     final int min = constraint.getMinCount();
     final int max = constraint.getMaxCount();
-    myLabel.append("count=[" + min + "," + (max == Integer.MAX_VALUE ? "∞" : max) + ']');
+    myLabel.append(SSRBundle.message("count.label", "[" + min + "," + (max == Integer.MAX_VALUE ? "∞" : max) + ']'));
+    if (min == 1 && max == 1) {
+      myLabel.append(SSRBundle.message("default.label"), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+    }
   }
 
   @Override
@@ -78,8 +82,8 @@ public class CountFilter extends FilterAction {
 
       private final IntegerField myMinField = new IntegerField();
       private final IntegerField myMaxField = new IntegerField();
-      private final JLabel myMinLabel = new JLabel("min=");
-      private final JLabel myMaxLabel = new JLabel("max=");
+      private final JLabel myMinLabel = new JLabel(SSRBundle.message("min.label"));
+      private final JLabel myMaxLabel = new JLabel(SSRBundle.message("max.label"));
 
       @Override
       protected void layoutComponents() {
@@ -126,7 +130,7 @@ public class CountFilter extends FilterAction {
         myMaxField.setMinValue(myMinZero ? 0 : 1);
         myMaxField.setMaxValue(myMaxUnlimited ? Integer.MAX_VALUE : 1);
         myMaxField.setDefaultValue(myMaxUnlimited ? Integer.MAX_VALUE : 1);
-        myMaxField.setDefaultValueText(myMaxUnlimited ? SSRBundle.message("editvarcontraints.unlimited") : "1");
+        myMaxField.setDefaultValueText(myMaxUnlimited ? SSRBundle.message("unlimited.placeholder") : "1");
         final int maxCount = myConstraint.getMaxCount();
         if (!isDefaultValue(maxCount)) {
           myMaxField.setValue(maxCount);

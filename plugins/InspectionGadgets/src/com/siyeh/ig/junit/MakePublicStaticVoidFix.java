@@ -29,6 +29,7 @@ import com.intellij.refactoring.changeSignature.ChangeSignatureProcessor;
 import com.intellij.refactoring.changeSignature.ParameterInfoImpl;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.util.VisibilityUtil;
+import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.InspectionGadgetsFix;
 import org.jetbrains.annotations.NotNull;
 
@@ -46,12 +47,12 @@ class MakePublicStaticVoidFix extends InspectionGadgetsFix {
 
   MakePublicStaticVoidFix(PsiMethod method, boolean makeStatic, @PsiModifier.ModifierConstant String newVisibility) {
     String presentableVisibility = VisibilityUtil.getVisibilityString(newVisibility);
-    myName = "Change signature of \'" +
+    myName = "Change signature of '" +
              PsiFormatUtil.formatMethod(method, PsiSubstitutor.EMPTY,
                                         PsiFormatUtilBase.SHOW_NAME | PsiFormatUtilBase.SHOW_MODIFIERS |
                                         PsiFormatUtilBase.SHOW_PARAMETERS | PsiFormatUtilBase.SHOW_TYPE, PsiFormatUtilBase.SHOW_TYPE) +
-             "\' to \'" + (presentableVisibility.isEmpty() ? "" : presentableVisibility + " ") + (makeStatic ? "static " : "") +
-             "void " + method.getName() + "()\'";
+             "' to '" + (presentableVisibility.isEmpty() ? "" : presentableVisibility + " ") + (makeStatic ? "static " : "") +
+             "void " + method.getName() + "()'";
     myMakeStatic = makeStatic;
     myNewVisibility = newVisibility;
   }
@@ -64,7 +65,7 @@ class MakePublicStaticVoidFix extends InspectionGadgetsFix {
         new ChangeSignatureProcessor(project, method, false, myNewVisibility, method.getName(), PsiType.VOID,
                                      new ParameterInfoImpl[0]) {
           @Override
-          protected void performRefactoring(@NotNull UsageInfo[] usages) {
+          protected void performRefactoring(UsageInfo @NotNull [] usages) {
             super.performRefactoring(usages);
             PsiUtil.setModifierProperty(method, PsiModifier.STATIC, myMakeStatic);
           }
@@ -81,7 +82,7 @@ class MakePublicStaticVoidFix extends InspectionGadgetsFix {
   @NotNull
   @Override
   public String getFamilyName() {
-    return "Fix modifiers";
+    return InspectionGadgetsBundle.message("make.public.static.void.fix.family.name");
   }
 
   @Override

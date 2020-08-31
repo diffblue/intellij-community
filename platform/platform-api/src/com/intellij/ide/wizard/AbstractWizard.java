@@ -15,6 +15,7 @@ import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.JBCardLayout;
 import com.intellij.ui.components.panels.OpaquePanel;
 import com.intellij.ui.mac.TouchbarDataKeys;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.util.ui.ImageUtil;
 import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
@@ -35,7 +36,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.wizard.AbstractWizard");
+  private static final Logger LOG = Logger.getInstance(AbstractWizard.class);
 
   protected int myCurrentStep;
   protected final ArrayList<T> mySteps;
@@ -55,13 +56,13 @@ public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
     }
   };
 
-  public AbstractWizard(final String title, final Component dialogParent) {
+  public AbstractWizard(@NlsContexts.DialogTitle String title, final Component dialogParent) {
     super(dialogParent, true);
     mySteps = new ArrayList<>();
     initWizard(title);
   }
 
-  public AbstractWizard(final String title, @Nullable final Project project) {
+  public AbstractWizard(@NlsContexts.DialogTitle String title, @Nullable final Project project) {
     super(project, true);
     mySteps = new ArrayList<>();
     initWizard(title);
@@ -173,24 +174,7 @@ public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
     myNextButton.addActionListener(new ActionListener() {
       @Override
       public void actionPerformed(final ActionEvent e) {
-        if (isLastStep()) {
-          // Commit data of current step and perform OK action
-          final Step currentStep = mySteps.get(myCurrentStep);
-          LOG.assertTrue(currentStep != null);
-          try {
-            currentStep._commit(true);
-            doOKAction();
-          }
-          catch (final CommitStepException exc) {
-            String message = exc.getMessage();
-            if (message != null) {
-              Messages.showErrorDialog(myContentPanel, message);
-            }
-          }
-        }
-        else {
-          doNextAction();
-        }
+        proceedToNextStep();
       }
     });
 
@@ -210,6 +194,31 @@ public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
     });
 
     return panel;
+  }
+
+  /**
+   * Validates the current step. If the current step is valid commits it and moves the wizard to the next step.
+   * Usually, should be used from UI event handlers or after deferred user interaction, e.g. validation in background thread.
+   */
+  public void proceedToNextStep() {
+    if (isLastStep()) {
+      // Commit data of current step and perform OK action
+      Step currentStep = mySteps.get(myCurrentStep);
+      LOG.assertTrue(currentStep != null);
+      try {
+        currentStep._commit(true);
+        doOKAction();
+      }
+      catch (CommitStepException exc) {
+        String message = exc.getMessage();
+        if (message != null) {
+          Messages.showErrorDialog(myContentPanel, message);
+        }
+      }
+    }
+    else {
+      doNextAction();
+    }
   }
 
   public JPanel getContentComponent() {
@@ -282,9 +291,9 @@ public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
 
   @Override
   protected JComponent createCenterPanel() {
-    final JPanel panel = new JPanel(new BorderLayout());
-    panel.add(myContentPanel, BorderLayout.CENTER);
+    JPanel panel = new JPanel(new BorderLayout());
     panel.add(myIcon, BorderLayout.WEST);
+    panel.add(myContentPanel, BorderLayout.CENTER);
     return panel;
   }
 
@@ -324,7 +333,11 @@ public abstract class AbstractWizard<T extends Step> extends DialogWrapper {
   }
 
 
-  protected String addStepComponent(final Component component) {
+  protected String addStepComponent(@NotNull Component component) {
+    if (component instanceof JPanel) {
+      ((JPanel)component).putClientProperty(DIALOG_CONTENT_PANEL_PROPERTY, true);
+    }
+
     String id = myComponentToIdMap.get(component);
     if (id == null) {
       id = Integer.toString(myComponentToIdMap.size());

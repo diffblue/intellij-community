@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl;
 
 import com.intellij.execution.configurations.GeneralCommandLine;
@@ -6,10 +6,10 @@ import com.intellij.execution.util.ExecUtil;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.wm.IdeFrame;
-import com.intellij.openapi.wm.WindowManager;
+import com.intellij.openapi.wm.ex.WindowManagerEx;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.AtomicFieldUpdater;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
 import sun.awt.AWTAccessor;
 import sun.misc.Unsafe;
@@ -20,13 +20,14 @@ import java.awt.peer.ComponentPeer;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.intellij.util.ArrayUtil.newLongArray;
 
-public class X11UiUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.wm.impl.X11UiUtil");
+public final class X11UiUtil {
+  private static final Logger LOG = Logger.getInstance(X11UiUtil.class);
 
   private static final int True = 1;
   private static final int False = 0;
@@ -61,8 +62,7 @@ public class X11UiUtil {
     private long NET_WM_ACTION_FULLSCREEN;
     private long NET_WM_STATE_FULLSCREEN;
 
-    @Nullable
-    private static Xlib getInstance() {
+    private static @Nullable Xlib getInstance() {
       Class<? extends Toolkit> toolkitClass = Toolkit.getDefaultToolkit().getClass();
       if (!SystemInfo.isXWindow || !"sun.awt.X11.XToolkit".equals(toolkitClass.getName())) {
         return null;
@@ -123,26 +123,22 @@ public class X11UiUtil {
       }
     }
 
-    @Nullable
-    private Long getNetWmWindow() throws Exception {
+    private @Nullable Long getNetWmWindow() throws Exception {
       long rootWindow = getRootWindow(0);
       long[] values = getLongArrayProperty(rootWindow, NET_SUPPORTING_WM_CHECK, XA_WINDOW);
       return values != null && values.length > 0 ? values[0] : null;
     }
 
-    @Nullable
-    private long[] getLongArrayProperty(long window, long name, long type) throws Exception {
+    private long @Nullable [] getLongArrayProperty(long window, long name, long type) throws Exception {
       return getWindowProperty(window, name, type, FORMAT_LONG);
     }
 
-    @Nullable
-    private String getUtfStringProperty(long window, long name) throws Exception {
+    private @Nullable String getUtfStringProperty(long window, long name) throws Exception {
       byte[] bytes = getWindowProperty(window, name, UTF8_STRING, FORMAT_BYTE);
       return bytes != null ? new String(bytes, StandardCharsets.UTF_8) : null;
     }
 
-    @Nullable
-    private <T> T getWindowProperty(long window, long name, long type, long expectedFormat) throws Exception {
+    private @Nullable <T> T getWindowProperty(long window, long name, long type, long expectedFormat) throws Exception {
       long data = unsafe.allocateMemory(64);
       awtLock.invoke(null);
       try {
@@ -221,12 +217,11 @@ public class X11UiUtil {
     }
   }
 
-  @Nullable private static final Xlib X11 = Xlib.getInstance();
+  private static final @Nullable Xlib X11 = Xlib.getInstance();
 
   // WM detection and patching
 
-  @Nullable
-  public static String getWmName() {
+  public static @Nullable String getWmName() {
     if (X11 == null) return null;
 
     try {
@@ -270,7 +265,7 @@ public class X11UiUtil {
     }
   }
 
-  private static void setWM(String... wmConstants) throws Exception {
+  private static void setWM(@NonNls String... wmConstants) throws Exception {
     Class<?> xwmClass = Class.forName("sun.awt.X11.XWM");
     Object xwm = method(xwmClass, "getWM").invoke(null);
     if (xwm != null) {
@@ -290,8 +285,7 @@ public class X11UiUtil {
     }
   }
 
-  @Nullable
-  private static String getAwesomeWMVersion() {
+  private static @Nullable String getAwesomeWMVersion() {
     try {
       String version = ExecUtil.execAndReadLine(new GeneralCommandLine("awesome", "--version"));
       if (version != null) {
@@ -312,10 +306,14 @@ public class X11UiUtil {
   public static boolean isFullScreenSupported() {
     if (X11 == null) return false;
 
-    IdeFrame[] frames = WindowManager.getInstance().getAllProjectFrames();
-    if (frames.length == 0) return true;  // no frame to check the property so be optimistic here
+    List<ProjectFrameHelper> frames = WindowManagerEx.getInstanceEx().getProjectFrameHelpers();
+    // no frame to check the property so be optimistic here
+    if (frames.isEmpty()) {
+      return true;
+    }
 
-    return frames[0] instanceof JFrame && hasWindowProperty((JFrame)frames[0], X11.NET_WM_ALLOWED_ACTIONS, X11.NET_WM_ACTION_FULLSCREEN);
+    IdeFrameImpl frame = frames.get(0).getFrame();
+    return hasWindowProperty(frame, X11.NET_WM_ALLOWED_ACTIONS, X11.NET_WM_ACTION_FULLSCREEN);
   }
 
   public static boolean isInFullScreenMode(JFrame frame) {
@@ -361,7 +359,7 @@ public class X11UiUtil {
 
   // reflection utilities
 
-  private static Method method(Class<?> aClass, String name, Class<?>... parameterTypes) throws Exception {
+  private static Method method(Class<?> aClass, @NonNls String name, Class<?>... parameterTypes) throws Exception {
     while (aClass != null) {
       try {
         Method method = aClass.getDeclaredMethod(name, parameterTypes);
@@ -375,9 +373,9 @@ public class X11UiUtil {
     throw new NoSuchMethodException(name);
   }
 
-  private static Method method(Class<?> aClass, String name, int parameters) throws Exception {
+  private static Method method(Class<?> aClass, @NonNls String name, int parameters) throws Exception {
     for (Method method : aClass.getDeclaredMethods()) {
-      if (name.equals(method.getName()) && method.getParameterTypes().length == parameters) {
+      if (method.getParameterCount() == parameters && name.equals(method.getName())) {
         method.setAccessible(true);
         return method;
       }
@@ -385,7 +383,7 @@ public class X11UiUtil {
     throw new NoSuchMethodException(name);
   }
 
-  private static Field field(Class<?> aClass, String name) throws Exception {
+  private static Field field(Class<?> aClass, @NonNls String name) throws Exception {
     Field field = aClass.getDeclaredField(name);
     field.setAccessible(true);
     return field;

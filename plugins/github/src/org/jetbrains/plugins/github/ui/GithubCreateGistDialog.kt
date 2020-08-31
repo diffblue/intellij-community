@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2011 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.ui
 
 import com.intellij.openapi.project.Project
@@ -22,6 +8,7 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.layout.*
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount
 import org.jetbrains.plugins.github.authentication.ui.GithubAccountCombobox
+import org.jetbrains.plugins.github.i18n.GithubBundle
 import javax.swing.JComponent
 import javax.swing.JTextArea
 
@@ -32,55 +19,55 @@ class GithubCreateGistDialog(project: Project,
                              secret: Boolean,
                              openInBrowser: Boolean,
                              copyLink: Boolean) : DialogWrapper(project, true) {
-  private val myFileNameField: JBTextField? = if (fileName != null) JBTextField(fileName) else null
-  private val myDescriptionField: JTextArea = JTextArea()
-  private val mySecretCheckBox: JBCheckBox = JBCheckBox("Secret", secret)
-  private val myOpenInBrowserCheckBox: JBCheckBox = JBCheckBox("Open in browser", openInBrowser)
-  private val myCopyLinkCheckBox: JBCheckBox = JBCheckBox("Copy URL", copyLink)
-  private val myAccountSelector: GithubAccountCombobox = GithubAccountCombobox(accounts, defaultAccount, null)
+  private val fileNameField: JBTextField? = if (fileName != null) JBTextField(fileName) else null
+  private val descriptionField: JTextArea = JTextArea()
+  private val secretCheckBox: JBCheckBox = JBCheckBox(GithubBundle.message("create.gist.dialog.secret"), secret)
+  private val browserCheckBox: JBCheckBox = JBCheckBox(GithubBundle.message("create.gist.dialog.open.browser"), openInBrowser)
+  private val copyLinkCheckBox: JBCheckBox = JBCheckBox(GithubBundle.message("create.gist.dialog.copy.url"), copyLink)
+  private val accountSelector: GithubAccountCombobox = GithubAccountCombobox(accounts, defaultAccount, null)
 
   val fileName: String?
-    get() = myFileNameField?.text
+    get() = fileNameField?.text
 
   val description: String
-    get() = myDescriptionField.text
+    get() = descriptionField.text
 
   val isSecret: Boolean
-    get() = mySecretCheckBox.isSelected
+    get() = secretCheckBox.isSelected
 
   val isOpenInBrowser: Boolean
-    get() = myOpenInBrowserCheckBox.isSelected
+    get() = browserCheckBox.isSelected
 
   val isCopyURL: Boolean
-    get() = myCopyLinkCheckBox.isSelected
+    get() = copyLinkCheckBox.isSelected
 
   val account: GithubAccount
-    get() = myAccountSelector.selectedItem as GithubAccount
+    get() = accountSelector.selectedItem as GithubAccount
 
   init {
-    title = "Create Gist"
+    title = GithubBundle.message("create.gist.dialog.title")
     init()
   }
 
   override fun createCenterPanel() = panel {
-    myFileNameField?.let {
-      row("Filename:") {
+    fileNameField?.let {
+      row(GithubBundle.message("create.gist.dialog.filename.field")) {
         it(pushX, growX)
       }
     }
-    row("Description:") {
-      scrollPane(myDescriptionField)
+    row(GithubBundle.message("create.gist.dialog.description.field")) {
+      scrollPane(descriptionField)
     }
     row("") {
       cell {
-        mySecretCheckBox()
-        myOpenInBrowserCheckBox()
-        myCopyLinkCheckBox()
+        secretCheckBox()
+        browserCheckBox()
+        copyLinkCheckBox()
       }
     }
-    if (myAccountSelector.isEnabled) {
-      row("Create for:") {
-        myAccountSelector(pushX, growX)
+    if (accountSelector.isEnabled) {
+      row(GithubBundle.message("create.gist.dialog.create.for.field")) {
+        accountSelector(pushX, growX)
       }
     }
   }
@@ -94,6 +81,6 @@ class GithubCreateGistDialog(project: Project,
   }
 
   override fun getPreferredFocusedComponent(): JComponent? {
-    return myDescriptionField
+    return descriptionField
   }
 }

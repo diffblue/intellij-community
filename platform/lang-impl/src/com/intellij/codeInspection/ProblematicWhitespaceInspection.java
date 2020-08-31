@@ -80,7 +80,7 @@ public class ProblematicWhitespaceInspection extends LocalInspectionTool {
     }
 
     @Override
-    public void visitFile(PsiFile file) {
+    public void visitFile(@NotNull PsiFile file) {
       super.visitFile(file);
       final FileType fileType = file.getFileType();
       if (!(fileType instanceof LanguageFileType)) {
@@ -125,20 +125,19 @@ public class ProblematicWhitespaceInspection extends LocalInspectionTool {
                 }
               }
               else if (!spaceSeen) {
-                final int currentIndent = Math.max(0, j);
-                if (currentIndent < previousLineIndent) {
+                if (j < previousLineIndent) {
                   if (registerError(file, startOffset, true)) {
                     return;
                   }
                 }
-                previousLineIndent = currentIndent;
+                previousLineIndent = j;
               }
             }
             spaceSeen = true;
           }
           else {
             if (!spaceSeen) {
-              previousLineIndent = Math.max(0, j);
+              previousLineIndent = j;
             }
             break;
           }

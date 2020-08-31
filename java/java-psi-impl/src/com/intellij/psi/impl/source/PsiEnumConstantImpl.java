@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source;
 
 import com.intellij.lang.ASTNode;
@@ -6,6 +6,7 @@ import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.ItemPresentationProviders;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.registry.Registry;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.ElementPresentationUtil;
 import com.intellij.psi.impl.PsiClassImplUtil;
@@ -31,7 +32,7 @@ import javax.swing.*;
  * @author dsl
  */
 public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implements PsiEnumConstant {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.source.PsiEnumConstantImpl");
+  private static final Logger LOG = Logger.getInstance(PsiEnumConstantImpl.class);
   private final MyReference myReference = new MyReference();
 
   public PsiEnumConstantImpl(final PsiFieldStub stub) {
@@ -220,7 +221,12 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
     public TextRange getRangeInElement() {
       PsiIdentifier nameIdentifier = getNameIdentifier();
       int startOffsetInParent = nameIdentifier.getStartOffsetInParent();
-      return new TextRange(startOffsetInParent, startOffsetInParent + nameIdentifier.getTextLength());
+      if (Registry.is("java.empty.enum.constructor.ref")) {
+        return TextRange.from(startOffsetInParent + nameIdentifier.getTextLength(), 0);
+      }
+      else {
+        return TextRange.from(startOffsetInParent, nameIdentifier.getTextLength());
+      }
     }
 
     @Override
@@ -243,8 +249,7 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
     }
 
     @Override
-    @NotNull
-    public JavaResolveResult[] multiResolve(boolean incompleteCode) {
+    public JavaResolveResult @NotNull [] multiResolve(boolean incompleteCode) {
       final JavaPsiFacade facade = JavaPsiFacade.getInstance(getProject());
       PsiClassType type = facade.getElementFactory().createType(getContainingClass());
       return facade.getResolveHelper().multiResolveConstructor(type, getArgumentList(), getElement());

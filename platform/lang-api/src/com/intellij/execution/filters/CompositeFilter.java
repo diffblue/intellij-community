@@ -15,11 +15,13 @@
  */
 package com.intellij.execution.filters;
 
-import com.intellij.openapi.application.ReadAction;
+import com.intellij.diagnostic.PluginException;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
@@ -32,7 +34,7 @@ import java.util.Collections;
 import java.util.List;
 
 @SuppressWarnings("ForLoopReplaceableByForEach")
-public class CompositeFilter implements Filter, FilterMixin {
+public class CompositeFilter implements Filter, FilterMixin, DumbAware {
   private static final Logger LOG = Logger.getInstance(CompositeFilter.class);
 
   private final List<Filter> myFilters;
@@ -58,7 +60,8 @@ public class CompositeFilter implements Filter, FilterMixin {
   @Override
   @Nullable
   public Result applyFilter(@NotNull final String line, final int entireLength) {
-    final boolean dumb = isDumb();
+    ApplicationManager.getApplication().assertReadAccessAllowed();
+    final boolean dumb = myDumbService.isDumb();
     List<Filter> filters = myFilters;
     int count = filters.size();
 
@@ -96,10 +99,6 @@ public class CompositeFilter implements Filter, FilterMixin {
       return null;
     }
     return createFinalResult(resultItems);
-  }
-
-  private boolean isDumb() {
-    return ReadAction.compute(()->myDumbService.isDumb());
   }
 
   @NotNull
@@ -141,7 +140,8 @@ public class CompositeFilter implements Filter, FilterMixin {
     int start = item.getHighlightStartOffset();
     int end = item.getHighlightEndOffset();
     if (end < start || end > entireLength) {
-      LOG.error("Filter returned wrong range: start=" + start + "; end=" + end + "; length=" + entireLength + "; filter=" + filter);
+      String message = "Filter returned wrong range: start=" + start + "; end=" + end + "; length=" + entireLength + "; filter=" + filter;
+      PluginException.logPluginError(LOG, message, null, filter.getClass());
       return false;
     }
     return true;
@@ -174,14 +174,12 @@ public class CompositeFilter implements Filter, FilterMixin {
 
   @Override
   public void applyHeavyFilter(@NotNull Document copiedFragment, int startOffset, int startLineNumber, @NotNull Consumer<? super AdditionalHighlight> consumer) {
-    final boolean dumb = isDumb();
     List<Filter> filters = myFilters;
     int count = filters.size();
 
     for (int i = 0; i < count; i++) {
       Filter filter = filters.get(i);
-      if (!(filter instanceof FilterMixin) || !((FilterMixin)filter).shouldRunHeavy()) continue;
-      if (!dumb || DumbService.isDumbAware(filter)) {
+      if (filter instanceof FilterMixin && ((FilterMixin)filter).shouldRunHeavy()) {
         ((FilterMixin)filter).applyHeavyFilter(copiedFragment, startOffset, startLineNumber, consumer);
       }
     }
@@ -190,7 +188,6 @@ public class CompositeFilter implements Filter, FilterMixin {
   @NotNull
   @Override
   public String getUpdateMessage() {
-    final boolean dumb = isDumb();
     List<Filter> filters = myFilters;
     final List<String> updateMessage = new ArrayList<>();
     int count = filters.size();
@@ -198,8 +195,7 @@ public class CompositeFilter implements Filter, FilterMixin {
     for (int i = 0; i < count; i++) {
       Filter filter = filters.get(i);
 
-      if (!(filter instanceof FilterMixin) || !((FilterMixin)filter).shouldRunHeavy()) continue;
-      if (!dumb || DumbService.isDumbAware(filter)) {
+      if (filter instanceof FilterMixin && ((FilterMixin)filter).shouldRunHeavy()) {
         updateMessage.add(((FilterMixin)filter).getUpdateMessage());
       }
     }

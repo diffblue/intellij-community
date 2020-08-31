@@ -33,13 +33,6 @@ import org.jetbrains.annotations.NotNull;
 public class LengthOneStringInIndexOfInspection
   extends BaseInspection {
 
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message(
-      "length.one.string.in.indexof.display.name");
-  }
-
   @Pattern(VALID_ID_PATTERN)
   @Override
   @NotNull
@@ -89,7 +82,7 @@ public class LengthOneStringInIndexOfInspection
     final int length = text.length();
     final String character = text.substring(1, length - 1);
     switch (character) {
-      case "\'":
+      case "'":
         return "'\\''";
       case "\\\"":
         return "'\"'";

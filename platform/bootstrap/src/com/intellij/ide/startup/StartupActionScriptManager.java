@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.startup;
 
 import com.intellij.openapi.application.PathManager;
@@ -17,10 +17,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * @author cdr
- */
-public class StartupActionScriptManager {
+public final class StartupActionScriptManager {
   public static final String STARTUP_WIZARD_MODE = "StartupWizardMode";
   public static final String ACTION_SCRIPT_FILE = "action.script";
 
@@ -38,8 +35,14 @@ public class StartupActionScriptManager {
     }
   }
 
-  public static synchronized void executeActionScript(@NotNull Path scriptFile, @NotNull Path oldTarget, @NotNull File newTarget) throws IOException {
-    List<ActionCommand> commands = loadActionScript(scriptFile);
+  public static synchronized void executeActionScript(@NotNull File scriptFile, @NotNull File oldTarget, @NotNull File newTarget) throws IOException {
+    List<ActionCommand> commands = loadActionScript(scriptFile.toPath());
+    executeActionScriptCommands(commands, oldTarget, newTarget);
+  }
+
+  public static void executeActionScriptCommands(List<ActionCommand> commands,
+                                                 @NotNull File oldTarget,
+                                                 @NotNull File newTarget) throws IOException {
     for (ActionCommand command : commands) {
       ActionCommand toExecute = mapPaths(command, oldTarget, newTarget);
       if (toExecute != null) {
@@ -79,7 +82,7 @@ public class StartupActionScriptManager {
   }
 
   @NotNull
-  private static List<ActionCommand> loadActionScript(@NotNull Path scriptFile) throws IOException {
+  public static List<ActionCommand> loadActionScript(@NotNull Path scriptFile) throws IOException {
     if (!Files.isRegularFile(scriptFile)) {
       return new ArrayList<>();
     }
@@ -89,11 +92,11 @@ public class StartupActionScriptManager {
       if (data instanceof ActionCommand[]) {
         return new ArrayList<>(Arrays.asList((ActionCommand[])data));
       }
-      else if (data instanceof List && ((List)data).size() == 0) {
+      else if (data instanceof List && ((List<?>)data).size() == 0) {
         return new ArrayList<>();
       }
       else {
-        throw new IOException("Unexpected object: " + data + "/" + data.getClass());
+        throw new IOException("An unexpected object: " + data + "/" + data.getClass());
       }
     }
     catch (ReflectiveOperationException e) {
@@ -103,6 +106,11 @@ public class StartupActionScriptManager {
 
   private static void saveActionScript(@Nullable List<ActionCommand> commands) throws IOException {
     Path scriptFile = getActionScriptFile();
+    saveActionScript(commands, scriptFile);
+  }
+
+  public static void saveActionScript(@Nullable List<ActionCommand> commands, Path scriptFile)
+    throws IOException {
     if (commands != null) {
       Files.createDirectories(scriptFile.getParent());
       try (ObjectOutputStream oos = new ObjectOutputStream(Files.newOutputStream(scriptFile))) {
@@ -114,7 +122,7 @@ public class StartupActionScriptManager {
     }
   }
 
-  private static ActionCommand mapPaths(ActionCommand command, Path oldTarget, File newTarget) {
+  private static ActionCommand mapPaths(ActionCommand command, File oldTarget, File newTarget) {
     if (command instanceof CopyCommand) {
       File destination = mapPath(((CopyCommand)command).myDestination, oldTarget, newTarget);
       if (destination != null) {
@@ -137,8 +145,8 @@ public class StartupActionScriptManager {
     return null;
   }
 
-  private static File mapPath(String path, Path oldTarget, File newTarget) {
-    String oldTargetPath = oldTarget.toString();
+  private static File mapPath(String path, File oldTarget, File newTarget) {
+    String oldTargetPath = oldTarget.getPath();
     if (path.startsWith(oldTargetPath)) {
       if (path.length() == oldTargetPath.length()) {
         return newTarget;
@@ -177,7 +185,7 @@ public class StartupActionScriptManager {
 
       File destDir = destination.getParentFile();
       if (!(destDir.isDirectory() || destDir.mkdirs())) {
-        throw new IOException("Cannot create directory: " + destDir);
+        throw new IOException("Cannot create a directory: " + destDir);
       }
 
       FileUtilRt.copy(source, destination);
@@ -186,6 +194,10 @@ public class StartupActionScriptManager {
     @Override
     public String toString() {
       return "copy[" + mySource + "," + myDestination + "]";
+    }
+
+    public String getSource() {
+      return mySource;
     }
   }
 
@@ -215,7 +227,7 @@ public class StartupActionScriptManager {
       }
 
       if (!(destination.isDirectory() || destination.mkdirs())) {
-        throw new IOException("Cannot create directory: " + destination);
+        throw new IOException("Cannot create a directory: " + destination);
       }
 
       ZipUtil.extract(source, destination, myFilenameFilter);
@@ -224,6 +236,10 @@ public class StartupActionScriptManager {
     @Override
     public String toString() {
       return "unzip[" + mySource + "," + myDestination + "]";
+    }
+
+    public String getSource() {
+      return mySource;
     }
   }
 

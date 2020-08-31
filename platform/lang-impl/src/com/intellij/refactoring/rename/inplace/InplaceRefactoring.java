@@ -1,19 +1,20 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.rename.inplace;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.highlighting.HighlightManager;
+import com.intellij.codeInsight.lookup.LookupFocusDegree;
 import com.intellij.codeInsight.lookup.LookupManager;
 import com.intellij.codeInsight.lookup.impl.LookupImpl;
 import com.intellij.codeInsight.template.*;
 import com.intellij.codeInsight.template.impl.TemplateManagerImpl;
 import com.intellij.codeInsight.template.impl.TemplateState;
+import com.intellij.ide.IdeBundle;
 import com.intellij.ide.util.PsiNavigationSupport;
 import com.intellij.injected.editor.VirtualFileWindow;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageNamesValidation;
 import com.intellij.lang.injection.InjectedLanguageManager;
-import com.intellij.lang.refactoring.NamesValidator;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.application.ApplicationManager;
@@ -29,14 +30,13 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.editor.impl.EditorImpl;
+import com.intellij.openapi.editor.impl.ImaginaryEditor;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.editor.markup.TextAttributes;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.TextEditor;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.keymap.Keymap;
-import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -59,6 +59,7 @@ import com.intellij.refactoring.RefactoringActionHandler;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.ui.DottedBorder;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.popup.PopupFactoryImpl;
 import com.intellij.util.CommonProcessors;
@@ -78,7 +79,7 @@ import java.util.List;
 import java.util.*;
 
 public abstract class InplaceRefactoring {
-  protected static final Logger LOG = Logger.getInstance("#com.intellij.refactoring.rename.inplace.VariableInplaceRenamer");
+  protected static final Logger LOG = Logger.getInstance(VariableInplaceRenamer.class);
   @NonNls protected static final String PRIMARY_VARIABLE_NAME = "PrimaryVariable";
   @NonNls protected static final String OTHER_VARIABLE_NAME = "OtherVariable";
   protected static final Stack<InplaceRefactoring> ourRenamersStack = new Stack<>();
@@ -145,12 +146,13 @@ public abstract class InplaceRefactoring {
 
   public static void unableToStartWarning(Project project, Editor editor) {
     final StartMarkAction startMarkAction = StartMarkAction.canStart(project);
-    final String message = startMarkAction.getCommandName() + " is not finished yet.";
+    final String message = IdeBundle.message("dialog.message.command.not.finished.yet", startMarkAction.getCommandName());
     final Document oldDocument = startMarkAction.getDocument();
     if (editor == null || oldDocument != editor.getDocument()) {
       final int exitCode = Messages.showYesNoDialog(project, message,
                                                     RefactoringBundle.getCannotRefactorMessage(null),
-                                                    "Continue Started", "Abandon Started", Messages.getErrorIcon());
+                                                    RefactoringBundle.message("inplace.refactoring.continue.started"),
+                                                    RefactoringBundle.message("inplace.refactoring.abandon.started"), Messages.getErrorIcon());
       navigateToStarted(oldDocument, project, exitCode, startMarkAction.getCommandName());
     }
     else {
@@ -164,6 +166,7 @@ public abstract class InplaceRefactoring {
 
 
   public boolean performInplaceRefactoring(@Nullable final LinkedHashSet<String> nameSuggestions) {
+    if (myEditor instanceof ImaginaryEditor) return false;
     myNameSuggestions = nameSuggestions;
     if (InjectedLanguageUtil.isInInjectedLanguagePrefixSuffix(myElementToRename)) {
       return false;
@@ -237,8 +240,7 @@ public abstract class InplaceRefactoring {
     return null;
   }
 
-  @NotNull
-  private PsiElement[] getElements(LocalSearchScope searchScope) {
+  private PsiElement @NotNull [] getElements(LocalSearchScope searchScope) {
     final PsiElement[] elements = searchScope.getScope();
     FileViewProvider provider = myElementToRename.getContainingFile().getViewProvider();
     for (PsiElement element : elements) {
@@ -327,13 +329,10 @@ public abstract class InplaceRefactoring {
       final Document oldDocument = e.getDocument();
       if (oldDocument != myEditor.getDocument()) {
         final int exitCode = Messages.showYesNoCancelDialog(myProject, e.getMessage(), getCommandName(),
-                                                            "Navigate to Started", "Abandon Started", "Cancel Current", Messages.getErrorIcon());
-        if (exitCode == Messages.CANCEL) {
-          finish(true);
-        }
-        else {
-          navigateToAlreadyStarted(oldDocument, exitCode);
-        }
+                                                            RefactoringBundle.message("inplace.refactoring.navigate.to.started"),
+                                                            RefactoringBundle.message("inplace.refactoring.abandon.started"),
+                                                            RefactoringBundle.message("inplace.refactoring.cancel.current"), Messages.getErrorIcon());
+        navigateToAlreadyStarted(oldDocument, exitCode);
         return true;
       }
       else {
@@ -357,6 +356,8 @@ public abstract class InplaceRefactoring {
     beforeTemplateStart();
 
     WriteCommandAction.writeCommandAction(myProject).withName(getCommandName()).run(() -> startTemplate(builder));
+
+    afterTemplateStart();
 
     if (myBalloon == null) {
       showBalloon();
@@ -385,16 +386,11 @@ public abstract class InplaceRefactoring {
     myCaretRangeMarker.setGreedyToRight(true);
   }
 
-  private void startTemplate(final TemplateBuilderImpl builder) {
-    final Disposable disposable = Disposer.newDisposable();
-    DaemonCodeAnalyzer.getInstance(myProject).disableUpdateByTimer(disposable);
+  protected void afterTemplateStart(){
+  }
 
-    final MyTemplateListener templateListener = new MyTemplateListener() {
-      @Override
-      protected void restoreDaemonUpdateState() {
-        Disposer.dispose(disposable);
-      }
-    };
+  private void startTemplate(final TemplateBuilderImpl builder) {
+    final MyTemplateListener templateListener = new MyTemplateListener();
 
     final int offset = myEditor.getCaretModel().getOffset();
 
@@ -412,6 +408,11 @@ public abstract class InplaceRefactoring {
     TemplateManager.getInstance(myProject).startTemplate(topLevelEditor, template, templateListener);
     restoreOldCaretPositionAndSelection(offset);
     highlightTemplateVariables(template, topLevelEditor);
+
+    final TemplateState templateState = TemplateManagerImpl.getTemplateState(topLevelEditor);
+    if (templateState != null) {
+      DaemonCodeAnalyzer.getInstance(myProject).disableUpdateByTimer(templateState);
+    }
   }
 
   private void highlightTemplateVariables(Template template, Editor topLevelEditor) {
@@ -448,7 +449,7 @@ public abstract class InplaceRefactoring {
 
     final LookupImpl lookup = (LookupImpl)LookupManager.getActiveLookup(myEditor);
     if (lookup != null && lookup.getLookupStart() <= (restoreCaretOffset(offset))) {
-      lookup.setFocusDegree(LookupImpl.FocusDegree.UNFOCUSED);
+      lookup.setLookupFocusDegree(LookupFocusDegree.UNFOCUSED);
       lookup.performGuardedChange(runnable);
     }
     else {
@@ -475,9 +476,11 @@ public abstract class InplaceRefactoring {
     }
   }
 
-  protected void navigateToAlreadyStarted(Document oldDocument, @Messages.YesNoResult int exitCode) {
+  protected void navigateToAlreadyStarted(Document oldDocument, int exitCode) {
     finish(true);
-    navigateToStarted(oldDocument, myProject, exitCode, getCommandName());
+    if (exitCode != Messages.CANCEL) {
+      navigateToStarted(oldDocument, myProject, exitCode, getCommandName());
+    }
   }
 
   private static void navigateToStarted(final Document oldDocument,
@@ -539,7 +542,7 @@ public abstract class InplaceRefactoring {
 
     final Color bg = previewEditor.getColorsScheme().getColor(EditorColors.CARET_ROW_COLOR);
     previewEditor.setBackgroundColor(bg);
-    previewEditor.setBorder(BorderFactory.createCompoundBorder(new DottedBorder(Color.gray), new LineBorder(bg, 2)));
+    previewEditor.setBorder(BorderFactory.createCompoundBorder(new DottedBorder(JBColor.GRAY), new LineBorder(bg, 2)));
 
     return previewEditor;
   }
@@ -618,10 +621,9 @@ public abstract class InplaceRefactoring {
   }
 
   protected void showDialogAdvertisement(final String actionId) {
-    final Keymap keymap = KeymapManager.getInstance().getActiveKeymap();
-    final Shortcut[] shortcuts = keymap.getShortcuts(actionId);
-    if (shortcuts.length > 0) {
-      setAdvertisementText("Press " + KeymapUtil.getShortcutText(shortcuts[0]) + " to show dialog with more options");
+    final Shortcut shortcut = KeymapUtil.getPrimaryShortcut(actionId);
+    if (shortcut != null) {
+      setAdvertisementText("Press " + KeymapUtil.getShortcutText(shortcut) + " to show dialog with more options");
     }
   }
 
@@ -762,8 +764,7 @@ public abstract class InplaceRefactoring {
   }
 
   protected boolean isIdentifier(final String newName, final Language language) {
-    final NamesValidator namesValidator = LanguageNamesValidation.INSTANCE.forLanguage(language);
-    return namesValidator == null || namesValidator.isIdentifier(newName, myProject);
+    return LanguageNamesValidation.isIdentifier(language, newName, myProject);
   }
 
   protected static VirtualFile getTopLevelVirtualFile(final FileViewProvider fileViewProvider) {
@@ -782,7 +783,7 @@ public abstract class InplaceRefactoring {
     }
   }
 
-  private PsiElement getSelectedInEditorElement(@Nullable PsiElement nameIdentifier,
+  protected PsiElement getSelectedInEditorElement(@Nullable PsiElement nameIdentifier,
                                                 final Collection<? extends PsiReference> refs,
                                                 Collection<? extends Pair<PsiElement, TextRange>> stringUsages,
                                                 final int offset) {
@@ -867,6 +868,7 @@ public abstract class InplaceRefactoring {
     if (borderColor != null) {
       balloonBuilder.setBorderColor(borderColor);
     }
+    adjustBalloon(balloonBuilder);
 
     myBalloon = balloonBuilder.createBalloon();
     Disposer.register(myProject, myBalloon);
@@ -879,6 +881,10 @@ public abstract class InplaceRefactoring {
     });
     EditorUtil.disposeWithEditor(myEditor, myBalloon);
     myEditor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
+    showBalloonInEditor();
+  }
+
+  protected void showBalloonInEditor() {
     final JBPopupFactory popupFactory = JBPopupFactory.getInstance();
     myBalloon.show(new PositionTracker<Balloon>(myEditor.getContentComponent()) {
       @Override
@@ -902,6 +908,9 @@ public abstract class InplaceRefactoring {
     }, Balloon.Position.above);
   }
 
+  protected void adjustBalloon(BalloonBuilder builder) {
+  }
+
   protected void releaseIfNotRestart() {
     if (!isRestart()) {
       releaseResources();
@@ -916,33 +925,25 @@ public abstract class InplaceRefactoring {
     ourShowBalloonInHeadlessMode = showBalloonInHeadlessMode;
   }
 
-  private abstract class MyTemplateListener extends TemplateEditingAdapter {
-
-    protected abstract void restoreDaemonUpdateState();
-
+  private class MyTemplateListener extends TemplateEditingAdapter {
     @Override
     public void beforeTemplateFinished(@NotNull final TemplateState templateState, Template template) {
-      try {
-        final TextResult value = templateState.getVariableValue(PRIMARY_VARIABLE_NAME);
-        myInsertedName = value != null ? value.toString().trim() : null;
+      final TextResult value = templateState.getVariableValue(PRIMARY_VARIABLE_NAME);
+      myInsertedName = value != null ? value.toString().trim() : null;
 
-        TextRange range = templateState.getCurrentVariableRange();
-        final int currentOffset = myEditor.getCaretModel().getOffset();
-        if (range == null && myRenameOffset != null) {
-          range = new TextRange(myRenameOffset.getStartOffset(), myRenameOffset.getEndOffset());
-        }
-        myBeforeRevert =
-          range != null && range.getEndOffset() >= currentOffset && range.getStartOffset() <= currentOffset
-          ? myEditor.getDocument().createRangeMarker(range.getStartOffset(), currentOffset)
-          : null;
-        if (myBeforeRevert != null) {
-          myBeforeRevert.setGreedyToRight(true);
-        }
-        finish(true);
+      TextRange range = templateState.getCurrentVariableRange();
+      final int currentOffset = myEditor.getCaretModel().getOffset();
+      if (range == null && myRenameOffset != null) {
+        range = new TextRange(myRenameOffset.getStartOffset(), myRenameOffset.getEndOffset());
       }
-      finally {
-        restoreDaemonUpdateState();
+      myBeforeRevert =
+        range != null && range.getEndOffset() >= currentOffset && range.getStartOffset() <= currentOffset
+        ? myEditor.getDocument().createRangeMarker(range.getStartOffset(), currentOffset)
+        : null;
+      if (myBeforeRevert != null) {
+        myBeforeRevert.setGreedyToRight(true);
       }
+      finish(true);
     }
 
     @Override
@@ -980,12 +981,7 @@ public abstract class InplaceRefactoring {
         moveOffsetAfter(false);
       }
       finally {
-        try {
-          restoreDaemonUpdateState();
-        }
-        finally {
-          FinishMarkAction.finish(myProject, myEditor, myMarkAction);
-        }
+        FinishMarkAction.finish(myProject, myEditor, myMarkAction);
       }
     }
   }

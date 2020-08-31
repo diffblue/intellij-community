@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.uiDesigner.radComponents;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -23,13 +23,14 @@ import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Objects;
 
 /**
  * @author Anton Katilin
  * @author Vladimir Kondratyev
  */
 public class RadContainer extends RadComponent implements IContainer {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.uiDesigner.radComponents.RadContainer");
+  private static final Logger LOG = Logger.getInstance(RadContainer.class);
 
   public static class Factory extends RadComponentFactory {
     @Override
@@ -191,9 +192,9 @@ public class RadContainer extends RadComponent implements IContainer {
 
   /**
    * @param component component to be added.
-   * @throws java.lang.IllegalArgumentException
+   * @throws IllegalArgumentException
    *          if {@code component} is {@code null}
-   * @throws java.lang.IllegalArgumentException
+   * @throws IllegalArgumentException
    *          if {@code component} already exist in the
    *          container
    */
@@ -230,10 +231,10 @@ public class RadContainer extends RadComponent implements IContainer {
    * of invalid Swing hierarchy.
    *
    * @param component component to be removed.
-   * @throws java.lang.IllegalArgumentException
+   * @throws IllegalArgumentException
    *          if {@code component}
    *          is {@code null}
-   * @throws java.lang.IllegalArgumentException
+   * @throws IllegalArgumentException
    *          if {@code component}
    *          doesn't exist in the container
    */
@@ -299,7 +300,7 @@ public class RadContainer extends RadComponent implements IContainer {
 
   @Nullable
   public RadComponent getComponentAtGrid(int row, int col) {
-    return getGridLayoutManager().getComponentAtGrid(this, row, col);
+    return RadAbstractGridLayoutManager.getComponentAtGrid(this, row, col);
   }
 
   public int getGridRowCount() {
@@ -333,7 +334,7 @@ public class RadContainer extends RadComponent implements IContainer {
   }
 
   /**
-   * @throws java.lang.IllegalArgumentException
+   * @throws IllegalArgumentException
    *          if {@code type}
    *          is {@code null}
    * @see com.intellij.uiDesigner.shared.BorderType
@@ -456,7 +457,7 @@ public class RadContainer extends RadComponent implements IContainer {
     Color borderColor = (myBorderColor != null) ? myBorderColor.getResolvedColor() : null;
     getDelegee().setBorder(myBorderType.createBorder(title, myBorderTitleJustification, myBorderTitlePosition,
                                                      font, titleColor, myBorderSize, borderColor));
-    return myBorderTitle != null && !Comparing.equal(oldTitle, myBorderTitle.getResolvedValue());
+    return myBorderTitle != null && !Objects.equals(oldTitle, myBorderTitle.getResolvedValue());
   }
 
   public RadLayoutManager getLayoutManager() {

@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author peter
  */
 class AsyncFilterRunner {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.execution.impl.FilterRunner");
+  private static final Logger LOG = Logger.getInstance(AsyncFilterRunner.class);
   private static final ExecutorService ourExecutor = SequentialTaskExecutor.createSequentialApplicationPoolExecutor("Console Filters");
   private final EditorHyperlinkSupport myHyperlinks;
   private final Editor myEditor;
@@ -137,6 +137,7 @@ class AsyncFilterRunner {
   }
 
   private void runTasks() {
+    ApplicationManager.getApplication().assertReadAccessAllowed();
     if (myEditor.isDisposed()) return;
 
     while (!myQueue.isEmpty()) {
@@ -214,14 +215,14 @@ class AsyncFilterRunner {
     }
 
     @Nullable
-    AsyncFilterRunner.FilterResult analyzeNextLine() {
+    private AsyncFilterRunner.FilterResult analyzeNextLine() {
       int line = startLine.get();
       Filter.Result result = analyzeLine(line);
       LOG.assertTrue(line == startLine.getAndIncrement());
       return result == null ? null : new FilterResult(delta, result);
     }
 
-    Filter.Result analyzeLine(int line) {
+    private Filter.Result analyzeLine(int line) {
       int lineStart = snapshot.getLineStartOffset(line);
       if (lineStart + delta.getOffsetDelta() < 0) return null;
 

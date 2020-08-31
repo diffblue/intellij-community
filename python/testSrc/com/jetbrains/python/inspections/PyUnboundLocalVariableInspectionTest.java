@@ -264,7 +264,7 @@ public class PyUnboundLocalVariableInspectionTest extends PyInspectionTestCase {
       "    for line in f:\n" +
       "        if a:\n" +
       "            block = True\n" +
-      "        elif <warning descr=\"Name 'block' can be not defined\">block</warning> and b:\n" +
+      "        elif <warning descr=\"Name 'block' can be undefined\">block</warning> and b:\n" +
       "            block = False\n" +
       "        else:\n" +
       "            print(line)\n" +
@@ -277,7 +277,7 @@ public class PyUnboundLocalVariableInspectionTest extends PyInspectionTestCase {
     runWithLanguageLevel(
       LanguageLevel.PYTHON36,
       () -> doTestByText("a: int\n" +
-                         "print(<warning descr=\"Name 'a' can be not defined\">a</warning>)")
+                         "print(<warning descr=\"Name 'a' can be undefined\">a</warning>)")
     );
   }
 
@@ -322,6 +322,36 @@ public class PyUnboundLocalVariableInspectionTest extends PyInspectionTestCase {
         "        print(<warning descr=\"Local variable 'y' might be referenced before assignment\">y</warning>)\n"
       )
     );
+  }
+
+  // PY-4537
+  public void testReferencedAfterDeletion() {
+    doTest();
+  }
+
+  // PY-4537
+  public void testAfterDeletionByIndex() {
+    doTest();
+  }
+
+  // PY-4537
+  public void testAfterDeletionBySlice() {
+    doTest();
+  }
+
+  // PY-4537
+  public void testAfterDeletionGlobal() {
+    doTest();
+  }
+
+  // PY-4537
+  public void testAfterDeletionNonLocal() {
+    runWithLanguageLevel(LanguageLevel.PYTHON37, this::doTest);
+  }
+
+  // PY-4537
+  public void testConditionallyDeleted() {
+    doTest();
   }
 
   @NotNull

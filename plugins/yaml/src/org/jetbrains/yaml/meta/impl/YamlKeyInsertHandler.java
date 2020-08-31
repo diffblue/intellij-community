@@ -19,7 +19,7 @@ import org.jetbrains.yaml.meta.model.YamlMetaType.YamlInsertionMarkup;
 
 import java.util.Optional;
 
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public abstract class YamlKeyInsertHandler implements InsertHandler<LookupElement> {
   private final boolean myNeedsSequenceItem;
 
@@ -53,14 +53,15 @@ public abstract class YamlKeyInsertHandler implements InsertHandler<LookupElemen
 
     String commonPadding = getIndentation(context, lookupString);
 
-    YamlInsertionMarkup insertionMarkup = computeInsertionMarkup(path != null ? path : ForcedCompletionPath.nullPath());
+    YamlInsertionMarkup insertionMarkup = computeInsertionMarkup(context, path != null ? path : ForcedCompletionPath.nullPath());
 
     commonPadding = insertBeforeItem(context, lookupString, commonPadding, insertionMarkup);
     insertionMarkup.insertStringAndCaret(context.getEditor(), commonPadding);
   }
 
   @NotNull
-  protected abstract YamlInsertionMarkup computeInsertionMarkup(@NotNull ForcedCompletionPath forcedCompletionPath);
+  protected abstract YamlInsertionMarkup computeInsertionMarkup(@NotNull InsertionContext context,
+                                                                @NotNull ForcedCompletionPath forcedCompletionPath);
 
   @NotNull
   protected abstract String getReplacement();

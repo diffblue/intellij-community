@@ -15,15 +15,18 @@
  */
 package com.intellij.ide.fileTemplates;
 
-import com.intellij.ide.IdeBundle;
+import com.intellij.application.options.CodeStyle;
+import com.intellij.ide.highlighter.JavaFileType;
+import com.intellij.java.JavaBundle;
+import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.fileTypes.ex.FileTypeManagerEx;
 import com.intellij.openapi.project.Project;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.impl.file.JavaDirectoryServiceImpl;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
@@ -39,9 +42,11 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
                                                 String content,
                                                 boolean reformat,
                                                 String extension) throws IncorrectOperationException {
-    if (extension == null) extension = StdFileTypes.JAVA.getDefaultExtension();
+    if (extension == null) extension = JavaFileType.INSTANCE.getDefaultExtension();
     final String name = "myClass" + "." + extension;
-    final PsiFile psiFile = PsiFileFactory.getInstance(project).createFileFromText(name, StdFileTypes.JAVA, content);
+    final PsiFile psiFile = PsiFileFactory.getInstance(project).createFileFromText(name, JavaLanguage.INSTANCE, content, false, false);
+    psiFile.putUserData(PsiUtil.FILE_LANGUAGE_LEVEL_KEY, LanguageLevel.JDK_14_PREVIEW);
+
     if (!(psiFile instanceof PsiJavaFile)){
       throw new IncorrectOperationException("This template did not produce a Java class or an interface\n"+psiFile.getText());
     }
@@ -51,9 +56,6 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
       throw new IncorrectOperationException("This template did not produce a Java class or an interface\n"+psiFile.getText());
     }
     PsiClass createdClass = classes[0];
-    if(reformat){
-      CodeStyleManager.getInstance(project).reformat(psiJavaFile);
-    }
     String className = createdClass.getName();
     JavaDirectoryServiceImpl.checkCreateClassOrInterface(directory, className);
 
@@ -72,6 +74,9 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
     PsiElement addedElement = directory.add(psiJavaFile);
     if (addedElement instanceof PsiJavaFile) {
       psiJavaFile = (PsiJavaFile)addedElement;
+      if(reformat){
+        CodeStyleManager.getInstance(project).scheduleReformatWhenSettingsComputed(psiJavaFile);
+      }
 
       return psiJavaFile.getClasses()[0];
     }
@@ -84,7 +89,7 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
   }
 
   static void hackAwayEmptyPackage(PsiJavaFile file, FileTemplate template, Map<String, Object> props) throws IncorrectOperationException {
-    if (!template.isTemplateOfType(StdFileTypes.JAVA)) return;
+    if (!template.isTemplateOfType(JavaFileType.INSTANCE)) return;
 
     String packageName = (String)props.get(FileTemplate.ATTRIBUTE_PACKAGE_NAME);
     if(packageName == null || packageName.length() == 0 || packageName.equals(FileTemplate.ATTRIBUTE_PACKAGE_NAME)){
@@ -98,7 +103,7 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
   @Override
   public boolean handlesTemplate(@NotNull FileTemplate template) {
     FileType fileType = FileTypeManagerEx.getInstanceEx().getFileTypeByExtension(template.getExtension());
-    return fileType.equals(StdFileTypes.JAVA) && !ArrayUtil.contains(template.getName(), JavaTemplateUtil.INTERNAL_FILE_TEMPLATES);
+    return fileType.equals(JavaFileType.INSTANCE) && !ArrayUtil.contains(template.getName(), JavaTemplateUtil.INTERNAL_FILE_TEMPLATES);
   }
 
   @NotNull
@@ -116,7 +121,7 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
   }
 
   @Override
-  public boolean canCreate(@NotNull final PsiDirectory[] dirs) {
+  public boolean canCreate(final PsiDirectory @NotNull [] dirs) {
     for (PsiDirectory dir : dirs) {
       if (canCreate(dir)) return true;
     }
@@ -131,7 +136,7 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
   @NotNull
   @Override
   public String getErrorMessage() {
-    return IdeBundle.message("title.cannot.create.class");
+    return JavaBundle.message("title.cannot.create.class");
   }
 
   @Override
@@ -145,7 +150,7 @@ public class JavaCreateFromTemplateHandler implements CreateFromTemplateHandler 
   @NotNull
   @Override
   public String commandName(@NotNull FileTemplate template) {
-    return IdeBundle.message("command.create.class.from.template");
+    return JavaBundle.message("command.create.class.from.template");
   }
 
   public static boolean canCreate(PsiDirectory dir) {

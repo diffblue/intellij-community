@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.impl;
 
 import com.intellij.codeInsight.javadoc.JavaDocInfoGenerator;
@@ -78,8 +78,9 @@ import java.util.List;
 import static org.jetbrains.plugins.groovy.lang.psi.impl.utils.ParenthesesUtils.checkPrecedence;
 import static org.jetbrains.plugins.groovy.lang.psi.impl.utils.ParenthesesUtils.parenthesize;
 
-public class PsiImplUtil {
-  public static final Logger LOG = Logger.getInstance("org.jetbrains.plugins.groovy.lang.psi.impl.PsiImplUtil");
+public final class PsiImplUtil {
+  private static final Logger LOG = Logger.getInstance(PsiImplUtil.class);
+
   private static final String MAIN_METHOD = "main";
   public static final Key<SoftReference<PsiCodeBlock>> PSI_CODE_BLOCK = Key.create("Psi_code_block");
   public static final Key<SoftReference<PsiTypeElement>> PSI_TYPE_ELEMENT = Key.create("psi.type.element");
@@ -158,16 +159,16 @@ public class PsiImplUtil {
       return oldExpr.replaceWithExpression(newExpr, removeUnnecessaryParentheses);
     }
 
-    //check priorities    
+    //check priorities
     if (oldParent instanceof GrExpression && !(oldParent instanceof GrParenthesizedExpression)) {
-      GrExpression addedParenth = checkPrecedence(newExpr, oldExpr) ? parenthesize(newExpr) : newExpr;
+      GrExpression addedParenth = checkPrecedence(newExpr, oldExpr) ? parenthesize(newExpr, oldExpr.getContext()) : newExpr;
       if (newExpr != addedParenth) {
         return oldExpr.replaceWithExpression(addedParenth, removeUnnecessaryParentheses);
       }
     }
 
     if (oldParent instanceof GrForInClause) {
-      return (GrExpression) oldExpr.replace(parenthesize(newExpr));
+      return (GrExpression) oldExpr.replace(parenthesize(newExpr, oldExpr.getContext()));
     }
 
     //if replace closure argument with expression
@@ -283,7 +284,7 @@ public class PsiImplUtil {
   }
 
   @Nullable
-  public static PsiMethod extractUniqueElement(@NotNull GroovyResolveResult[] results) {
+  public static PsiMethod extractUniqueElement(GroovyResolveResult @NotNull [] results) {
     if (results.length != 1) return null;
     final PsiElement element = results[0].getElement();
     return element instanceof PsiMethod ? (PsiMethod) element : null;
@@ -295,7 +296,7 @@ public class PsiImplUtil {
   }
 
   @NotNull
-  public static GroovyResolveResult extractUniqueResult(@NotNull GroovyResolveResult[] results) {
+  public static GroovyResolveResult extractUniqueResult(GroovyResolveResult @NotNull [] results) {
     if (results.length != 1) return EmptyGroovyResolveResult.INSTANCE;
     return results[0];
   }
@@ -446,7 +447,7 @@ public class PsiImplUtil {
 
     private final boolean mySkipWhiteSpace;
 
-    public GroovyBufferVisitor(boolean skipWhitespace, boolean skipComments, int offset, @Nullable char[] buffer) {
+    public GroovyBufferVisitor(boolean skipWhitespace, boolean skipComments, int offset, char @Nullable [] buffer) {
       super(skipWhitespace, skipComments, offset, buffer);
       mySkipWhiteSpace = skipWhitespace;
     }
@@ -816,7 +817,7 @@ public class PsiImplUtil {
 
   public static void replaceExpression(@NotNull String newExpression, @NotNull GrExpression expression) throws IncorrectOperationException {
     final GroovyPsiElementFactory factory = GroovyPsiElementFactory.getInstance(expression.getProject());
-    final GrExpression newCall = factory.createExpressionFromText(newExpression);
+    final GrExpression newCall = factory.createExpressionFromText(newExpression, expression.getContext());
     expression.replaceWithExpression(newCall, true);
   }
 

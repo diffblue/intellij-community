@@ -75,14 +75,15 @@ public abstract class CodeStyleManager  {
    * and splits import statements according to the user's code style.
    *
    * @param element                  the element to reformat.
-   * @param canChangeWhiteSpacesOnly if true, only reformatting is performed; if false,
+   * @param canChangeWhiteSpacesOnly if {@code true}, only reformatting is performed; if {@code false},
    *                                 braces and import statements also can be modified if necessary.
    * @return the element in the PSI tree after the reformat operation corresponding to the
    *         original element.
    * @throws IncorrectOperationException if the file to reformat is read-only.
    * @see #reformatText(PsiFile, int, int)
    */
-  @NotNull public abstract PsiElement reformat(@NotNull PsiElement element, boolean canChangeWhiteSpacesOnly) throws IncorrectOperationException;
+  @NotNull
+  public abstract PsiElement reformat(@NotNull PsiElement element, boolean canChangeWhiteSpacesOnly) throws IncorrectOperationException;
 
   /**
    * Reformats part of the contents of the specified PSI element, enforces braces
@@ -105,7 +106,7 @@ public abstract class CodeStyleManager  {
    * @param element                  the element to reformat.
    * @param startOffset              the start offset in the document of the text range to reformat.
    * @param endOffset                the end offset in the document of the text range to reformat.
-   * @param canChangeWhiteSpacesOnly if true, only reformatting is performed; if false,
+   * @param canChangeWhiteSpacesOnly if {@code true}, only reformatting is performed; if {@code false},
    *                                 braces and import statements also can be modified if necessary.
    * @return the element in the PSI tree after the reformat operation corresponding to the
    *         original element.
@@ -113,9 +114,9 @@ public abstract class CodeStyleManager  {
    * @see #reformatText(PsiFile, int, int)
    */
   public abstract PsiElement reformatRange(@NotNull PsiElement element,
-                                           int startOffset,
-                                           int endOffset,
-                                           boolean canChangeWhiteSpacesOnly) throws IncorrectOperationException;
+                                  int startOffset,
+                                  int endOffset,
+                                  boolean canChangeWhiteSpacesOnly) throws IncorrectOperationException;
 
   /**
    * Delegates to the {@link #reformatText(PsiFile, Collection)} with the single range defined by the given offsets.
@@ -205,7 +206,7 @@ public abstract class CodeStyleManager  {
    *
    * @param file   the file for which the indent should be calculated.
    * @param offset the offset for the line at which the indent should be calculated.
-   * @return the indent string (containing of tabs and/or whitespaces), or null if it
+   * @return the indent string (containing of tabs and/or whitespaces), or {@code null} if it
    *         was not possible to calculate the indent.
    */
   @Nullable
@@ -219,7 +220,7 @@ public abstract class CodeStyleManager  {
    * @param file   the file for which the indent should be calculated.
    * @param offset the offset for the line at which the indent should be calculated.
    * @param mode   the formatting mode {@link FormattingMode}
-   * @return the indent string (containing of tabs and/or whitespaces), or null if it
+   * @return the indent string (containing of tabs and/or whitespaces), or {@code null} if it
    *         was not possible to calculate the indent.
    */
   @Nullable
@@ -232,7 +233,7 @@ public abstract class CodeStyleManager  {
    * editor.
    *
    * @param document for which the indent should be calculated.
-   * @return the indent string (containing of tabs and/or whitespaces), or null if it
+   * @return the indent string (containing of tabs and/or whitespaces), or {@code null} if it
    *         was not possible to calculate the indent.
    */
   @Nullable
@@ -270,7 +271,7 @@ public abstract class CodeStyleManager  {
    * that are executed sequentially. That is done primarily for ability to show progress dialog during formatting (formatting
    * is always performed from EDT, hence, the GUI freezes if we perform formatting as a single big iteration).
    * <p/>
-   * However, there are situation when we don't want to use such an approach - for example, IntelliJ IDEA sometimes inserts dummy
+   * However, there are situation when we don't want to use such an approach - for example, the IDE sometimes inserts dummy
    * text into file in order to calculate formatting-specific data and removes it after that. We don't want to allow Swing events
    * dispatching during that in order to not show that dummy text to the end-user.
    * <p/>
@@ -344,5 +345,9 @@ public abstract class CodeStyleManager  {
   @NotNull
   public DocCommentSettings getDocCommentSettings(@NotNull PsiFile file) {
     return DocCommentSettings.DEFAULTS;
+  }
+
+  public void scheduleReformatWhenSettingsComputed(final @NotNull PsiFile file) {
+    throw new UnsupportedOperationException();
   }
 }

@@ -18,10 +18,13 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.event.TreeModelEvent;
+import javax.swing.event.TreeModelListener;
 import javax.swing.tree.TreeModel;
 import java.awt.*;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.util.Collections;
 import java.util.List;
 
@@ -125,7 +128,7 @@ class ServiceViewActionProvider {
     return (ServiceView)contextComponent;
   }
 
-  private static final AnAction EMPTY_ACTION = new DumbAwareAction(null, null, EmptyIcon.ICON_16) {
+  private static final AnAction EMPTY_ACTION = new DumbAwareAction(EmptyIcon.ICON_16) {
     @Override
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabled(false);
@@ -145,18 +148,31 @@ class ServiceViewActionProvider {
   }
 
   private static class ServiceViewTreeExpander extends DefaultTreeExpander {
-    private final TreeModel myTreeModel;
     private boolean myFlat;
 
     ServiceViewTreeExpander(JTree tree) {
       super(tree);
-      myTreeModel = tree.getModel();
-      myTreeModel.addTreeModelListener(new TreeModelAdapter() {
+      TreeModelListener listener = new TreeModelAdapter() {
         @Override
         protected void process(@NotNull TreeModelEvent event, @NotNull EventType type) {
-          myFlat = isFlat();
+          myFlat = isFlat(tree.getModel());
         }
-      });
+      };
+      tree.getModel().addTreeModelListener(listener);
+      PropertyChangeListener propertyChangeListener = new PropertyChangeListener() {
+        @Override
+        public void propertyChange(PropertyChangeEvent event) {
+          Object oldValue = event.getOldValue();
+          if (oldValue instanceof TreeModel) {
+            ((TreeModel)oldValue).removeTreeModelListener(listener);
+          }
+          Object newValue = event.getNewValue();
+          if (newValue instanceof TreeModel) {
+            ((TreeModel)newValue).addTreeModelListener(listener);
+          }
+        }
+      };
+      tree.addPropertyChangeListener(JTree.TREE_MODEL_PROPERTY, propertyChangeListener);
     }
 
     @Override
@@ -169,14 +185,14 @@ class ServiceViewActionProvider {
       return super.canCollapse() && !myFlat;
     }
 
-    private boolean isFlat() {
-      Object root = myTreeModel.getRoot();
+    private static boolean isFlat(TreeModel treeModel) {
+      Object root = treeModel.getRoot();
       if (root == null) return false;
 
-      int childCount = myTreeModel.getChildCount(root);
+      int childCount = treeModel.getChildCount(root);
       for (int i = 0; i < childCount; i++) {
-        Object child = myTreeModel.getChild(root, i);
-        if (!myTreeModel.isLeaf(child)) {
+        Object child = treeModel.getChild(root, i);
+        if (!treeModel.isLeaf(child)) {
           return false;
         }
       }
@@ -184,8 +200,7 @@ class ServiceViewActionProvider {
     }
   }
 
-  @NotNull
-  private static AnAction[] doGetActions(@Nullable AnActionEvent e, boolean toolbar) {
+  private static AnAction @NotNull [] doGetActions(@Nullable AnActionEvent e, boolean toolbar) {
     if (e == null) return AnAction.EMPTY_ARRAY;
 
     Project project = e.getProject();
@@ -203,7 +218,7 @@ class ServiceViewActionProvider {
     }
     else {
       ServiceViewContributor<?> contributor = getTheOnlyRootContributor(selectedItems);
-      descriptor = contributor == null ? null : contributor.getViewDescriptor();
+      descriptor = contributor == null ? null : contributor.getViewDescriptor(project);
     }
     if (descriptor == null) return AnAction.EMPTY_ARRAY;
 
@@ -212,17 +227,15 @@ class ServiceViewActionProvider {
   }
 
   public static class ItemToolbarActionGroup extends ActionGroup {
-    @NotNull
     @Override
-    public AnAction[] getChildren(@Nullable AnActionEvent e) {
+    public AnAction @NotNull [] getChildren(@Nullable AnActionEvent e) {
       return doGetActions(e, true);
     }
   }
 
   public static class ItemPopupActionGroup extends ActionGroup {
-    @NotNull
     @Override
-    public AnAction[] getChildren(@Nullable AnActionEvent e) {
+    public AnAction @NotNull [] getChildren(@Nullable AnActionEvent e) {
       return doGetActions(e, false);
     }
   }

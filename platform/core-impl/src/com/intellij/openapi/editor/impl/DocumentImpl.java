@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.openapi.Disposable;
@@ -37,14 +23,11 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.reference.SoftReference;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.IntArrayList;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.ImmutableCharSequence;
 import gnu.trove.TIntIntHashMap;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.jetbrains.annotations.*;
 
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
@@ -56,8 +39,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.editor.impl.DocumentImpl");
+public final class DocumentImpl extends UserDataHolderBase implements DocumentEx {
+  private static final Logger LOG = Logger.getInstance(DocumentImpl.class);
   private static final int STRIP_TRAILING_SPACES_BULK_MODE_LINES_LIMIT = 1000;
 
   private final LockFreeCOWSortedArray<DocumentListener> myDocumentListeners =
@@ -195,7 +178,9 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       this.virtualFile = virtualFile;
     }
   }
-  static void processQueue() {
+
+  @ApiStatus.Internal
+  public static void processQueue() {
     RMTreeReference ref;
     while ((ref = (RMTreeReference)rmTreeQueue.poll()) != null) {
       ref.virtualFile.replace(RANGE_MARKERS_KEY, ref, null);
@@ -285,22 +270,30 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   /**
    * @return true if stripping was completed successfully, false if the document prevented stripping by e.g. caret(s) being in the way
    */
-  boolean stripTrailingSpaces(@Nullable final Project project, boolean inChangedLinesOnly, @Nullable int[] caretOffsets) {
+  boolean stripTrailingSpaces(@Nullable final Project project, boolean inChangedLinesOnly, int @Nullable [] caretOffsets) {
     if (!isStripTrailingSpacesEnabled) {
       return true;
     }
     List<StripTrailingSpacesFilter> filters = new ArrayList<>();
+    StripTrailingSpacesFilter specialFilter = null;
     for (StripTrailingSpacesFilterFactory filterFactory : StripTrailingSpacesFilterFactory.EXTENSION_POINT.getExtensions()) {
       StripTrailingSpacesFilter filter = filterFactory.createFilter(project, this);
-      if (filter == StripTrailingSpacesFilter.NOT_ALLOWED) {
-        return true;
+      if (specialFilter == null &&
+          (filter == StripTrailingSpacesFilter.NOT_ALLOWED || filter == StripTrailingSpacesFilter.POSTPONED)) {
+        specialFilter = filter;
       }
-      else if (filter == StripTrailingSpacesFilter.POSTPONED) {
-        return false;
+      else if (filter == StripTrailingSpacesFilter.ENFORCED_REMOVAL) {
+        specialFilter = null;
+        filters.clear();
+        break;
       }
       else {
         filters.add(filter);
       }
+    }
+
+    if (specialFilter != null) {
+      return specialFilter == StripTrailingSpacesFilter.NOT_ALLOWED;
     }
 
     TIntIntHashMap caretPositions = null;
@@ -522,7 +515,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void replaceText(@NotNull CharSequence chars, long newModificationStamp) {
-    replaceString(0, getTextLength(), chars, newModificationStamp, true); //TODO: optimization!!!
+    replaceString(0, getTextLength(), 0, chars, newModificationStamp, true); //TODO: optimization!!!
     clearLineModificationFlags();
   }
 
@@ -547,7 +540,8 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
     ImmutableCharSequence newText = myText.insert(offset, s);
     ImmutableCharSequence newString = newText.subtext(offset, offset + s.length());
-    updateText(newText, offset, "", newString, false, LocalTimeCounter.currentTime(), offset, 0);
+    updateText(newText, offset, "", newString, false, LocalTimeCounter.currentTime(),
+               offset, 0, offset);
     trimToSize();
   }
 
@@ -572,7 +566,8 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
     ImmutableCharSequence newText = myText.delete(startOffset, endOffset);
     ImmutableCharSequence oldString = myText.subtext(startOffset, endOffset);
-    updateText(newText, startOffset, oldString, "", false, LocalTimeCounter.currentTime(), startOffset, endOffset - startOffset);
+    updateText(newText, startOffset, oldString, "", false, LocalTimeCounter.currentTime(),
+               startOffset, endOffset - startOffset, startOffset);
   }
 
   @Override
@@ -580,34 +575,24 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     assertBounds(srcStart, srcEnd);
     if (dstOffset == srcStart || dstOffset == srcEnd) return;
     ProperTextRange srcRange = new ProperTextRange(srcStart, srcEnd);
-    assert !srcRange.containsOffset(dstOffset) : "Can't perform text move from range [" +srcStart+ "; " + srcEnd+ ") to offset "+dstOffset;
+    assert !srcRange.containsOffset(dstOffset) : "Can't perform text move from range [" + srcStart + "; " + srcEnd + ") to offset " + dstOffset;
 
     String replacement = getCharsSequence().subSequence(srcStart, srcEnd).toString();
+    int shift = dstOffset < srcStart ? srcEnd - srcStart : 0;
 
-    insertString(dstOffset, replacement);
-    int shift = 0;
-    if (dstOffset < srcStart) {
-      shift = srcEnd - srcStart;
-    }
-    fireMoveText(srcStart + shift, srcEnd + shift, dstOffset);
-
-    deleteString(srcStart + shift, srcEnd + shift);
-  }
-
-  private void fireMoveText(int start, int end, int newBase) {
-    for (DocumentListener listener : getListeners()) {
-      if (listener instanceof PrioritizedInternalDocumentListener) {
-        ((PrioritizedInternalDocumentListener)listener).moveTextHappened(this, start, end, newBase);
-      }
-    }
+    // a pair of insert remove modifications
+    replaceString(dstOffset, dstOffset, srcStart + shift, replacement, LocalTimeCounter.currentTime(), false);
+    replaceString(srcStart + shift, srcEnd + shift, dstOffset, "", LocalTimeCounter.currentTime(), false);
   }
 
   @Override
   public void replaceString(int startOffset, int endOffset, @NotNull CharSequence s) {
-    replaceString(startOffset, endOffset, s, LocalTimeCounter.currentTime(), false);
+    replaceString(startOffset, endOffset, startOffset, s, LocalTimeCounter.currentTime(), false);
   }
 
-  private void replaceString(int startOffset, int endOffset, @NotNull CharSequence s, final long newModificationStamp, boolean wholeTextReplaced) {
+  @ApiStatus.Internal
+  public void replaceString(int startOffset, int endOffset, int moveOffset, @NotNull CharSequence s,
+                            final long newModificationStamp, boolean wholeTextReplaced) {
     assertBounds(startOffset, endOffset);
 
     assertWriteAccess();
@@ -615,6 +600,12 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
     if (!isWritable()) {
       throw new ReadOnlyModificationException(this);
+    }
+
+    if (moveOffset != startOffset && (startOffset != endOffset && s.length() != 0)) {
+      throw new IllegalArgumentException(
+        "moveOffset != startOffset for a modification which is neither an insert nor deletion." +
+        " startOffset: " + startOffset + "; endOffset: " + endOffset + ";" + "; moveOffset: " + moveOffset + ";");
     }
 
     int initialStartOffset = startOffset;
@@ -628,6 +619,11 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
            s.charAt(newStartInString) == chars.charAt(startOffset)) {
       startOffset++;
       newStartInString++;
+    }
+    if (newStartInString == newStringLength &&
+        startOffset == endOffset &&
+        !wholeTextReplaced) {
+      return;
     }
 
     int newEndInString = newStringLength;
@@ -657,7 +653,9 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       newText = myText.delete(startOffset, endOffset).insert(startOffset, changedPart);
       changedPart = newText.subtext(startOffset, startOffset + changedPart.length());
     }
-    updateText(newText, startOffset, sToDelete, changedPart, wholeTextReplaced, newModificationStamp, initialStartOffset, initialOldLength);
+    boolean wasOptimized = initialStartOffset != startOffset || endOffset - startOffset != initialOldLength;
+    updateText(newText, startOffset, sToDelete, changedPart, wholeTextReplaced, newModificationStamp,
+               initialStartOffset, initialOldLength, wasOptimized ? startOffset : moveOffset);
     trimToSize();
   }
 
@@ -756,7 +754,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     myFrozen = null;
   }
 
-  void clearLineModificationFlagsExcept(@NotNull int[] caretLines) {
+  void clearLineModificationFlagsExcept(int @NotNull [] caretLines) {
     IntArrayList modifiedLines = new IntArrayList(caretLines.length);
     LineSet lineSet = getLineSet();
     for (int line : caretLines) {
@@ -777,16 +775,19 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
                           boolean wholeTextReplaced,
                           long newModificationStamp,
                           int initialStartOffset,
-                          int initialOldLength) {
+                          int initialOldLength,
+                          int moveOffset) {
     if (LOG.isTraceEnabled()) {
       LOG.trace("updating document " + this + ".\nNext string:'" + newString + "'\nOld string:'" + oldString + "'");
     }
 
+    assert moveOffset >= 0 && moveOffset <= getTextLength() : "Invalid moveOffset: " + moveOffset;
     assertNotNestedModification();
     myChangeInProgress = true;
     DelayedExceptions exceptions = new DelayedExceptions();
     try {
-      DocumentEvent event = new DocumentEventImpl(this, offset, oldString, newString, myModificationStamp, wholeTextReplaced, initialStartOffset, initialOldLength);
+      DocumentEvent event = new DocumentEventImpl(this, offset, oldString, newString, myModificationStamp, wholeTextReplaced,
+                                                  initialStartOffset, initialOldLength, moveOffset);
       beforeChangedUpdate(event, exceptions);
       myTextString = null;
       ImmutableCharSequence prevText = myText;
@@ -799,8 +800,8 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       exceptions.rethrowPCE();
     }
   }
-  
-  private class DelayedExceptions {
+
+  private final class DelayedExceptions {
     Throwable myException;
 
     void register(Throwable e) {
@@ -810,7 +811,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
       else {
         myException.addSuppressed(e);
       }
-      
+
       if (!(e instanceof ProcessCanceledException)) {
         LOG.error(e);
       }
@@ -1017,8 +1018,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     return lineCount;
   }
 
-  @NotNull
-  private DocumentListener[] getListeners() {
+  private DocumentListener @NotNull [] getListeners() {
     return myDocumentListeners.getArray();
   }
 
@@ -1058,7 +1058,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
 
   @Override
   public void setText(@NotNull final CharSequence text) {
-    Runnable runnable = () -> replaceString(0, getTextLength(), text, LocalTimeCounter.currentTime(), true);
+    Runnable runnable = () -> replaceString(0, getTextLength(), 0, text, LocalTimeCounter.currentTime(), true);
     if (CommandProcessor.getInstance().isUndoTransparentActionInProgress()) {
       runnable.run();
     }
@@ -1077,7 +1077,7 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
   @Override
   public final void setInBulkUpdate(boolean value) {
     if (myAssertThreading) {
-      ApplicationManager.getApplication().assertIsDispatchThread();
+      ApplicationManager.getApplication().assertIsWriteThread();
     }
     if (myUpdatingBulkModeStatus) {
       throw new IllegalStateException("Detected bulk mode status update from DocumentBulkUpdateListener");
@@ -1198,17 +1198,17 @@ public class DocumentImpl extends UserDataHolderBase implements DocumentEx {
     if (myDoingBulkUpdate) throw new UnexpectedBulkUpdateStateException(myBulkUpdateEnteringTrace);
   }
 
-  private static class UnexpectedBulkUpdateStateException extends RuntimeException implements ExceptionWithAttachments {
+  private static final class UnexpectedBulkUpdateStateException extends RuntimeException implements ExceptionWithAttachments {
     private final Attachment[] myAttachments;
 
     private UnexpectedBulkUpdateStateException(Throwable enteringTrace) {
+      super("Current operation is not permitted in bulk mode, see Document.setInBulkUpdate javadoc");
       myAttachments = enteringTrace == null ? Attachment.EMPTY_ARRAY
                                             : new Attachment[] {new Attachment("enteringTrace.txt", enteringTrace)};
     }
 
-    @NotNull
     @Override
-    public Attachment[] getAttachments() {
+    public Attachment @NotNull [] getAttachments() {
       return myAttachments;
     }
   }

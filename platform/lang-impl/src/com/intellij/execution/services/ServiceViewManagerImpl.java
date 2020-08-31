@@ -1,6 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.execution.services;
 
+import com.intellij.execution.ExecutionBundle;
+import com.intellij.execution.services.ServiceEventListener.ServiceEvent;
 import com.intellij.execution.services.ServiceModel.ServiceViewItem;
 import com.intellij.execution.services.ServiceModelFilter.ServiceViewFilter;
 import com.intellij.execution.services.ServiceViewDragHelper.ServiceViewDragBean;
@@ -13,21 +15,25 @@ import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.application.AppUIExecutor;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
+import com.intellij.openapi.extensions.ExtensionPointListener;
+import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.RegisterToolWindowTask;
 import com.intellij.openapi.wm.ToolWindow;
-import com.intellij.openapi.wm.ToolWindowAnchor;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowEx;
@@ -35,8 +41,10 @@ import com.intellij.ui.AppUIUtil;
 import com.intellij.ui.AutoScrollToSourceHandler;
 import com.intellij.ui.content.*;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.FactoryMap;
+import com.intellij.util.containers.SmartHashSet;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -44,11 +52,16 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.concurrency.AsyncPromise;
 import org.jetbrains.concurrency.Promise;
 
-import javax.swing.*;
+import java.lang.ref.WeakReference;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
-@State(name = "ServiceViewManager", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
+@State(name = "ServiceViewManager", storages = {
+  @Storage(value = StoragePathMacros.PRODUCT_WORKSPACE_FILE),
+  @Storage(value = StoragePathMacros.WORKSPACE_FILE, deprecated = true)
+})
 public final class ServiceViewManagerImpl implements ServiceViewManager, PersistentStateComponent<ServiceViewManagerImpl.State> {
   @NonNls private static final String HELP_ID = "services.tool.window";
 
@@ -57,40 +70,73 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
   private final ServiceModel myModel;
   private final ServiceModelFilter myModelFilter;
-  private final Map<String, Collection<ServiceViewContributor>> myGroups;
-  private final List<ServiceViewContentHolder> myContentHolders = ContainerUtil.newSmartList();
+  private final Map<String, Collection<ServiceViewContributor<?>>> myGroups = new ConcurrentHashMap<>();
+  private final List<ServiceViewContentHolder> myContentHolders = new SmartList<>();
   private boolean myActivationActionsRegistered;
   private AutoScrollToSourceHandler myAutoScrollToSourceHandler;
+
+  private final Set<String> myActiveToolWindowIds = new SmartHashSet<>();
+  private boolean myRegisteringToolWindowAvailable;
 
   public ServiceViewManagerImpl(@NotNull Project project) {
     myProject = project;
     myModel = new ServiceModel(myProject);
     Disposer.register(myProject, myModel);
     myModelFilter = new ServiceModelFilter();
-    myGroups = loadGroups();
-    myProject.getMessageBus().connect(myModel).subscribe(ServiceEventListener.TOPIC, e -> myModel.refresh(e).onSuccess(o -> {
-      boolean available = myModel.getRoots().stream().anyMatch(root -> e.contributorClass.isInstance(root.getRootContributor()));
-      if (available) {
-        activateToolWindow(e.contributorClass, true);
-      }
-      AppUIUtil.invokeOnEdt(() -> {
-        ServiceViewContentHolder holder = getContentHolder(e.contributorClass);
-        if (holder != null) {
-          holder.processAllModels(viewModel -> viewModel.eventProcessed(e));
+    loadGroups(ServiceModel.CONTRIBUTOR_EP_NAME.getExtensionList());
+    myProject.getMessageBus().connect(myModel).subscribe(ServiceEventListener.TOPIC,
+                                                         e -> myModel.handle(e).onSuccess(o -> eventHandled(e)));
+    initRoots();
+    ServiceModel.CONTRIBUTOR_EP_NAME.addExtensionPointListener(new ServiceViewExtensionPointListener(), myProject);
+  }
+
+  private void eventHandled(@NotNull ServiceEvent e) {
+    String toolWindowId = getToolWindowId(e.contributorClass);
+    if (toolWindowId == null) {
+      return;
+    }
+
+    ServiceViewItem eventRoot = ContainerUtil.find(myModel.getRoots(), root -> e.contributorClass.isInstance(root.getRootContributor()));
+    if (eventRoot != null) {
+      boolean show = !(eventRoot.getViewDescriptor() instanceof ServiceViewNonActivatingDescriptor);
+      updateToolWindow(toolWindowId, true, show);
+    }
+    else {
+      Set<? extends ServiceViewContributor<?>> activeContributors = getActiveContributors();
+      Collection<ServiceViewContributor<?>> toolWindowContributors = myGroups.get(toolWindowId);
+      updateToolWindow(toolWindowId, ContainerUtil.intersects(activeContributors, toolWindowContributors), false);
+    }
+  }
+
+  private void initRoots() {
+    myModel.getInvoker().invokeLater(() -> {
+      myModel.initRoots().onSuccess(o -> {
+        Set<? extends ServiceViewContributor<?>> activeContributors = getActiveContributors();
+        Map<String, Boolean> toolWindowIds = new HashMap<>();
+        for (ServiceViewContributor<?> contributor : ServiceModel.CONTRIBUTOR_EP_NAME.getExtensionList()) {
+          String toolWindowId = getToolWindowId(contributor.getClass());
+          if (toolWindowId != null) {
+            Boolean active = toolWindowIds.putIfAbsent(toolWindowId, activeContributors.contains(contributor));
+            if (Boolean.FALSE == active && activeContributors.contains(contributor)) {
+              toolWindowIds.put(toolWindowId, Boolean.TRUE);
+            }
+          }
         }
-      }, myProject.getDisposed());
-    }));
-    myModel.initRoots().onSuccess(o -> {
-      for (ServiceViewItem root : myModel.getRoots()) {
-        activateToolWindow(root.getRootContributor().getClass(), false);
-      }
+        for (Map.Entry<String, Boolean> entry : toolWindowIds.entrySet()) {
+          registerToolWindow(entry.getKey(), entry.getValue());
+        }
+      });
     });
+  }
+
+  private Set<? extends ServiceViewContributor<?>> getActiveContributors() {
+    return ContainerUtil.map2Set(myModel.getRoots(), ServiceViewItem::getRootContributor);
   }
 
   @Nullable
   private ServiceViewContentHolder getContentHolder(@NotNull Class<?> contributorClass) {
     for (ServiceViewContentHolder holder : myContentHolders) {
-      for (ServiceViewContributor rootContributor : holder.rootContributors) {
+      for (ServiceViewContributor<?> rootContributor : holder.rootContributors) {
         if (contributorClass.isInstance(rootContributor)) {
           return holder;
         }
@@ -99,69 +145,76 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     return null;
   }
 
-  private void activateToolWindow(@NotNull Class<?> contributorClass, boolean show) {
-    ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
-    if (toolWindowManager == null) return;
+  private void registerToolWindow(@NotNull String toolWindowId, boolean active) {
+    if (myProject.isDefault()) {
+      return;
+    }
 
-    toolWindowManager.invokeLater(() -> {
-      if (myProject.isDisposed()) return;
-
+    ApplicationManager.getApplication().invokeLater(() -> {
       if (!myActivationActionsRegistered) {
         myActivationActionsRegistered = true;
-        Collection<ServiceViewContributor> contributors = myGroups.get(getToolWindowId());
+        Collection<ServiceViewContributor<?>> contributors = myGroups.get(getToolWindowId());
         if (contributors != null) {
-          registerActivateByContributorActions(contributors);
+          registerActivateByContributorActions(myProject, contributors);
         }
       }
 
-      String toolWindowId = getToolWindowId(contributorClass);
-      if (toolWindowId == null) return;
-
-      boolean doShow = show || getContentHolder(contributorClass) != null;
-      ToolWindow toolWindow = toolWindowManager.getToolWindow(toolWindowId);
-      if (toolWindow == null) {
-        toolWindow = createToolWindow(toolWindowId, toolWindowManager);
-        if (doShow) {
-          toolWindow.show(null);
+      myRegisteringToolWindowAvailable = active;
+      try {
+        ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
+        ToolWindow toolWindow = toolWindowManager.registerToolWindow(RegisterToolWindowTask.lazyAndClosable(toolWindowId, new ServiceViewToolWindowFactory(), AllIcons.Toolwindows.ToolWindowServices));
+        if (active) {
+          myActiveToolWindowIds.add(toolWindowId);
         }
+        else {
+          toolWindow.setShowStripeButton(false);
+        }
+      }
+      finally {
+        myRegisteringToolWindowAvailable = false;
+      }
+    }, ModalityState.NON_MODAL, myProject.getDisposed());
+  }
+
+  private void updateToolWindow(@NotNull String toolWindowId, boolean active, boolean show) {
+    if (myProject.isDisposed() || myProject.isDefault()) {
+      return;
+    }
+
+    ApplicationManager.getApplication().invokeLater(() -> {
+      ToolWindow toolWindow = ToolWindowManager.getInstance(myProject).getToolWindow(toolWindowId);
+      if (toolWindow == null) {
         return;
       }
 
-      doShow = !toolWindow.isAvailable() && doShow;
-      toolWindow.setAvailable(true, null);
-      if (doShow) {
-        toolWindow.show(null);
-      }
-    });
-  }
-
-  @NotNull
-  private ToolWindowEx createToolWindow(String toolWindowId, ToolWindowManager toolWindowManager) {
-    ToolWindowEx toolWindow =
-      (ToolWindowEx)toolWindowManager.registerToolWindow(toolWindowId, true, ToolWindowAnchor.BOTTOM, myProject, true);
-    toolWindow.setIcon(getToolWindowIcon());
-    createToolWindowContent(toolWindowId, toolWindow);
-    return toolWindow;
-  }
-
-  public void createToolWindowContent(@NotNull String toolWindowId, @NotNull ToolWindow toolWindow) {
-    Collection<ServiceViewContributor> contributors = myGroups.get(toolWindowId);
-    if (contributors == null) return;
-
-    ContentManager contentManager = toolWindow.getContentManager();
-    ToolWindowEx toolWindowEx = (ToolWindowEx)toolWindow;
-    contentManager.addContentManagerListener(new ContentManagerAdapter() {
-      @Override
-      public void contentRemoved(@NotNull ContentManagerEvent event) {
-        if (contentManager.getContentCount() == 0) {
-          toolWindow.setAvailable(false, null);
+      if (active) {
+        boolean doShow = show && !myActiveToolWindowIds.contains(toolWindowId) && !toolWindow.isShowStripeButton();
+        myActiveToolWindowIds.add(toolWindowId);
+        if (doShow) {
+          toolWindow.show();
         }
       }
-    });
+      else if (myActiveToolWindowIds.remove(toolWindowId)) {
+        // Hide tool window only if model roots became empty and there were some services shown before update.
+        toolWindow.hide();
+        toolWindow.setShowStripeButton(false);
+      }
+    }, ModalityState.NON_MODAL, myProject.getDisposed());
+  }
+
+  boolean shouldBeAvailable() {
+    return myRegisteringToolWindowAvailable;
+  }
+
+  void createToolWindowContent(@NotNull ToolWindow toolWindow) {
+    String toolWindowId = toolWindow.getId();
+    Collection<ServiceViewContributor<?>> contributors = myGroups.get(toolWindowId);
+    if (contributors == null) return;
 
     if (myAutoScrollToSourceHandler == null) {
       myAutoScrollToSourceHandler = ServiceViewSourceScrollHelper.createAutoScrollToSourceHandler(myProject);
     }
+    ToolWindowEx toolWindowEx = (ToolWindowEx)toolWindow;
     ServiceViewSourceScrollHelper.installAutoScrollSupport(myProject, toolWindowEx, myAutoScrollToSourceHandler);
 
     Pair<ServiceViewState, List<ServiceViewState>> states = getServiceViewStates(toolWindowId);
@@ -169,11 +222,12 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     ServiceView mainView = ServiceView.createView(myProject, mainModel, prepareViewState(states.first));
     mainView.setAutoScrollToSourceHandler(myAutoScrollToSourceHandler);
 
+    ContentManager contentManager = toolWindow.getContentManager();
     ServiceViewContentHolder holder = new ServiceViewContentHolder(mainView, contentManager, contributors, toolWindowId);
     myContentHolders.add(holder);
     contentManager.addContentManagerListener(new ServiceViewContentMangerListener(myModelFilter, myAutoScrollToSourceHandler, holder));
 
-    addMainContent(contentManager, mainView);
+    addMainContent(toolWindow.getContentManager(), mainView);
     loadViews(contentManager, mainView, contributors, states.second);
     ServiceViewDragHelper.installDnDSupport(myProject, toolWindowEx.getDecorator(), contentManager);
   }
@@ -190,10 +244,17 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     contentManager.addContent(mainContent);
     mainView.getModel().addModelListener(() -> {
       boolean isEmpty = mainView.getModel().getRoots().isEmpty();
-      AppUIUtil.invokeOnEdt(() -> {
+      AppUIExecutor.onUiThread().expireWith(myProject).submit(() -> {
+        if (contentManager.isDisposed()) return;
+
         if (isEmpty) {
-          if (contentManager.getIndexOfContent(mainContent) >= 0) {
-            contentManager.removeContent(mainContent, false);
+          if (contentManager.getIndexOfContent(mainContent) < 0) {
+            if (contentManager.getContentCount() == 0) {
+              contentManager.addContent(mainContent, 0);
+            }
+          }
+          else if (contentManager.getContentCount() > 1) {
+              contentManager.removeContent(mainContent, false);
           }
         }
         else {
@@ -201,16 +262,16 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
             contentManager.addContent(mainContent, 0);
           }
         }
-      }, myProject.getDisposed());
+      });
     });
   }
 
   private void loadViews(ContentManager contentManager,
                          ServiceView mainView,
-                         Collection<ServiceViewContributor> contributors,
+                         Collection<? extends ServiceViewContributor<?>> contributors,
                          List<ServiceViewState> viewStates) {
     myModel.getInvoker().invokeLater(() -> {
-      Map<String, ServiceViewContributor> contributorsMap = FactoryMap.create(className -> {
+      Map<String, ServiceViewContributor<?>> contributorsMap = FactoryMap.create(className -> {
         for (ServiceViewContributor<?> contributor : contributors) {
           if (className.equals(contributor.getClass().getName())) {
             return contributor;
@@ -242,12 +303,12 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
       if (!loadedModels.isEmpty()) {
         ServiceViewModel modelToSelect = toSelect;
-        AppUIUtil.invokeOnEdt(() -> {
+        AppUIExecutor.onUiThread().expireWith(myProject).submit(() -> {
           for (Pair<ServiceViewModel, ServiceViewState> pair : loadedModels) {
             extract(contentManager, pair.first, pair.second, false);
           }
           selectContentByModel(contentManager, modelToSelect);
-        }, myProject.getDisposed());
+        });
       }
     });
   }
@@ -257,23 +318,16 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
   public Promise<Void> select(@NotNull Object service, @NotNull Class<?> contributorClass, boolean activate, boolean focus) {
     AsyncPromise<Void> result = new AsyncPromise<>();
     // Ensure model is updated, then iterate over service views on EDT in order to find view with service and select it.
-    myModel.getInvoker().runOrInvokeLater(() -> AppUIUtil.invokeLaterIfProjectAlive(myProject, () -> {
-      ServiceViewContentHolder holder = getContentHolder(contributorClass);
-      if (holder == null) {
-        result.setError("Content manager not initialized");
+    myModel.getInvoker().invoke(() -> AppUIUtil.invokeLaterIfProjectAlive(myProject, () -> {
+      String toolWindowId = getToolWindowId(contributorClass);
+      if (toolWindowId == null) {
+        result.setError("Contributor group not found");
         return;
       }
-      Runnable runnable = () -> {
-        List<Content> contents = ContainerUtil.newSmartList(holder.contentManager.getContents());
-        if (contents.isEmpty()) {
-          result.setError("Content not initialized");
-          return;
-        }
-
-        Collections.reverse(contents);
-        select(myProject, contents.iterator(), result, service, contributorClass, focus);
-      };
-      ToolWindow toolWindow = activate ? ToolWindowManager.getInstance(myProject).getToolWindow(holder.toolWindowId) : null;
+      Runnable runnable = () -> promiseFindView(contributorClass, result,
+                                                serviceView -> serviceView.select(service, contributorClass),
+                                                content -> selectContent(content, focus, myProject));
+      ToolWindow toolWindow = activate ? ToolWindowManager.getInstance(myProject).getToolWindow(toolWindowId) : null;
       if (toolWindow != null) {
         toolWindow.activate(runnable, focus, focus);
       }
@@ -284,35 +338,46 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     return result;
   }
 
-  private static void select(Project project, Iterator<Content> iterator, AsyncPromise<Void> result,
-                             @NotNull Object service, @NotNull Class<?> contributorClass, boolean focus) {
+  private void promiseFindView(Class<?> contributorClass, AsyncPromise<Void> result,
+                               Function<? super ServiceView, ? extends Promise<?>> action, Consumer<? super Content> onSuccess) {
+    ServiceViewContentHolder holder = getContentHolder(contributorClass);
+    if (holder == null) {
+      result.setError("Content manager not initialized");
+      return;
+    }
+    List<Content> contents = new SmartList<>(holder.contentManager.getContents());
+    if (contents.isEmpty()) {
+      result.setError("Content not initialized");
+      return;
+    }
+    Collections.reverse(contents);
+
+    promiseFindView(contents.iterator(), result, action, onSuccess);
+  }
+
+  private static void promiseFindView(Iterator<? extends Content> iterator, AsyncPromise<Void> result,
+                                      Function<? super ServiceView, ? extends Promise<?>> action, Consumer<? super Content> onSuccess) {
     Content content = iterator.next();
     ServiceView serviceView = getServiceView(content);
     if (serviceView == null) {
       if (iterator.hasNext()) {
-        select(project, iterator, result, service, contributorClass, focus);
+        promiseFindView(iterator, result, action, onSuccess);
       }
       else {
         result.setError("Not services content");
       }
       return;
     }
-    serviceView.select(service, contributorClass)
+    action.apply(serviceView)
       .onSuccess(v -> {
-        AppUIUtil.invokeOnEdt(() -> {
-          ContentManager contentManager = content.getManager();
-          if (contentManager == null) return;
-
-          if (contentManager.getSelectedContent() != content && contentManager.getIndexOfContent(content) >= 0) {
-            contentManager.setSelectedContent(content, focus);
-          }
-        }, project.getDisposed());
-
+        if (onSuccess != null) {
+          onSuccess.accept(content);
+        }
         result.setResult(null);
       })
       .onError(e -> {
         if (iterator.hasNext()) {
-          select(project, iterator, result, service, contributorClass, focus);
+          promiseFindView(iterator, result, action, onSuccess);
         }
         else {
           result.setError(e);
@@ -320,10 +385,33 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       });
   }
 
+  private static void selectContent(Content content, boolean focus, Project project) {
+    AppUIExecutor.onUiThread().expireWith(project).submit(() -> {
+      ContentManager contentManager = content.getManager();
+      if (contentManager == null) return;
+
+      if (contentManager.getSelectedContent() != content && contentManager.getIndexOfContent(content) >= 0) {
+        contentManager.setSelectedContent(content, focus);
+      }
+    });
+  }
+
+  @NotNull
+  @Override
+  public Promise<Void> expand(@NotNull Object service, @NotNull Class<?> contributorClass) {
+    AsyncPromise<Void> result = new AsyncPromise<>();
+    // Ensure model is updated, then iterate over service views on EDT in order to find view with service and select it.
+    myModel.getInvoker().invoke(() -> AppUIUtil.invokeLaterIfProjectAlive(myProject, () ->
+      promiseFindView(contributorClass, result,
+                    serviceView -> serviceView.expand(service, contributorClass),
+                      null)));
+    return result;
+  }
+
   @NotNull
   Promise<Void> select(@NotNull VirtualFile virtualFile) {
     AsyncPromise<Void> result = new AsyncPromise<>();
-    myModel.getInvoker().runOrInvokeLater(() -> {
+    myModel.getInvoker().invoke(() -> {
       ServiceViewItem fileItem = myModel.findItem(
         item -> {
           ServiceViewDescriptor descriptor = item.getViewDescriptor();
@@ -334,8 +422,8 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
                 item.getViewDescriptor() instanceof ServiceViewLocatableDescriptor
       );
       if (fileItem != null) {
-        Promise<Void> promise = select(fileItem.getValue(), fileItem.getRootContributor().getClass(), true, true);
-        promise.onSuccess(o -> result.setResult(null)).onError(t -> result.setError(t));
+        Promise<Void> promise = select(fileItem.getValue(), fileItem.getRootContributor().getClass(), false, false);
+        promise.processed(result);
       }
     });
     return result;
@@ -351,7 +439,9 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
     ServiceViewFilter parentFilter = serviceView.getModel().getFilter();
     ServiceViewModel viewModel = ServiceViewModel.createModel(items, dragBean.getContributor(), myModel, myModelFilter, parentFilter);
-    extract(holder.contentManager, viewModel, new ServiceViewState(), true);
+    ServiceViewState state = new ServiceViewState();
+    serviceView.saveState(state);
+    extract(holder.contentManager, viewModel, state, true);
   }
 
   private void extract(ContentManager contentManager, ServiceViewModel viewModel, ServiceViewState viewState, boolean select) {
@@ -380,17 +470,21 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     viewModel.addModelListener(() -> {
       ServiceViewItem item = viewModel.getService();
       if (item != null && !viewModel.getChildren(item).isEmpty() && contentManager != null) {
-        AppUIUtil.invokeOnEdt(() -> {
+        AppUIExecutor.onUiThread().expireWith(myProject).submit(() -> {
+          ServiceViewItem viewItem = viewModel.getService();
+          if (viewItem == null) return;
+
           int index = contentManager.getIndexOfContent(content);
           if (index < 0) return;
 
           contentManager.removeContent(content, true);
-          ServiceListModel listModel = new ServiceListModel(myModel, myModelFilter, ContainerUtil.newSmartList(item),
+          ServiceListModel listModel = new ServiceListModel(myModel, myModelFilter, new SmartList<>(viewItem),
                                                             viewModel.getFilter().getParent());
           ServiceView listView = ServiceView.createView(myProject, listModel, prepareViewState(new ServiceViewState()));
-          Content listContent = addServiceContent(contentManager, listView, item.getViewDescriptor().getContentPresentation(), true, index);
+          Content listContent =
+            addServiceContent(contentManager, listView, viewItem.getViewDescriptor().getContentPresentation(), true, index);
           extractList(listModel, listContent);
-        }, myProject.getDisposed());
+        });
       }
       else {
         updateContentTab(item, content);
@@ -404,7 +498,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
   private static ItemPresentation getContentPresentation(Project project, ServiceViewModel viewModel, ServiceViewState viewState) {
     if (viewModel instanceof ContributorModel) {
-      return ((ContributorModel)viewModel).getContributor().getViewDescriptor().getContentPresentation();
+      return ((ContributorModel)viewModel).getContributor().getViewDescriptor(project).getContentPresentation();
     }
     else if (viewModel instanceof GroupModel) {
       return ((GroupModel)viewModel).getGroup().getViewDescriptor().getContentPresentation();
@@ -419,7 +513,10 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       }
       String name = viewState.id;
       if (StringUtil.isEmpty(name)) {
-        name = Messages.showInputDialog(project, "Group Name:", "Group Services", null, null, null);
+        name = Messages.showInputDialog(project,
+                                        ExecutionBundle.message("service.view.group.label"),
+                                        ExecutionBundle.message("service.view.group.title"),
+                                        null, null, null);
         if (StringUtil.isEmpty(name)) return null;
       }
       return new PresentationData(name, null, AllIcons.Nodes.Folder, null);
@@ -453,35 +550,34 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
   private static void updateContentTab(ServiceViewItem item, Content content) {
     if (item != null) {
-      Condition<?> expired = o -> {
-        ContentManager contentManager = content.getManager();
-        return contentManager == null || contentManager.isDisposed();
-      };
-      AppUIUtil.invokeOnEdt(() -> {
-        ItemPresentation itemPresentation = item.getViewDescriptor().getContentPresentation();
+      WeakReference<ServiceViewItem> itemRef = new WeakReference<>(item);
+      AppUIExecutor.onUiThread().expireWith(content).submit(() -> {
+        ServiceViewItem viewItem = itemRef.get();
+        if (viewItem == null) return;
+
+        ItemPresentation itemPresentation = viewItem.getViewDescriptor().getContentPresentation();
         content.setDisplayName(ServiceViewDragHelper.getDisplayName(itemPresentation));
         content.setIcon(itemPresentation.getIcon(false));
-      }, expired);
+      });
     }
   }
 
-  private static Map<String, Collection<ServiceViewContributor>> loadGroups() {
-    Map<String, Collection<ServiceViewContributor>> result = new HashMap<>();
-    Set<ServiceViewContributor> contributors = ContainerUtil.newHashSet(ServiceModel.getContributors());
+  private void loadGroups(Collection<? extends ServiceViewContributor<?>> contributors) {
     if (Registry.is("ide.service.view.split")) {
-      for (ServiceViewContributor contributor : contributors) {
-        result.put(contributor.getViewDescriptor().getId(), ContainerUtil.newSmartList(contributor));
+      for (ServiceViewContributor<?> contributor : contributors) {
+        myGroups.put(contributor.getViewDescriptor(myProject).getId(), new SmartList<>(contributor));
       }
     }
-    else {
-      if (!contributors.isEmpty()) {
-        result.put(getToolWindowId(), contributors);
-      }
+    else if (!contributors.isEmpty()) {
+      String servicesToolWindowId = getToolWindowId();
+      Collection<ServiceViewContributor<?>> servicesContributors =
+        myGroups.computeIfAbsent(servicesToolWindowId, __ -> ContainerUtil.newConcurrentSet());
+      servicesContributors.addAll(contributors);
     }
-    return result;
   }
 
-  private Pair<ServiceViewState, List<ServiceViewState>> getServiceViewStates(String groupId) {
+  @NotNull
+  private Pair<ServiceViewState, List<ServiceViewState>> getServiceViewStates(@NotNull String groupId) {
     List<ServiceViewState> states = ContainerUtil.filter(myState.viewStates, state -> groupId.equals(state.groupId));
     ServiceViewState mainState = ContainerUtil.find(states, state -> StringUtil.isEmpty(state.viewType));
     if (mainState == null) {
@@ -505,8 +601,11 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       myState.viewStates.add(mainState);
       holder.mainView.saveState(mainState);
       mainState.groupId = holder.toolWindowId;
+      mainState.treeStateElement = new Element("root");
+      mainState.treeState.writeExternal(mainState.treeStateElement);
+      mainState.clearTreeState();
 
-      List<ServiceView> processedViews = ContainerUtil.newSmartList();
+      List<ServiceView> processedViews = new SmartList<>();
       for (Content content : holder.contentManager.getContents()) {
         ServiceView serviceView = getServiceView(content);
         if (serviceView == null || isMainView(serviceView)) continue;
@@ -534,6 +633,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
         viewState.treeStateElement = new Element("root");
         viewState.treeState.writeExternal(viewState.treeStateElement);
+        viewState.clearTreeState();
       }
     }
 
@@ -548,18 +648,13 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     }
   }
 
-  static class State {
+  static final class State {
     public List<ServiceViewState> viewStates = new ArrayList<>();
     public boolean showServicesTree = true;
   }
 
   private static String getToolWindowId() {
     return ToolWindowId.SERVICES;
-  }
-
-  @NotNull
-  private static Icon getToolWindowIcon() {
-    return AllIcons.Toolwindows.ToolWindowServices;
   }
 
   static String getToolWindowContextHelpId() {
@@ -585,6 +680,11 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
   }
 
   boolean isSplitByTypeEnabled(@NotNull ServiceView selectedView) {
+    if (!isMainView(selectedView) ||
+        selectedView.getModel().getVisibleRoots().isEmpty()) {
+      return false;
+    }
+
     ServiceViewContentHolder holder = getContentHolder(selectedView);
     if (holder == null) return false;
 
@@ -600,9 +700,9 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     if (holder == null) return;
 
     myModel.getInvoker().invokeLater(() -> {
-      List<ServiceViewContributor> contributors = ContainerUtil.map(myModel.getRoots(), ServiceViewItem::getRootContributor);
+      List<ServiceViewContributor<?>> contributors = ContainerUtil.map(myModel.getRoots(), ServiceViewItem::getRootContributor);
       AppUIUtil.invokeOnEdt(() -> {
-        for (ServiceViewContributor contributor : contributors) {
+        for (ServiceViewContributor<?> contributor : contributors) {
           splitByType(holder.contentManager, contributor);
         }
       });
@@ -618,7 +718,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     return null;
   }
 
-  private void splitByType(ContentManager contentManager, ServiceViewContributor contributor) {
+  private void splitByType(ContentManager contentManager, ServiceViewContributor<?> contributor) {
     for (Content content : contentManager.getContents()) {
       ServiceView serviceView = getServiceView(content);
       if (serviceView != null) {
@@ -633,13 +733,15 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     extract(contentManager, contributorModel, prepareViewState(new ServiceViewState()), true);
   }
 
-  public List<Object> getChildrenSafe(@NotNull AnActionEvent e, @NotNull Object value) {
+  @NotNull
+  public List<Object> getChildrenSafe(@NotNull AnActionEvent e, @NotNull List<Object> valueSubPath) {
     ServiceView serviceView = ServiceViewActionProvider.getSelectedView(e);
-    return serviceView != null ? serviceView.getChildrenSafe(value) : Collections.emptyList();
+    return serviceView != null ? serviceView.getChildrenSafe(valueSubPath) : Collections.emptyList();
   }
 
+  @Nullable
   public String getToolWindowId(@NotNull Class<?> contributorClass) {
-    for (Map.Entry<String, Collection<ServiceViewContributor>> entry : myGroups.entrySet()) {
+    for (Map.Entry<String, Collection<ServiceViewContributor<?>>> entry : myGroups.entrySet()) {
       if (entry.getValue().stream().anyMatch(contributorClass::isInstance)) {
         return entry.getKey();
       }
@@ -647,7 +749,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     return null;
   }
 
-  static boolean isMainView(@NotNull ServiceView serviceView) {
+  private static boolean isMainView(@NotNull ServiceView serviceView) {
     return serviceView.getModel() instanceof AllServicesModel;
   }
 
@@ -685,7 +787,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     }
   }
 
-  private static void selectContentByContributor(@NotNull ContentManager contentManager, @NotNull ServiceViewContributor contributor) {
+  private static void selectContentByContributor(@NotNull ContentManager contentManager, @NotNull ServiceViewContributor<?> contributor) {
     Content mainContent = null;
     for (Content content : contentManager.getContents()) {
       ServiceView serviceView = getServiceView(content);
@@ -705,7 +807,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     }
   }
 
-  private static class ServiceViewContentMangerListener extends ContentManagerAdapter {
+  private static final class ServiceViewContentMangerListener implements ContentManagerListener {
     private final ServiceModelFilter myModelFilter;
     private final AutoScrollToSourceHandler myAutoScrollToSourceHandler;
     private final ServiceViewContentHolder myContentHolder;
@@ -731,7 +833,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
         serviceView.getModel().addModelListener(() -> {
           if (serviceView.getModel().getRoots().isEmpty()) {
-            AppUIUtil.invokeOnEdt(() -> myContentManager.removeContent(content, true), o -> myContentManager.isDisposed());
+            AppUIExecutor.onUiThread().expireWith(myContentManager).submit(() -> myContentManager.removeContent(content, true));
           }
         });
       }
@@ -739,7 +841,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       if (myContentManager.getContentCount() > 1) {
         Content mainContent = getMainContent(myContentManager);
         if (mainContent != null) {
-          mainContent.setDisplayName("All Services");
+          mainContent.setDisplayName(ExecutionBundle.message("service.view.all.services"));
         }
       }
     }
@@ -773,53 +875,111 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
     }
   }
 
-  private static void registerActivateByContributorActions(Collection<ServiceViewContributor> contributors) {
-    for (ServiceViewContributor contributor : contributors) {
+  private static void registerActivateByContributorActions(Project project, Collection<? extends ServiceViewContributor<?>> contributors) {
+    for (ServiceViewContributor<?> contributor : contributors) {
       ActionManager actionManager = ActionManager.getInstance();
       String actionId = getActivateContributorActionId(contributor);
       if (actionId == null) continue;
 
       AnAction action = actionManager.getAction(actionId);
       if (action == null) {
-        action = new ActivateToolWindowByContributorAction(contributor);
+        action = new ActivateToolWindowByContributorAction(contributor, contributor.getViewDescriptor(project).getPresentation());
         actionManager.registerAction(actionId, action);
       }
     }
   }
 
-  private static String getActivateContributorActionId(ServiceViewContributor contributor) {
-    String id = contributor.getViewDescriptor().getId();
-    return id == null ? null : "ServiceView.Activate" + id.replaceAll(" ", "");
+  private static String getActivateContributorActionId(ServiceViewContributor<?> contributor) {
+    String name = contributor.getClass().getSimpleName();
+    return name.isEmpty() ? null : "ServiceView.Activate" + name;
   }
 
-  private static class ActivateToolWindowByContributorAction extends DumbAwareAction {
-    private final ServiceViewContributor myContributor;
-
-    private ActivateToolWindowByContributorAction(ServiceViewContributor contributor) {
-      myContributor = contributor;
-      ItemPresentation presentation = contributor.getViewDescriptor().getPresentation();
-      Presentation templatePresentation = getTemplatePresentation();
-      templatePresentation.setText(ServiceViewDragHelper.getDisplayName(presentation) + " (Services)");
-      templatePresentation.setIcon(presentation.getIcon(false));
-      templatePresentation.setDescription("Activate " + getToolWindowId() + " window");
+  private final class ServiceViewExtensionPointListener implements ExtensionPointListener<ServiceViewContributor<?>> {
+    @Override
+    public void extensionAdded(@NotNull ServiceViewContributor<?> extension, @NotNull PluginDescriptor pluginDescriptor) {
+      List<ServiceViewContributor<?>> contributors = new SmartList<>(extension);
+      loadGroups(contributors);
+      String toolWindowId = getToolWindowId(extension.getClass());
+      boolean register = myGroups.get(toolWindowId).size() == 1;
+      ServiceEvent e = ServiceEvent.createResetEvent(extension.getClass());
+      myModel.handle(e).onSuccess(o -> {
+        if (register) {
+          ServiceViewItem eventRoot = ContainerUtil.find(myModel.getRoots(), root -> {
+            return extension.getClass().isInstance(root.getRootContributor());
+          });
+          assert toolWindowId != null;
+          registerToolWindow(toolWindowId, eventRoot != null);
+        }
+        else {
+          eventHandled(e);
+        }
+        if (getToolWindowId().equals(toolWindowId)) {
+          AppUIExecutor.onUiThread().expireWith(myProject).submit(() -> registerActivateByContributorActions(myProject, contributors));
+        }
+      });
     }
 
     @Override
-    public void update(@NotNull AnActionEvent e) {
-      Project project = e.getProject();
-      if (project == null) {
-        e.getPresentation().setEnabledAndVisible(false);
-        return;
-      }
+    public void extensionRemoved(@NotNull ServiceViewContributor<?> extension, @NotNull PluginDescriptor pluginDescriptor) {
+      ServiceEvent e = ServiceEvent.createSyncResetEvent(extension.getClass());
+      myModel.handle(e).onProcessed(o -> {
+        eventHandled(e);
 
-      ServiceViewManagerImpl manager = (ServiceViewManagerImpl)ServiceViewManager.getInstance(project);
-      for (ServiceViewItem root : manager.myModel.getRoots()) {
-        if (myContributor.equals(root.getContributor())) {
-          e.getPresentation().setEnabledAndVisible(true);
-          return;
+        for (Map.Entry<String, Collection<ServiceViewContributor<?>>> entry : myGroups.entrySet()) {
+          if (entry.getValue().remove(extension)) {
+            if (entry.getValue().isEmpty()) {
+              unregisterToolWindow(entry.getKey());
+            }
+            break;
+          }
+        }
+
+        unregisterActivateByContributorActions(extension);
+      });
+    }
+
+    private void unregisterToolWindow(String toolWindowId) {
+      myActiveToolWindowIds.remove(toolWindowId);
+      myGroups.remove(toolWindowId);
+      for (ServiceViewContentHolder holder : myContentHolders) {
+        if (holder.toolWindowId.equals(toolWindowId)) {
+          myContentHolders.remove(holder);
+          break;
         }
       }
-      e.getPresentation().setEnabledAndVisible(false);
+      ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
+      toolWindowManager.invokeLater(() -> {
+        if (myProject.isDisposed() || myProject.isDefault()) return;
+
+        ToolWindow toolWindow = toolWindowManager.getToolWindow(toolWindowId);
+        if (toolWindow != null) {
+          toolWindow.remove();
+        }
+      });
+    }
+
+    private void unregisterActivateByContributorActions(ServiceViewContributor<?> extension) {
+      String actionId = getActivateContributorActionId(extension);
+      if (actionId != null) {
+        ActionManager actionManager = ActionManager.getInstance();
+        AnAction action = actionManager.getAction(actionId);
+        if (action != null) {
+          actionManager.unregisterAction(actionId);
+        }
+      }
+    }
+  }
+
+  private static class ActivateToolWindowByContributorAction extends DumbAwareAction {
+    private final ServiceViewContributor<?> myContributor;
+
+    ActivateToolWindowByContributorAction(ServiceViewContributor<?> contributor, ItemPresentation contributorPresentation) {
+      myContributor = contributor;
+      Presentation templatePresentation = getTemplatePresentation();
+      templatePresentation.setText(ExecutionBundle.messagePointer("service.view.activate.tool.window.action.name",
+                                                               ServiceViewDragHelper.getDisplayName(contributorPresentation)));
+      templatePresentation.setIcon(contributorPresentation.getIcon(false));
+      templatePresentation.setDescription(ExecutionBundle.messagePointer("service.view.activate.tool.window.action.description"));
     }
 
     @Override
@@ -827,17 +987,19 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       Project project = e.getProject();
       if (project == null) return;
 
-      ServiceViewContentHolder holder =
-        ((ServiceViewManagerImpl)ServiceViewManager.getInstance(project)).getContentHolder(myContributor.getClass());
-      if (holder == null) return;
+      String toolWindowId =
+        ((ServiceViewManagerImpl)ServiceViewManager.getInstance(project)).getToolWindowId(myContributor.getClass());
+      if (toolWindowId == null) return;
 
-      Runnable runnable = () -> selectContentByContributor(holder.contentManager, myContributor);
-      ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(holder.toolWindowId);
+      ToolWindow toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId);
       if (toolWindow != null) {
-        toolWindow.activate(runnable);
-      }
-      else {
-        runnable.run();
+        toolWindow.activate(() -> {
+          ServiceViewContentHolder holder =
+            ((ServiceViewManagerImpl)ServiceViewManager.getInstance(project)).getContentHolder(myContributor.getClass());
+          if (holder != null) {
+            selectContentByContributor(holder.contentManager, myContributor);
+          }
+        });
       }
     }
   }
@@ -845,12 +1007,12 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
   private static class ServiceViewContentHolder {
     final ServiceView mainView;
     final ContentManager contentManager;
-    final Collection<ServiceViewContributor> rootContributors;
+    final Collection<ServiceViewContributor<?>> rootContributors;
     final String toolWindowId;
 
     ServiceViewContentHolder(ServiceView mainView,
                              ContentManager contentManager,
-                             Collection<ServiceViewContributor> rootContributors,
+                             Collection<ServiceViewContributor<?>> rootContributors,
                              String toolWindowId) {
       this.mainView = mainView;
       this.contentManager = contentManager;
@@ -860,7 +1022,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
 
     List<ServiceView> getServiceViews() {
       List<ServiceView> views = ContainerUtil.mapNotNull(contentManager.getContents(), ServiceViewManagerImpl::getServiceView);
-      if (views.isEmpty()) return ContainerUtil.newSmartList(mainView);
+      if (views.isEmpty()) return new SmartList<>(mainView);
 
       if (!views.contains(mainView)) {
         views.add(0, mainView);
@@ -868,7 +1030,7 @@ public final class ServiceViewManagerImpl implements ServiceViewManager, Persist
       return views;
     }
 
-    private void processAllModels(Consumer<ServiceViewModel> consumer) {
+    private void processAllModels(Consumer<? super ServiceViewModel> consumer) {
       List<ServiceViewModel> models = ContainerUtil.map(getServiceViews(), ServiceView::getModel);
       ServiceViewModel model = ContainerUtil.getFirstItem(models);
       if (model != null) {

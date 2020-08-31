@@ -8,7 +8,6 @@ import com.intellij.util.SmartList;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.io.IOUtil;
 import gnu.trove.TObjectLongHashMap;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.ModuleChunk;
@@ -16,7 +15,6 @@ import org.jetbrains.jps.builders.*;
 import org.jetbrains.jps.builders.impl.BuildTargetChunk;
 import org.jetbrains.jps.incremental.*;
 import org.jetbrains.jps.incremental.storage.StampsStorage;
-import org.jetbrains.jps.incremental.storage.Timestamps;
 import org.jetbrains.jps.model.JpsModel;
 
 import java.io.DataInputStream;
@@ -30,7 +28,7 @@ import java.util.*;
  */
 public class BuildFSState {
   public static final int VERSION = 3;
-  private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.incremental.fs.BuildFSState");
+  private static final Logger LOG = Logger.getInstance(BuildFSState.class);
   private static final Key<Set<? extends BuildTarget<?>>> CONTEXT_TARGETS_KEY = Key.create("_fssfate_context_targets_");
   private static final Key<FilesDelta> NEXT_ROUND_DELTA_KEY = Key.create("_next_round_delta_");
   private static final Key<FilesDelta> CURRENT_ROUND_DELTA_KEY = Key.create("_current_round_delta_");
@@ -232,16 +230,6 @@ public class BuildFSState {
     }
 
     return delta.isMarkedRecompile(rd, file);
-  }
-
-  /**
-   * @deprecated use {@link #markDirty(CompileContext, CompilationRound, File, BuildRootDescriptor, StampsStorage, boolean)} instead
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval(inVersion = "2020.1")
-  public boolean markDirty(@Nullable CompileContext context, CompilationRound round, File file, final BuildRootDescriptor rd,
-                           @Nullable Timestamps tsStorage, boolean saveEventStamp) throws IOException {
-    return markDirty(context, round, file, rd, (StampsStorage<? extends StampsStorage.Stamp>)tsStorage, saveEventStamp);
   }
 
   /**

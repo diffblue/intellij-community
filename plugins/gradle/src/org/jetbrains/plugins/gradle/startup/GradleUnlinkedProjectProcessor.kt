@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.gradle.startup
 
+import com.intellij.CommonBundle
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationType
@@ -9,7 +10,6 @@ import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
-import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupActivity
@@ -23,7 +23,7 @@ import org.jetbrains.plugins.gradle.settings.GradleSettings
 import org.jetbrains.plugins.gradle.util.GradleBundle
 import org.jetbrains.plugins.gradle.util.GradleConstants
 
-class GradleUnlinkedProjectProcessor : StartupActivity, DumbAware {
+class GradleUnlinkedProjectProcessor : StartupActivity.DumbAware {
 
   override fun runActivity(project: Project) {
     if (isEnabledNotifications(project)) {
@@ -69,7 +69,7 @@ class GradleUnlinkedProjectProcessor : StartupActivity, DumbAware {
       })
 
       notification.contextHelpAction = object : DumbAwareAction(
-        "Help", GradleBundle.message("gradle.notifications.unlinked.project.found.help"), null) {
+        CommonBundle.getHelpButtonText(), GradleBundle.message("gradle.notifications.unlinked.project.found.help"), null) {
         override fun actionPerformed(e: AnActionEvent) {}
       }
 

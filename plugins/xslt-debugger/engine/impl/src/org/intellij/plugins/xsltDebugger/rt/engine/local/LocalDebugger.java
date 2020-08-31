@@ -39,8 +39,8 @@ public class LocalDebugger implements Debugger {
 
   private volatile State myState = State.CREATED;
 
-  private final LinkedList<StyleFrame> myFrames = new LinkedList<StyleFrame>();
-  private final LinkedList<SourceFrame> mySourceFrames = new LinkedList<SourceFrame>();
+  private final LinkedList<StyleFrame> myFrames = new LinkedList<>();
+  private final LinkedList<SourceFrame> mySourceFrames = new LinkedList<>();
 
   public LocalDebugger(final Transformer transformer, final Source source, final Result result) {
     prepareTransformer(transformer);
@@ -48,24 +48,22 @@ public class LocalDebugger implements Debugger {
     myBreakpointManager = new BreakpointManagerImpl();
     myEventQueue = new OutputEventQueueImpl(this);
 
-    myThread = new Thread(new Runnable() {
-      public void run() {
-        try {
-          synchronized (theLock) {
-            myState = State.RUNNING;
-            theLock.notifyAll();
-          }
-          transformer.transform(source, result);
-          stopped();
-        } catch (DebuggerStoppedException e) {
-          // OK
-        } catch (TransformerException e) {
-          // TODO: log, pass to client
-          e.printStackTrace();
-          stopped();
+    myThread = new Thread(() -> {
+      try {
+        synchronized (theLock) {
+          myState = State.RUNNING;
+          theLock.notifyAll();
         }
+        transformer.transform(source, result);
+        stopped();
+      } catch (DebuggerStoppedException e) {
+        // OK
+      } catch (TransformerException e) {
+        // TODO: log, pass to client
+        e.printStackTrace();
+        stopped();
       }
-    },"local debugger");
+    }, "local debugger");
   }
 
   protected void prepareTransformer(Transformer transformer) {
@@ -232,8 +230,6 @@ public class LocalDebugger implements Debugger {
   }
 
   public void enter(StyleFrame frame) {
-    assert Thread.currentThread() == myThread;
-
     myFrames.addFirst(frame);
     final String uri = frame.getURI();
 
@@ -310,8 +306,6 @@ public class LocalDebugger implements Debugger {
   }
 
   public void leave() {
-    assert Thread.currentThread() == myThread;
-
     if (isStopped()) {
       throw new DebuggerStoppedException();
 //        } else if (myBreakpointManager.isBreakpoint(uri, lineNumber)) {
@@ -320,7 +314,7 @@ public class LocalDebugger implements Debugger {
 //            suspendAndWait();
     }
 
-    ((AbstractFrame)myFrames.removeFirst()).invalidate();
+    ((AbstractFrame<?>)myFrames.removeFirst()).invalidate();
   }
 
   public void step() {
@@ -340,7 +334,7 @@ public class LocalDebugger implements Debugger {
     resume();
   }
 
-  public org.intellij.plugins.xsltDebugger.rt.engine.Value eval(String expr) throws EvaluationException {
+  public Value eval(String expr) throws EvaluationException {
     final StyleFrame frame = getCurrentFrame();
     if (frame == null) {
       throw new EvaluationException("No frame available");

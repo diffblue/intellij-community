@@ -1,5 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl;
 
 import com.intellij.AppTopics;
@@ -18,8 +17,7 @@ import com.intellij.openapi.fileEditor.impl.FileDocumentManagerImpl;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectLocator;
-import com.intellij.openapi.project.impl.ProjectImpl;
-import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.project.ex.ProjectEx;
 import com.intellij.openapi.util.Segment;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.text.StringUtil;
@@ -27,37 +25,29 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.core.impl.PomModelImpl;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiManager;
 import com.intellij.psi.impl.source.PostprocessReformattingAspect;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageManagerImpl;
 import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.FileContentUtil;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.messages.MessageBus;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.TestOnly;
 
 import java.util.*;
 
 //todo listen & notifyListeners readonly events?
-public class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
-  private final DocumentCommitProcessor myDocumentCommitThread;
+public final class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
   private final boolean myUnitTestMode = ApplicationManager.getApplication().isUnitTestMode();
 
-  public PsiDocumentManagerImpl(@NotNull final Project project,
-                                @NotNull PsiManager psiManager,
-                                @NotNull EditorFactory editorFactory,
-                                @NotNull MessageBus bus,
-                                @NotNull final DocumentCommitProcessor documentCommitThread) {
-    super(project, psiManager, bus, documentCommitThread);
-    myDocumentCommitThread = documentCommitThread;
-    editorFactory.getEventMulticaster().addDocumentListener(this, this);
-    ((EditorEventMulticasterImpl)editorFactory.getEventMulticaster()).addPrioritizedDocumentListener(new PriorityEventCollector(), this);
-    MessageBusConnection connection = bus.connect(this);
+  public PsiDocumentManagerImpl(@NotNull Project project) {
+    super(project);
+
+    EditorFactory.getInstance().getEventMulticaster().addDocumentListener(this, this);
+    ((EditorEventMulticasterImpl)EditorFactory.getInstance().getEventMulticaster()).addPrioritizedDocumentListener(new PriorityEventCollector(), this);
+    MessageBusConnection connection = project.getMessageBus().connect(this);
     connection.subscribe(AppTopics.FILE_DOCUMENT_SYNC, new FileDocumentManagerListener() {
       @Override
       public void fileContentLoaded(@NotNull final VirtualFile virtualFile, @NotNull Document document) {
@@ -65,7 +55,6 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
         fireDocumentCreated(document, psiFile);
       }
     });
-    Disposer.register(this, () -> ((DocumentCommitThread)myDocumentCommitThread).cancelTasksOnProjectDispose(project));
   }
 
   @Nullable
@@ -94,9 +83,10 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
       if (myUnitTestMode) {
         myStopTrackingDocuments = true;
         try {
+          //noinspection TestOnlyProblems
           LOG.error("Too many uncommitted documents for " + myProject + "(" +myUncommittedDocuments.size()+")"+
                     ":\n" + StringUtil.join(myUncommittedDocuments, "\n") +
-                    (myProject instanceof ProjectImpl ? "\n\n Project creation trace: " + ((ProjectImpl)myProject).getCreationTrace() : ""));
+                    (myProject instanceof ProjectEx ? "\n\n Project creation trace: " + ((ProjectEx)myProject).getCreationTrace() : ""));
         }
         finally {
           //noinspection TestOnlyProblems
@@ -145,17 +135,14 @@ public class PsiDocumentManagerImpl extends PsiDocumentManagerBase {
 
   @Override
   public void doPostponedOperationsAndUnblockDocument(@NotNull Document doc) {
-    if (doc instanceof DocumentWindow) doc = ((DocumentWindow)doc).getDelegate();
-    final PostprocessReformattingAspect component = myProject.getComponent(PostprocessReformattingAspect.class);
-    final FileViewProvider viewProvider = getCachedViewProvider(doc);
-    if (viewProvider != null && component != null) component.doPostponedFormatting(viewProvider);
-  }
-
-  @Override
-  @TestOnly
-  public void clearUncommittedDocuments() {
-    super.clearUncommittedDocuments();
-    ((DocumentCommitThread)myDocumentCommitThread).clearQueue();
+    if (doc instanceof DocumentWindow) {
+      doc = ((DocumentWindow)doc).getDelegate();
+    }
+    PostprocessReformattingAspect component = PostprocessReformattingAspect.getInstance(myProject);
+    FileViewProvider viewProvider = getCachedViewProvider(doc);
+    if (viewProvider != null && component != null) {
+      component.doPostponedFormatting(viewProvider);
+    }
   }
 
   @NotNull

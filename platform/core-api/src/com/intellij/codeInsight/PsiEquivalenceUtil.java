@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeInsight;
 
@@ -38,8 +24,8 @@ import java.util.List;
 /**
  * @author ven
  */
-public class PsiEquivalenceUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.PsiEquivalenceUtil");
+public final class PsiEquivalenceUtil {
+  private static final Logger LOG = Logger.getInstance(PsiEquivalenceUtil.class);
 
   public static boolean areElementsEquivalent(@NotNull PsiElement element1,
                                               @NotNull PsiElement element2,
@@ -116,10 +102,9 @@ public class PsiEquivalenceUtil {
     return areElementsEquivalent(element1, element2, null, false);
   }
 
-  @NotNull
-  public static PsiElement[] getFilteredChildren(@NotNull final PsiElement element,
-                                                 @Nullable Condition<? super PsiElement> isElementSignificantCondition,
-                                                 boolean areCommentsSignificant) {
+  public static PsiElement @NotNull [] getFilteredChildren(@NotNull final PsiElement element,
+                                                           @Nullable Condition<? super PsiElement> isElementSignificantCondition,
+                                                           boolean areCommentsSignificant) {
     ASTNode[] children1 = element.getNode().getChildren(null);
     ArrayList<PsiElement> array = new ArrayList<>();
     for (ASTNode node : children1) {
@@ -156,8 +141,7 @@ public class PsiEquivalenceUtil {
       if (child != first) {
         int j = i;
         PsiElement next = first;
-        do {
-          if (!areElementsEquivalent(children[j], next)) break;
+        while (areElementsEquivalent(children[j], next)) {
           j++;
           if (next == last) {
             result.consume(child, children[j - 1]);
@@ -166,7 +150,6 @@ public class PsiEquivalenceUtil {
           }
           next = PsiTreeUtil.skipWhitespacesForward(next);
         }
-        while (true);
 
         if (i == j) {
           addRangeDuplicates(child, first, last, result);

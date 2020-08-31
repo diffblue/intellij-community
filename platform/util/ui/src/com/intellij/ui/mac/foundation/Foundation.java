@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.mac.foundation;
 
 import com.intellij.jna.JnaLoader;
@@ -7,6 +7,7 @@ import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.util.ImageLoader;
 import com.sun.jna.*;
 import com.sun.jna.ptr.PointerByReference;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,7 +20,8 @@ import java.util.*;
  * @author spleaner
  * see <a href="http://developer.apple.com/documentation/Cocoa/Reference/ObjCRuntimeRef/Reference/reference.html">Documentation</a>
  */
-public class Foundation {
+@NonNls
+public final class Foundation {
   private static final FoundationLibrary myFoundationLibrary;
 
   static {
@@ -157,7 +159,7 @@ public class Foundation {
     return isPackageAtPath(file.getPath());
   }
 
-  private static class NSString {
+  private static final class NSString {
     private static final ID nsStringCls = getObjcClass("NSString");
     private static final Pointer stringSel = createSelector("string");
     private static final Pointer allocSel = createSelector("alloc");
@@ -431,8 +433,7 @@ public class Foundation {
       return invoke(myDelegate, "length").intValue();
     }
 
-    @NotNull
-    public byte[] bytes() {
+    public byte @NotNull [] bytes() {
       Pointer data = new Pointer(invoke(myDelegate, "bytes").longValue());
       return data.getByteArray(0, length());
     }
@@ -553,7 +554,7 @@ public class Foundation {
     return result;
   }
 
-  public static ID createDict(@NotNull final String[] keys, @NotNull final Object[] values) {
+  public static ID createDict(final String @NotNull [] keys, final Object @NotNull [] values) {
     final ID nsKeys = invoke("NSArray", "arrayWithObjects:", convertTypes(keys));
     final ID nsData = invoke("NSArray", "arrayWithObjects:", convertTypes(values));
     return invoke("NSDictionary", "dictionaryWithObjects:forKeys:", nsData, nsKeys);
@@ -571,7 +572,7 @@ public class Foundation {
     return new ID(pointerType.getPointer().getLong(0));
   }
 
-  private static Object[] convertTypes(@NotNull Object[] v) {
+  private static Object[] convertTypes(Object @NotNull [] v) {
     final Object[] result = new Object[v.length];
     for (int i = 0; i < v.length; i++) {
       result[i] = convertType(v[i]);

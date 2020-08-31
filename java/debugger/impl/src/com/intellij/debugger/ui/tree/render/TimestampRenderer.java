@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.debugger.ui.tree.render;
 
 import com.intellij.debugger.engine.evaluation.EvaluationContext;
@@ -9,35 +9,34 @@ import com.sun.jdi.Type;
 import com.sun.jdi.Value;
 
 import java.sql.Timestamp;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
-/**
- * @author egor
- */
-public class TimestampRenderer extends NodeRendererImpl {
+public class TimestampRenderer extends CompoundRendererProvider {
   @Override
-  public String calcLabel(ValueDescriptor descriptor, EvaluationContext evaluationContext, DescriptorLabelListener listener) {
-    Value value = descriptor.getValue();
-    if (value == null) {
-      return "null";
-    }
-    else if (value instanceof LongValue) {
-      return new Timestamp(((LongValue)value).longValue()).toString();
-    }
-    return null;
-  }
-
-  @Override
-  public String getName() {
+  protected String getName() {
     return "Timestamp";
   }
 
   @Override
-  public String getUniqueId() {
-    return "TimestampRenderer";
+  protected ValueLabelRenderer getValueLabelRenderer() {
+    return new LabelRenderer() {
+      @Override
+      public String calcLabel(ValueDescriptor descriptor, EvaluationContext evaluationContext, DescriptorLabelListener labelListener) {
+        Value value = descriptor.getValue();
+        if (value == null) {
+          return "null";
+        }
+        else if (value instanceof LongValue) {
+          return new Timestamp(((LongValue)value).longValue()).toString();
+        }
+        return null;
+      }
+    };
   }
 
   @Override
-  public boolean isApplicable(Type t) {
-    return t instanceof LongType;
+  protected Function<Type, CompletableFuture<Boolean>> getIsApplicableChecker() {
+    return type -> CompletableFuture.completedFuture(type instanceof LongType);
   }
 }

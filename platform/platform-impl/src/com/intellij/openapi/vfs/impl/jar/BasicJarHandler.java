@@ -23,6 +23,7 @@ import com.intellij.openapi.vfs.impl.ZipHandlerBase;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.hash.LinkedHashMap;
 import com.intellij.util.io.ResourceHandle;
+import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -40,7 +41,8 @@ import java.util.zip.ZipFile;
 // JarHandler that keeps limited LRU number of ZipFile references opened for a while after they were used
 // Once the inactivity time passed the ZipFile is closed.
 public class BasicJarHandler extends ZipHandlerBase {
-  private static final Logger LOG = Logger.getInstance("com.intellij.openapi.vfs.impl.jar.BasicJarHandler");
+  private static final Logger LOG = Logger.getInstance(BasicJarHandler.class);
+
   private static final boolean doTracing = LOG.isTraceEnabled();
   private final ZipResourceHandle myHandle;
   private final JarFileSystemImpl myFileSystem;
@@ -86,7 +88,7 @@ public class BasicJarHandler extends ZipHandlerBase {
     return myHandle;
   }
   
-  private static void trace(String msg) {
+  private static void trace(@NonNls String msg) {
     //System.out.println(msg);
     LOG.trace(msg);
   }

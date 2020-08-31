@@ -1,12 +1,12 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.dnd.aware;
 
 import com.intellij.ide.dnd.DnDAware;
 import com.intellij.ide.dnd.TransferableList;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.ui.render.RenderingUtil;
 import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.ui.JBSwingUtilities;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
 import com.intellij.util.ui.tree.WideSelectionTreeUI;
@@ -46,7 +46,7 @@ public class DnDAwareTree extends Tree implements DnDAware {
 
   @Override
   protected void processMouseMotionEvent(MouseEvent e) {
-    if (SystemInfo.isMac && JBSwingUtilities.isRightMouseButton(e) && e.getID() == MouseEvent.MOUSE_DRAGGED) return;
+    if (SystemInfo.isMac && SwingUtilities.isRightMouseButton(e) && e.getID() == MouseEvent.MOUSE_DRAGGED) return;
     super.processMouseMotionEvent(e);
   }
 
@@ -90,8 +90,8 @@ public class DnDAwareTree extends Tree implements DnDAware {
       ((JComponent)c).setOpaque(true);
     }
 
-    c.setForeground(tree.getForeground());
-    c.setBackground(tree.getBackground());
+    c.setForeground(RenderingUtil.getForeground(tree));
+    c.setBackground(RenderingUtil.getBackground(tree));
     c.setFont(tree.getFont());
     c.setSize(c.getPreferredSize());
     final BufferedImage image = UIUtil.createImage(c, c.getWidth(), c.getHeight(), BufferedImage.TYPE_INT_ARGB);

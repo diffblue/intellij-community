@@ -1,7 +1,6 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.dom.impl;
 
-import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
@@ -27,12 +26,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 
-/**
- * @author mike
- */
 public class IdeaPluginConverter extends IdeaPluginConverterBase {
 
-  private static final Condition<IdeaPlugin> NON_CORE_PLUGINS = plugin -> !PluginManagerCore.CORE_PLUGIN_ID.equals(plugin.getPluginId());
+  private static final Condition<IdeaPlugin> NON_CORE_PLUGINS = plugin -> plugin.hasRealPluginId();
 
   @Override
   @NotNull
@@ -66,7 +62,7 @@ public class IdeaPluginConverter extends IdeaPluginConverterBase {
     return ContainerUtil.filter(plugins, plugin -> !Comparing.strEqual(self.getPluginId(), plugin.getPluginId()));
   }
 
-  public static Collection<IdeaPlugin> getAllPlugins(final Project project) {
+  private static Collection<IdeaPlugin> getAllPlugins(final Project project) {
     if (DumbService.isDumb(project)) return Collections.emptyList();
 
     return CachedValuesManager.getManager(project).getCachedValue(project, () -> {

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.diff.chains;
 
 import com.intellij.diff.chains.SimpleDiffRequestChain.DiffRequestProducerWrapper;
@@ -28,6 +28,10 @@ public abstract class AsyncDiffRequestChain extends DiffRequestChainBase {
 
   public void addListener(@NotNull Listener listener, @NotNull Disposable disposable) {
     myDispatcher.addListener(listener, disposable);
+  }
+
+  public void removeListener(@NotNull Listener listener) {
+    myDispatcher.removeListener(listener);
   }
 
   @NotNull

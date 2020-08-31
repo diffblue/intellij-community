@@ -24,7 +24,6 @@ import com.intellij.util.containers.ContainerUtil;
 import com.siyeh.ig.psiutils.DeclarationSearchUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.MethodCallUtils;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -90,7 +89,7 @@ public class JavaReflectionReferenceUtil {
 
   @Contract("null -> null")
   public static ReflectiveType getReflectiveType(@Nullable PsiExpression context) {
-    context = ParenthesesUtils.stripParentheses(context);
+    context = PsiUtil.skipParenthesizedExprDown(context);
     if (context == null) {
       return null;
     }
@@ -107,7 +106,7 @@ public class JavaReflectionReferenceUtil {
         if (method != null && isJavaLangClass(method.getContainingClass())) {
           final PsiExpression[] expressions = methodCall.getArgumentList().getExpressions();
           if (expressions.length == 1) {
-            final PsiExpression argument = findDefinition(ParenthesesUtils.stripParentheses(expressions[0]));
+            final PsiExpression argument = findDefinition(PsiUtil.skipParenthesizedExprDown(expressions[0]));
             final String className = computeConstantExpression(argument, String.class);
             if (className != null) {
               return ReflectiveType.create(findClass(className, context), true);
@@ -118,7 +117,7 @@ public class JavaReflectionReferenceUtil {
       else if (GET_CLASS.equals(methodReferenceName) && methodCall.getArgumentList().isEmpty()) {
         final PsiMethod method = methodCall.resolveMethod();
         if (method != null && isJavaLangObject(method.getContainingClass())) {
-          final PsiExpression qualifier = ParenthesesUtils.stripParentheses(methodCall.getMethodExpression().getQualifierExpression());
+          final PsiExpression qualifier = PsiUtil.skipParenthesizedExprDown(methodCall.getMethodExpression().getQualifierExpression());
           if (qualifier instanceof PsiReferenceExpression) {
             final PsiExpression definition = findVariableDefinition((PsiReferenceExpression)qualifier);
             if (definition != null) {
@@ -186,7 +185,7 @@ public class JavaReflectionReferenceUtil {
 
   @Nullable
   private static ReflectiveType getClassInstanceType(@Nullable PsiExpression expression) {
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     if (expression == null) {
       return null;
     }
@@ -221,7 +220,7 @@ public class JavaReflectionReferenceUtil {
   @Contract("null,_->null")
   @Nullable
   public static <T> T computeConstantExpression(@Nullable PsiExpression expression, @NotNull Class<T> expectedType) {
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     final Object computed = JavaConstantExpressionEvaluator.computeConstantExpression(expression, false);
     return ObjectUtils.tryCast(computed, expectedType);
   }
@@ -510,13 +509,13 @@ public class JavaReflectionReferenceUtil {
   }
 
   @Nullable
-  private static ReflectiveSignature composeMethodSignatureFromTypes(@NotNull PsiExpression[] returnAndParameterTypes) {
+  private static ReflectiveSignature composeMethodSignatureFromTypes(PsiExpression @NotNull [] returnAndParameterTypes) {
     final List<String> typeTexts = ContainerUtil.map(returnAndParameterTypes, JavaReflectionReferenceUtil::getTypeText);
     return ReflectiveSignature.create(typeTexts);
   }
 
   @Nullable
-  public static Pair.NonNull<Integer, Boolean> getGenericSignature(@NotNull PsiExpression[] genericSignatureShape) {
+  public static Pair.NonNull<Integer, Boolean> getGenericSignature(PsiExpression @NotNull [] genericSignatureShape) {
     if (genericSignatureShape.length == 0 || genericSignatureShape.length > 2) {
       return null;
     }
@@ -538,7 +537,7 @@ public class JavaReflectionReferenceUtil {
    * All the types in the method signature are either unbounded type parameters or java.lang.Object (with possible vararg)
    */
   @Nullable
-  private static ReflectiveSignature composeGenericMethodSignature(@NotNull PsiExpression[] genericSignatureShape) {
+  private static ReflectiveSignature composeGenericMethodSignature(PsiExpression @NotNull [] genericSignatureShape) {
     final Pair.NonNull<Integer, Boolean> signature = getGenericSignature(genericSignatureShape);
     if (signature == null) return null;
     final int objectArgCount = signature.getFirst();
@@ -683,7 +682,7 @@ public class JavaReflectionReferenceUtil {
 
     private final Icon myIcon;
     @NotNull private final String myReturnType;
-    @NotNull private final String[] myArgumentTypes;
+    private final String @NotNull [] myArgumentTypes;
 
     @Nullable
     public static ReflectiveSignature create(@NotNull List<String> typeTexts) {
@@ -699,7 +698,7 @@ public class JavaReflectionReferenceUtil {
       return null;
     }
 
-    private ReflectiveSignature(@Nullable Icon icon, @NotNull String returnType, @NotNull String[] argumentTypes) {
+    private ReflectiveSignature(@Nullable Icon icon, @NotNull String returnType, String @NotNull [] argumentTypes) {
       myIcon = icon;
       myReturnType = returnType;
       myArgumentTypes = argumentTypes;

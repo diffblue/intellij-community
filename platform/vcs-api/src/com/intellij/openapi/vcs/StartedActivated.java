@@ -15,9 +15,7 @@
  */
 package com.intellij.openapi.vcs;
 
-import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.util.ThreeState;
 import com.intellij.util.ThrowableRunnable;
 
@@ -32,31 +30,19 @@ import java.util.List;
  * - and "actual" methods should not be called under lock
  */
 public abstract class StartedActivated {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.vcs.StartedActivated");
+  private static final Logger LOG = Logger.getInstance(StartedActivated.class);
 
   private final MySection myStart;
   private final MySection myActivate;
   private final Object myLock;
 
-  protected StartedActivated(final Disposable parent) {
+  protected StartedActivated() {
     myStart = new MySection(() -> start(), () -> shutdown());
     myActivate = new MySection(() -> activate(), () -> deactivate());
     myStart.setDependent(myActivate);
     myActivate.setMaster(myStart);
 
     myLock = new Object();
-
-    Disposer.register(parent, new Disposable() {
-      @Override
-      public void dispose() {
-        try {
-          doShutdown();
-        }
-        catch (Throwable t) {
-          LOG.warn(t);
-        }
-      }
-    });
   }
 
   protected abstract void start() throws VcsException;

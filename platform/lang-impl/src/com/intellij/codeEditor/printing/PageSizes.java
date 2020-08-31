@@ -1,8 +1,9 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.codeEditor.printing;
 
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.EditorBundle;
 import com.intellij.openapi.util.JDOMUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -10,8 +11,8 @@ import org.jetbrains.annotations.NonNls;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-class PageSizes {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeEditor.printing.PageSizes");
+final class PageSizes {
+  private static final Logger LOG = Logger.getInstance(PageSizes.class);
   private static ArrayList<PageSize> myPageSizes = null;
   private static HashMap<String, PageSize> myNamesToPageSizes = null;
   private static final double MM_TO_INCH = 1/25.4;
@@ -90,10 +91,9 @@ class PageSizes {
         String unit = element.getAttributeValue(ATTRIBUTE_UNIT);
 
         final String unitName = unit.equals(UNIT_MM)
-                                ? CodeEditorBundle.message("print.page.size.unit.mm")
-                                : CodeEditorBundle.message("print.page.size.unit.in");
-        final String dimensions = CodeEditorBundle.message("print.page.width.x.height.unit.template",
-                                                           widthStr, heightStr, unitName);
+                                ? EditorBundle.message("print.page.size.unit.mm")
+                                : EditorBundle.message("print.page.size.unit.in");
+        final String dimensions = EditorBundle.message("print.page.width.x.height.unit.template", widthStr, heightStr, unitName);
 
         double width = parsePageSize(widthStr);
         double height = parsePageSize(heightStr);

@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.featureStatistics.actions;
 
 import com.intellij.CommonBundle;
@@ -13,10 +13,12 @@ import com.intellij.openapi.ui.Splitter;
 import com.intellij.openapi.ui.VerticalFlowLayout;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ScrollPaneFactory;
+import com.intellij.ui.ScrollingUtil;
 import com.intellij.ui.TableViewSpeedSearch;
 import com.intellij.ui.table.TableView;
 import com.intellij.util.text.DateFormatUtil;
 import com.intellij.util.ui.ColumnInfo;
+import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.ListTableModel;
 import com.intellij.xml.util.XmlStringUtil;
 import org.jetbrains.annotations.NotNull;
@@ -31,7 +33,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 
-public class ShowFeatureUsageStatisticsDialog extends DialogWrapper {
+public final class ShowFeatureUsageStatisticsDialog extends DialogWrapper {
   private static final Comparator<FeatureDescriptor> DISPLAY_NAME_COMPARATOR = Comparator.comparing(FeatureDescriptor::getDisplayName);
   private static final Comparator<FeatureDescriptor> GROUP_NAME_COMPARATOR = Comparator.comparing(ShowFeatureUsageStatisticsDialog::getGroupName);
   private static final Comparator<FeatureDescriptor> USAGE_COUNT_COMPARATOR = Comparator.comparingInt(FeatureDescriptor::getUsageCount);
@@ -101,9 +103,13 @@ public class ShowFeatureUsageStatisticsDialog extends DialogWrapper {
     return "#com.intellij.featureStatistics.actions.ShowFeatureUsageStatisticsDialog";
   }
 
-  @NotNull
   @Override
-  protected Action[] createActions() {
+  public Dimension getInitialSize() {
+    return new JBDimension(800, 600);
+  }
+
+  @Override
+  protected Action @NotNull [] createActions() {
     return new Action[]{getCancelAction(), getHelpAction()};
   }
 
@@ -180,12 +186,12 @@ public class ShowFeatureUsageStatisticsDialog extends DialogWrapper {
           browser.setText("");
         }
         else {
-          FeatureDescriptor feature = (FeatureDescriptor)selection.iterator().next();
-          TipUIUtil.openTipInBrowser(TipUIUtil.getTip(feature.getTipFileName()), browser);
+          TipUIUtil.openTipInBrowser(TipUIUtil.getTip((FeatureDescriptor)selection.iterator().next()), browser);
         }
       }
     });
 
+    ScrollingUtil.ensureSelectionExists(table);
     return splitter;
   }
 
@@ -200,7 +206,7 @@ public class ShowFeatureUsageStatisticsDialog extends DialogWrapper {
     return result;
   }
 
-  private static String getGroupName(FeatureDescriptor featureDescriptor) {
+  private static String getGroupName(@NotNull FeatureDescriptor featureDescriptor) {
     final ProductivityFeaturesRegistry registry = ProductivityFeaturesRegistry.getInstance();
     final GroupDescriptor groupDescriptor = registry.getGroupDescriptor(featureDescriptor.getGroupId());
     return groupDescriptor != null ? groupDescriptor.getDisplayName() : "";

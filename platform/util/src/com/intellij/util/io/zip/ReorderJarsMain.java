@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.io.zip;
 
 import com.intellij.openapi.util.io.FileUtil;
@@ -28,7 +14,7 @@ import java.util.*;
  * @author anna
  */
 @SuppressWarnings("CallToPrintStackTrace")
-public class ReorderJarsMain {
+public final class ReorderJarsMain {
   private ReorderJarsMain() { }
 
   public static void main(String[] args) {
@@ -42,11 +28,18 @@ public class ReorderJarsMain {
       final Set<String> ignoredJars = libPath == null ? Collections.emptySet() : loadIgnoredJars(libPath);
 
       for (String jarUrl : toReorder.keySet()) {
-        if (ignoredJars.contains(StringUtil.trimStart(jarUrl, "/lib/"))) continue;
-        if (jarUrl.startsWith("/lib/ant")) continue;
+        if (ignoredJars.contains(StringUtil.trimStart(jarUrl, "/lib/")) ||
+            jarUrl.startsWith("/lib/ant")) {
+          System.out.println("Ignored jar: " + jarUrl);
+          continue;
+        }
 
         final File jarFile = new File(jarsPath, jarUrl);
-        if (!jarFile.isFile()) continue;
+        if (!jarFile.isFile()) {
+          System.out.println("Cannot find jar: " + jarUrl);
+          continue;
+        }
+        System.out.println("Reorder jar: " + jarUrl);
 
         final JBZipFile zipFile = new JBZipFile(jarFile);
         final List<JBZipEntry> entries = zipFile.getEntries();

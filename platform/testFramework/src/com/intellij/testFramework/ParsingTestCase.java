@@ -1,6 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
+import com.intellij.ide.plugins.PluginUtil;
+import com.intellij.ide.plugins.PluginUtilImpl;
 import com.intellij.ide.startup.impl.StartupManagerImpl;
 import com.intellij.lang.*;
 import com.intellij.lang.impl.PsiBuilderFactoryImpl;
@@ -9,10 +11,7 @@ import com.intellij.lang.injection.MultiHostInjector;
 import com.intellij.mock.*;
 import com.intellij.openapi.application.ex.PathManagerEx;
 import com.intellij.openapi.editor.EditorFactory;
-import com.intellij.openapi.extensions.DefaultPluginDescriptor;
-import com.intellij.openapi.extensions.ExtensionPoint;
-import com.intellij.openapi.extensions.ExtensionPointName;
-import com.intellij.openapi.extensions.PluginDescriptor;
+import com.intellij.openapi.extensions.*;
 import com.intellij.openapi.extensions.impl.ExtensionPointImpl;
 import com.intellij.openapi.extensions.impl.ExtensionsAreaImpl;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
@@ -24,6 +23,7 @@ import com.intellij.openapi.options.SchemeManagerFactory;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.impl.ProgressManagerImpl;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.io.FileUtil;
@@ -70,11 +70,11 @@ public abstract class ParsingTestCase extends UsefulTestCase {
   private final boolean myLowercaseFirstLetter;
   private ExtensionPointImpl<KeyedLazyInstance<ParserDefinition>> myLangParserDefinition;
 
-  protected ParsingTestCase(@NotNull String dataPath, @NotNull String fileExt, @NotNull ParserDefinition... definitions) {
+  protected ParsingTestCase(@NotNull String dataPath, @NotNull String fileExt, ParserDefinition @NotNull ... definitions) {
     this(dataPath, fileExt, false, definitions);
   }
 
-  protected ParsingTestCase(@NotNull String dataPath, @NotNull String fileExt, boolean lowercaseFirstLetter, @NotNull ParserDefinition... definitions) {
+  protected ParsingTestCase(@NotNull String dataPath, @NotNull String fileExt, boolean lowercaseFirstLetter, ParserDefinition @NotNull ... definitions) {
     myDefinitions = definitions;
     myFullDataPath = getTestDataPath() + "/" + dataPath;
     myFileExt = fileExt;
@@ -105,16 +105,16 @@ public abstract class ParsingTestCase extends UsefulTestCase {
     appContainer.registerComponentInstance(SchemeManagerFactory.class, new MockSchemeManagerFactory());
     MockEditorFactory editorFactory = new MockEditorFactory();
     appContainer.registerComponentInstance(EditorFactory.class, editorFactory);
-    app.registerService(FileDocumentManager.class, new MockFileDocumentManagerImpl(charSequence -> {
-      return editorFactory.createDocument(charSequence);
-    }, FileDocumentManagerImpl.HARD_REF_TO_DOCUMENT_KEY));
-    appContainer.registerComponentInstance(PsiDocumentManager.class, new MockPsiDocumentManager());
+    app.registerService(FileDocumentManager.class, new MockFileDocumentManagerImpl(editorFactory::createDocument, FileDocumentManagerImpl.HARD_REF_TO_DOCUMENT_KEY));
+    app.registerService(PluginUtil.class, new PluginUtilImpl());
 
     app.registerService(PsiBuilderFactory.class, new PsiBuilderFactoryImpl());
     app.registerService(DefaultASTFactory.class, new DefaultASTFactoryImpl());
     app.registerService(ReferenceProvidersRegistry.class, new ReferenceProvidersRegistryImpl());
-    myProject.registerService(CachedValuesManager.class, new CachedValuesManagerImpl(myProject, new PsiCachedValuesFactory(myPsiManager)));
+    myProject.registerService(PsiDocumentManager.class, new MockPsiDocumentManager());
     myProject.registerService(PsiManager.class, myPsiManager);
+    myProject.registerService(TreeAspect.class, new TreeAspect());
+    myProject.registerService(CachedValuesManager.class, new CachedValuesManagerImpl(myProject, new PsiCachedValuesFactory(myProject)));
     myProject.registerService(StartupManager.class, new StartupManagerImpl(myProject));
     registerExtensionPoint(app.getExtensionArea(), FileTypeFactory.FILE_TYPE_FACTORY_EP, FileTypeFactory.class);
     registerExtensionPoint(app.getExtensionArea(), MetaLanguage.EP_NAME, MetaLanguage.class);
@@ -130,13 +130,11 @@ public abstract class ParsingTestCase extends UsefulTestCase {
     }
 
     // That's for reparse routines
-    PomModelImpl pomModel = new PomModelImpl(myProject);
-    myProject.registerService(PomModel.class, pomModel);
-    new TreeAspect(pomModel);
+    myProject.registerService(PomModel.class, new PomModelImpl(myProject));
   }
 
   protected final void registerParserDefinition(@NotNull ParserDefinition definition) {
-    final Language language = definition.getFileNodeType().getLanguage();
+    Language language = definition.getFileNodeType().getLanguage();
     myLangParserDefinition.registerExtension(new KeyedLazyInstance<ParserDefinition>() {
       @Override
       public String getKey() {
@@ -157,7 +155,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
     myLanguage = definition.getFileNodeType().getLanguage();
     myFileExt = extension;
     registerParserDefinition(definition);
-    myApp.getPicoContainer().registerComponentInstance(FileTypeManager.class, new MockFileTypeManager(new MockLanguageFileType(myLanguage, myFileExt)));
+    myApp.registerService(FileTypeManager.class, new MockFileTypeManager(new MockLanguageFileType(myLanguage, myFileExt)));
   }
 
   protected final <T> void registerExtension(@NotNull ExtensionPointName<T> name, @NotNull T extension) {
@@ -181,10 +179,13 @@ public abstract class ParsingTestCase extends UsefulTestCase {
 
   protected final <T> void addExplicitExtension(@NotNull LanguageExtension<T> collector, @NotNull Language language, @NotNull T object) {
     ExtensionsAreaImpl area = myApp.getExtensionArea();
+    PluginDescriptor pluginDescriptor = getPluginDescriptor();
     if (!area.hasExtensionPoint(collector.getName())) {
-      area.registerFakeBeanPoint(collector.getName(), getPluginDescriptor());
+      area.registerFakeBeanPoint(collector.getName(), pluginDescriptor);
     }
-    ExtensionTestUtil.addExtension(area, collector, language, object);
+    LanguageExtensionPoint<T> extension = new LanguageExtensionPoint<>(language.getID(), object);
+    extension.setPluginDescriptor(pluginDescriptor);
+    ExtensionTestUtil.addExtension(area, collector, extension);
   }
 
   protected final <T> void registerExtensionPoint(@NotNull ExtensionPointName<T> extensionPointName, @NotNull Class<T> aClass) {
@@ -192,7 +193,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
   }
 
   protected <T> ExtensionPointImpl<T> registerExtensionPoint(@NotNull ExtensionsAreaImpl extensionArea,
-                                                             @NotNull ExtensionPointName<T> extensionPointName,
+                                                             @NotNull BaseExtensionPointName<T> extensionPointName,
                                                              @NotNull Class<T> extensionClass) {
     // todo get rid of it - registerExtensionPoint should be not called several times
     String name = extensionPointName.getName();
@@ -209,7 +210,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
   private PluginDescriptor getPluginDescriptor() {
     PluginDescriptor pluginDescriptor = myPluginDescriptor;
     if (pluginDescriptor == null) {
-      pluginDescriptor = new DefaultPluginDescriptor(getClass().getName() + "." + getName());
+      pluginDescriptor = new DefaultPluginDescriptor(PluginId.getId(getClass().getName() + "." + getName()), ParsingTestCase.class.getClassLoader());
       myPluginDescriptor = pluginDescriptor;
     }
     return pluginDescriptor;
@@ -260,7 +261,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
       private static final int TAB_WIDTH = 8;
 
       @Override
-      public void visitErrorElement(PsiErrorElement element) {
+      public void visitErrorElement(@NotNull PsiErrorElement element) {
         // Very dump approach since a corresponding Document is not available.
         String text = myFile.getText();
         String[] lines = StringUtil.splitByLinesKeepSeparators(text);
@@ -428,7 +429,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
   public static void ensureParsed(@NotNull PsiFile file) {
     file.accept(new PsiElementVisitor() {
       @Override
-      public void visitElement(PsiElement element) {
+      public void visitElement(@NotNull PsiElement element) {
         element.acceptChildren(this);
       }
     });
@@ -451,6 +452,7 @@ public abstract class ParsingTestCase extends UsefulTestCase {
     registerExtensionPoint(myProject.getExtensionArea(), MultiHostInjector.MULTIHOST_INJECTOR_EP_NAME, MultiHostInjector.class);
 
     registerExtensionPoint(myApp.getExtensionArea(), LanguageInjector.EXTENSION_POINT_NAME, LanguageInjector.class);
-    myProject.registerService(InjectedLanguageManager.class, new InjectedLanguageManagerImpl(myProject, new MockDumbService(myProject)));
+    myProject.registerService(DumbService.class, new MockDumbService(myProject));
+    myProject.registerService(InjectedLanguageManager.class, new InjectedLanguageManagerImpl(myProject));
   }
 }

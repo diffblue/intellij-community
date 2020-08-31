@@ -1,6 +1,8 @@
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.coverage.view;
 
 import com.intellij.coverage.CoverageAnnotator;
+import com.intellij.coverage.CoverageBundle;
 import com.intellij.coverage.CoverageSuitesBundle;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
 import com.intellij.openapi.application.ReadAction;
@@ -31,26 +33,27 @@ public class DirectoryCoverageViewExtension extends CoverageViewExtension {
 
   @Override
   public ColumnInfo[] createColumnInfos() {
-    return new ColumnInfo[]{new ElementColumnInfo(), new PercentageCoverageColumnInfo(1, "Statistics, %", mySuitesBundle, myStateBean)};
+    return new ColumnInfo[]{new ElementColumnInfo(),
+      new PercentageCoverageColumnInfo(1, CoverageBundle.message("table.column.name.statistics"), mySuitesBundle, myStateBean)};
   }
 
   @Override
-  public String getSummaryForNode(AbstractTreeNode node) {
+  public String getSummaryForNode(@NotNull AbstractTreeNode node) {
     String statInfo = myAnnotator.getDirCoverageInformationString((PsiDirectory)node.getValue(),
                                                                   mySuitesBundle,
                                                                   myCoverageDataManager);
-    statInfo = StringUtil.notNullize(statInfo, "No coverage");
+    statInfo = StringUtil.notNullize(statInfo, CoverageBundle.message("node.summary.no.coverage"));
     return statInfo + " in '" + node.toString() + "'";
   }
 
   @Override
-  public String getSummaryForRootNode(AbstractTreeNode childNode) {
+  public String getSummaryForRootNode(@NotNull AbstractTreeNode childNode) {
     final Object value = childNode.getValue();
     return myAnnotator.getDirCoverageInformationString(((PsiDirectory)value), mySuitesBundle, myCoverageDataManager);
   }
 
   @Override
-  public String getPercentage(int columnIdx, AbstractTreeNode node) {
+  public String getPercentage(int columnIdx, @NotNull AbstractTreeNode node) {
     final Object value = node.getValue();
     if (value instanceof PsiFile) {
       return myAnnotator.getFileCoverageInformationString((PsiFile)value, mySuitesBundle, myCoverageDataManager);
@@ -76,8 +79,8 @@ public class DirectoryCoverageViewExtension extends CoverageViewExtension {
   }
 
   @Override
-  public List<AbstractTreeNode> getChildrenNodes(AbstractTreeNode node) {
-    List<AbstractTreeNode> children = new ArrayList<>();
+  public List<AbstractTreeNode<?>> getChildrenNodes(AbstractTreeNode node) {
+    List<AbstractTreeNode<?>> children = new ArrayList<>();
     if (node instanceof CoverageListNode) {
       final Object val = node.getValue();
       if (val instanceof PsiFile || val == null) return Collections.emptyList();

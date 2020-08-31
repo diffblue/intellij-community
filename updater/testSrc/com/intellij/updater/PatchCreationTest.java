@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.updater;
 
 import com.intellij.openapi.util.SystemInfo;
@@ -9,11 +9,12 @@ import java.io.*;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
+import static com.intellij.openapi.util.io.IoTestUtil.assumeSymLinkCreationIsSupported;
 import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,8 +72,12 @@ public class PatchCreationTest extends PatchTestCase {
 
   @Test
   public void testValidation() throws Exception {
+    FileUtil.delete(new File(myNewerDir, "bin/focuskiller.dll"));
+    FileUtil.copy(new File(myOlderDir, "bin/focuskiller.dll"), new File(myNewerDir, "newDir/focuskiller.dll"));
     Patch patch = createPatch();
+
     FileUtil.writeToFile(new File(myOlderDir, "bin/idea.bat"), "changed");
+    FileUtil.writeToFile(new File(myOlderDir, "bin/focuskiller.dll"), "changed");
     FileUtil.createDirectory(new File(myOlderDir, "extraDir"));
     FileUtil.writeToFile(new File(myOlderDir, "extraDir/extraFile.txt"), "");
     FileUtil.createDirectory(new File(myOlderDir, "newDir"));
@@ -82,6 +87,11 @@ public class PatchCreationTest extends PatchTestCase {
     FileUtil.delete(new File(myOlderDir, "lib/bootstrap.jar"));
 
     assertThat(sortResults(patch.validate(myOlderDir, TEST_UI))).containsExactly(
+      new ValidationResult(ValidationResult.Kind.CONFLICT,
+                           "bin/focuskiller.dll",
+                           ValidationResult.Action.DELETE,
+                           ValidationResult.MODIFIED_MESSAGE,
+                           ValidationResult.Option.DELETE, ValidationResult.Option.KEEP),
       new ValidationResult(ValidationResult.Kind.CONFLICT,
                            "bin/idea.bat",
                            ValidationResult.Action.DELETE,
@@ -99,6 +109,11 @@ public class PatchCreationTest extends PatchTestCase {
                            ValidationResult.Option.REPLACE, ValidationResult.Option.KEEP),
       new ValidationResult(ValidationResult.Kind.ERROR,
                            "Readme.txt",
+                           ValidationResult.Action.UPDATE,
+                           ValidationResult.MODIFIED_MESSAGE,
+                           ValidationResult.Option.IGNORE),
+      new ValidationResult(ValidationResult.Kind.ERROR,
+                           "bin/focuskiller.dll",
                            ValidationResult.Action.UPDATE,
                            ValidationResult.MODIFIED_MESSAGE,
                            ValidationResult.Option.IGNORE),
@@ -279,6 +294,8 @@ public class PatchCreationTest extends PatchTestCase {
 
   @Test
   public void testNoSymlinkNoise() throws IOException {
+    assumeSymLinkCreationIsSupported();
+
     Files.write(new File(myOlderDir, "bin/_target").toPath(), "test".getBytes(StandardCharsets.UTF_8));
     Utils.createLink("_target", new File(myOlderDir, "bin/_link"));
     resetNewerDir();
@@ -289,12 +306,10 @@ public class PatchCreationTest extends PatchTestCase {
 
   @Test
   public void testSymlinkDereferenceAndMove() throws IOException {
-    byte[] data = new byte[8192];
-    new Random().nextBytes(data);
-    long checksum = Digester.digestStream(new ByteArrayInputStream(data));
+    assumeSymLinkCreationIsSupported();
 
-    Files.write(new File(myOlderDir, "bin/mac_lib.jnilib").toPath(), data);
-    Utils.createLink("mac_lib.jnilib", new File(myOlderDir, "bin/mac_lib.dylib"));
+    long checksum = randomFile(myOlderDir.toPath().resolve("bin/mac_lib.jnilib"));
+    Files.createSymbolicLink(myOlderDir.toPath().resolve("bin/mac_lib.dylib"), Paths.get("mac_lib.jnilib"));
     resetNewerDir();
     Utils.delete(new File(myNewerDir, "bin/mac_lib.dylib"));
     Files.createDirectories(new File(myNewerDir, "plugins/whatever/bin").toPath());
@@ -302,12 +317,49 @@ public class PatchCreationTest extends PatchTestCase {
 
     Patch patch = createPatch();
     assertThat(sortActions(patch.getActions())).containsExactly(
-      new DeleteAction(patch, "bin/mac_lib.dylib", 2305843009820400437L),  // = crc32("mac_lib.jnilib") | SYM_LINK
+      new DeleteAction(patch, "bin/mac_lib.dylib", linkHash("mac_lib.jnilib")),
       new DeleteAction(patch, "bin/mac_lib.jnilib", checksum),
       new CreateAction(patch, "plugins/"),
       new CreateAction(patch, "plugins/whatever/"),
       new CreateAction(patch, "plugins/whatever/bin/"),
       new CreateAction(patch, "plugins/whatever/bin/mac_lib.dylib"));
+  }
+
+  @Test
+  public void testValidatingSymlinkToDirectory() throws Exception {
+    assumeSymLinkCreationIsSupported();
+
+    resetNewerDir();
+    Files.createDirectories(myOlderDir.toPath().resolve("other_dir"));
+    Files.createSymbolicLink(myOlderDir.toPath().resolve("dir"), Paths.get("other_dir"));
+    Files.createDirectories(myNewerDir.toPath().resolve("dir"));
+
+    Patch patch = createPatch();
+    assertThat(sortActions(patch.getActions())).containsExactly(
+      new DeleteAction(patch, "dir", linkHash("other_dir")),
+      new DeleteAction(patch, "other_dir/", Digester.DIRECTORY),
+      new CreateAction(patch, "dir/"));
+
+    assertThat(patch.validate(myOlderDir, TEST_UI)).isEmpty();
+  }
+
+  @Test
+  public void testValidatingMultipleSymlinkConversion() throws Exception {
+    assumeSymLinkCreationIsSupported();
+
+    resetNewerDir();
+
+    randomFile(myOlderDir.toPath().resolve("A.framework/Versions/A/Libraries/lib.dylib"));
+    randomFile(myOlderDir.toPath().resolve("A.framework/Versions/A/Resources/r/res.bin"));
+    Files.createSymbolicLink(myOlderDir.toPath().resolve("A.framework/Versions/Current"), Paths.get("A"));
+    Files.createSymbolicLink(myOlderDir.toPath().resolve("A.framework/Libraries"), Paths.get("Versions/Current/Libraries"));
+    Files.createSymbolicLink(myOlderDir.toPath().resolve("A.framework/Resources"), Paths.get("Versions/Current/Resources"));
+
+    randomFile(myNewerDir.toPath().resolve("A.framework/Libraries/lib.dylib"));
+    randomFile(myNewerDir.toPath().resolve("A.framework/Resources/r/res.bin"));
+
+    Patch patch = createPatch();
+    assertThat(patch.validate(myOlderDir, TEST_UI)).isEmpty();
   }
 
   private Patch createCaseOnlyRenamePatch() throws IOException {
@@ -317,5 +369,9 @@ public class PatchCreationTest extends PatchTestCase {
       .hasFieldOrPropertyWithValue("path", "bin/idea.bat");
     patch.getActions().add(1, new CreateAction(patch, "bin/IDEA.bat")); // simulates rename "idea.bat" -> "IDEA.bat"
     return patch;
+  }
+
+  private static long linkHash(String target) throws IOException {
+    return Digester.digestStream(new ByteArrayInputStream(target.getBytes(StandardCharsets.UTF_8))) | Digester.SYM_LINK;
   }
 }

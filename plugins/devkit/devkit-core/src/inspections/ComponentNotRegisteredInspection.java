@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.devkit.inspections;
 
 import com.intellij.codeInspection.LocalQuickFix;
@@ -38,10 +38,11 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ComponentNotRegisteredInspection extends DevKitJvmInspection {
+  private static final Logger LOG = Logger.getInstance(ComponentNotRegisteredInspection.class);
+
   public boolean CHECK_ACTIONS = true;
   public boolean IGNORE_NON_PUBLIC = true;
 
-  private static final Logger LOG = Logger.getInstance("org.jetbrains.idea.devkit.inspections.ComponentNotRegisteredInspection");
   private static final Map<ComponentType, RegistrationCheckerUtil.RegistrationType> COMPONENT_TYPE_TO_REGISTRATION_TYPE =
     ContainerUtil.<ComponentType, RegistrationCheckerUtil.RegistrationType>immutableMapBuilder()
       .put(ComponentType.APPLICATION, RegistrationCheckerUtil.RegistrationType.APPLICATION_COMPONENT)
@@ -118,7 +119,7 @@ public class ComponentNotRegisteredInspection extends DevKitJvmInspection {
 
     if (checkedClass.isInheritor(actionClass, true)) {
       if (!isActionRegistered(checkedClass, project) && canFix(checkedClass)) {
-        LocalQuickFix fix = new RegisterActionFix(org.jetbrains.idea.devkit.util.PsiUtil.createPointer(checkedClass));
+        LocalQuickFix fix = new RegisterActionFix(checkedClass);
         sink.highlight(DevKitBundle.message("inspections.component.not.registered.message",
                                             DevKitBundle.message("new.menu.action.text")), fix);
       }
@@ -126,6 +127,7 @@ public class ComponentNotRegisteredInspection extends DevKitJvmInspection {
       return;
     }
 
+    //noinspection deprecation
     PsiClass baseComponentClass = JavaPsiFacade.getInstance(project).findClass(BaseComponent.class.getName(), scope);
     if (baseComponentClass == null) {
       // stop if component class cannot be found (non-devkit module/project)
@@ -161,7 +163,7 @@ public class ComponentNotRegisteredInspection extends DevKitJvmInspection {
       return true;
     }
 
-    LocalQuickFix fix = new RegisterComponentFix(componentType, org.jetbrains.idea.devkit.util.PsiUtil.createPointer(checkedClass));
+    LocalQuickFix fix = new RegisterComponentFix(componentType, checkedClass);
     sink.highlight(DevKitBundle.message("inspections.component.not.registered.message",
                                         DevKitBundle.message(componentType.myPropertyKey)), fix);
     return false;

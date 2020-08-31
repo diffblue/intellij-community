@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.psi.impl.source.resolve.graphInference;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -16,6 +16,7 @@ import com.intellij.psi.infos.MethodCandidateInfo;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.*;
 import com.intellij.util.Function;
+import com.intellij.util.MathUtil;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.UniqueNameGenerator;
@@ -156,7 +157,10 @@ public class InferenceSession {
 
         if (args[i] != null && isPertinentToApplicability(args[i], method)) {
           PsiType parameterType = getParameterType(parameters, i, mySiteSubstitutor, varargs);
-          addConstraint(new ExpressionCompatibilityConstraint(args[i], substituteWithInferenceVariables(parameterType)));
+          LOG.assertTrue(parameterType != null);
+          if (!ignoreLambdaConstraintTree(args[i])) {
+            addConstraint(new ExpressionCompatibilityConstraint(args[i], substituteWithInferenceVariables(parameterType)));
+          }
         }
       }
     }
@@ -273,7 +277,7 @@ public class InferenceSession {
   }
 
   private static PsiType getParameterType(PsiParameter[] parameters, int i, @Nullable PsiSubstitutor substitutor, boolean varargs) {
-    if (substitutor == null) return null;
+    if (substitutor == null || !varargs && i >= parameters.length) return null;
     return substitutor.substitute(PsiTypesUtil.getParameterType(parameters, i, varargs));
   }
 
@@ -283,27 +287,33 @@ public class InferenceSession {
   }
 
 
-  PsiSubstitutor collectAdditionalAndInfer(@NotNull PsiParameter[] parameters,
-                                           @NotNull PsiExpression[] args,
+  PsiSubstitutor collectAdditionalAndInfer(PsiParameter @NotNull [] parameters,
+                                           PsiExpression @NotNull [] args,
                                            @NotNull MethodCandidateInfo properties,
                                            @NotNull PsiSubstitutor psiSubstitutor) {
-    return performGuardedInference(parameters, args, myContext, properties, psiSubstitutor);
+    return performGuardedInference(parameters, args, myContext, properties, psiSubstitutor, false);
   }
 
   @NotNull
-  public PsiSubstitutor infer(@Nullable PsiParameter[] parameters,
-                              @Nullable PsiExpression[] args,
+  public PsiSubstitutor infer(PsiParameter @Nullable [] parameters,
+                              PsiExpression @Nullable [] args,
                               @Nullable PsiElement parent,
                               @Nullable MethodCandidateInfo currentMethod) {
-    return performGuardedInference(parameters, args, parent, currentMethod, PsiSubstitutor.EMPTY);
+    return performGuardedInference(parameters, args, parent, currentMethod, PsiSubstitutor.EMPTY, false);
   }
 
   @NotNull
-  private PsiSubstitutor performGuardedInference(@Nullable PsiParameter[] parameters,
-                                                 @Nullable PsiExpression[] args,
-                                                 @Nullable PsiElement parent,
-                                                 @Nullable MethodCandidateInfo currentMethod,
-                                                 @NotNull PsiSubstitutor initialSubstitutor) {
+  PsiSubstitutor performGuardedInference(PsiParameter @Nullable [] parameters,
+                                         PsiExpression @Nullable [] args,
+                                         @Nullable PsiElement parent,
+                                         @Nullable MethodCandidateInfo currentMethod,
+                                         @NotNull PsiSubstitutor initialSubstitutor,
+                                         boolean prohibitCaching) {
+    if (!prohibitCaching) {
+      prohibitCaching = MethodCandidateInfo.isOverloadCheck() ||
+                        !(parent instanceof PsiMethodCallExpression &&
+                          ((PsiMethodCallExpression)parent).getMethodExpression().multiResolve(false).length == 1);
+    }
     return ThreadLocalTypes.performWithTypes(types -> {
       myTempTypes = types;
       try {
@@ -321,11 +331,11 @@ public class InferenceSession {
         }
         myTempTypes = null;
       }
-    });
+    }, prohibitCaching);
   }
 
-  private void doInfer(@Nullable PsiParameter[] parameters,
-                       @Nullable PsiExpression[] args,
+  private void doInfer(PsiParameter @Nullable [] parameters,
+                       PsiExpression @Nullable [] args,
                        @Nullable PsiElement parent,
                        @Nullable MethodCandidateInfo properties,
                        @NotNull PsiSubstitutor initialSubstitutor) {
@@ -388,9 +398,10 @@ public class InferenceSession {
       if (arg != null) {
         final PsiSubstitutor nestedSubstitutor = myInferenceSessionContainer.findNestedSubstitutor(arg, myInferenceSubstitution);
         final PsiType parameterType = nestedSubstitutor.substitute(getParameterType(parameters, i, siteSubstitutor, varargs));
+        if (parameterType == null) continue;
         if (!isPertinentToApplicability(arg, parentMethod)) {
           ExpressionCompatibilityConstraint compatibilityConstraint = new ExpressionCompatibilityConstraint(arg, parameterType);
-          if (arg instanceof PsiLambdaExpression && ignoreLambdaConstraintTree(arg) || dependsOnIgnoredConstraint(ignoredConstraints, compatibilityConstraint)) {
+          if (arg instanceof PsiFunctionalExpression && ignoreLambdaConstraintTree(arg) || dependsOnIgnoredConstraint(ignoredConstraints, compatibilityConstraint)) {
             ignoredConstraints.add(compatibilityConstraint);
             continue;
           }
@@ -437,7 +448,7 @@ public class InferenceSession {
   
   public static boolean ignoreLambdaConstraintTree(PsiExpression arg) {
     for (PsiElement expr : MethodCandidateInfo.ourOverloadGuard.currentStack()) {
-      if (PsiTreeUtil.getParentOfType(expr, PsiLambdaExpression.class) == arg) {
+      if (PsiTreeUtil.getParentOfType(expr, PsiFunctionalExpression.class, false) == arg) {
         return true;
       }
     }
@@ -490,7 +501,9 @@ public class InferenceSession {
       }
     }
     else if (returnExpression instanceof PsiLambdaExpression) {
-      collectLambdaReturnExpression(additionalConstraints, ignoredConstraints, (PsiLambdaExpression)returnExpression, functionalType, myErased, initialSubstitutor);
+      if (!ignoreLambdaConstraintTree(returnExpression)) {
+        collectLambdaReturnExpression(additionalConstraints, ignoredConstraints, (PsiLambdaExpression)returnExpression, functionalType, myErased, initialSubstitutor);
+      }
     }
   }
 
@@ -582,12 +595,12 @@ public class InferenceSession {
 
   public InferenceVariable[] initBounds(PsiElement context,
                                         final PsiSubstitutor siteSubstitutor,
-                                        PsiTypeParameter... typeParameters) {
+                                        PsiTypeParameter @NotNull ... typeParameters) {
     List<InferenceVariable> result = new ArrayList<>(typeParameters.length);
     for (PsiTypeParameter parameter : typeParameters) {
       String name = parameter.getName();
       if (myContext != null) {
-        name += Math.abs(myContext.hashCode());
+        name += MathUtil.nonNegativeAbs(myContext.hashCode());
       }
       InferenceVariable variable = new InferenceVariable(context, parameter, name);
       result.add(variable);
@@ -871,29 +884,29 @@ public class InferenceSession {
     if (type == null) return true;
     final Boolean isProper = type.accept(new PsiTypeVisitor<Boolean>() {
       @Override
-      public Boolean visitType(PsiType type) {
+      public Boolean visitType(@NotNull PsiType type) {
         return true;
       }
 
       @Override
-      public Boolean visitCapturedWildcardType(PsiCapturedWildcardType capturedWildcardType) {
+      public Boolean visitCapturedWildcardType(@NotNull PsiCapturedWildcardType capturedWildcardType) {
         return true;
       }
 
       @Override
-      public Boolean visitArrayType(PsiArrayType arrayType) {
+      public Boolean visitArrayType(@NotNull PsiArrayType arrayType) {
         return arrayType.getComponentType().accept(this);
       }
 
       @Override
-      public Boolean visitWildcardType(PsiWildcardType wildcardType) {
+      public Boolean visitWildcardType(@NotNull PsiWildcardType wildcardType) {
         final PsiType bound = wildcardType.getBound();
         if (bound == null) return true;
         return bound.accept(this);
       }
 
       @Override
-      public Boolean visitClassType(PsiClassType classType) {
+      public Boolean visitClassType(@NotNull PsiClassType classType) {
         final InferenceVariable inferenceVariable = fun.fun(classType);
         if (inferenceVariable != null) {
           if (dependencies != null) {
@@ -1107,7 +1120,7 @@ public class InferenceSession {
   }
 
   @NotNull
-  private PsiSubstitutor resolveSubset(Collection<InferenceVariable> vars, PsiSubstitutor substitutor) {
+  protected final PsiSubstitutor resolveSubset(Collection<InferenceVariable> vars, PsiSubstitutor substitutor) {
     if (myErased) {
       for (InferenceVariable var : vars) {
         substitutor = substitutor.put(var, null);
@@ -1161,7 +1174,7 @@ public class InferenceSession {
       }
     }
     else {
-      type = InferenceVariable.modifyAnnotations(lowerBound, (lb, modifier) -> modifier.modifyLowerBoundAnnotations(lb, upperBound));
+      type = lowerBound;
     }
 
     if (type == PsiType.NULL) {
@@ -1344,8 +1357,11 @@ public class InferenceSession {
 
   public void addConstraint(ConstraintFormula constraint) {
     if (myConstraintsCopy.add(constraint)) {
-        myConstraints.add(constraint);
+      if (constraint instanceof ExpressionCompatibilityConstraint && ignoreLambdaConstraintTree(((ExpressionCompatibilityConstraint)constraint).getExpression())) {
+        LOG.error("Should have been stopped at lambda under overload guard");
       }
+      myConstraints.add(constraint);
+    }
   }
 
   private boolean proceedWithAdditionalConstraints(Set<ConstraintFormula> additionalConstraints, Set<ConstraintFormula> ignoredConstraints) {
@@ -1651,7 +1667,7 @@ public class InferenceSession {
 
     final int paramsLength = !varargs ? parameters1.length : Math.max(parameters1.length, parameters2.length) - 1;
     for (int i = 0; i < paramsLength; i++) {
-      PsiType sType = getParameterType(parameters1, i, siteSubstitutor1, false);
+      PsiType sType = getParameterType(parameters1, i, siteSubstitutor1, varargs);
       PsiType tType = session.substituteWithInferenceVariables(getParameterType(parameters2, i, siteSubstitutor1, varargs));
       if (PsiUtil.isRawSubstitutor(m2, siteSubstitutor1)) {
         tType = TypeConversionUtil.erasure(tType);
@@ -1775,8 +1791,9 @@ public class InferenceSession {
     if (arg instanceof PsiMethodReferenceExpression && ((PsiMethodReferenceExpression)arg).isExact()) {
       final PsiParameter[] sParameters = sInterfaceMethod.getParameterList().getParameters();
       final PsiParameter[] tParameters = tInterfaceMethod.getParameterList().getParameters();
-      LOG.assertTrue(sParameters.length == tParameters.length, 
-                     "s: " + sInterfaceMethod.getParameterList().getText() + "; t: " + tInterfaceMethod.getParameterList().getText());
+      if (sParameters.length != tParameters.length) {
+        LOG.error("s: " + sInterfaceMethod.getParameterList().getText() + "; t: " + tInterfaceMethod.getParameterList().getText());
+      }
       for (int i = 0; i < tParameters.length; i++) {
         final PsiType tSubstituted = tSubstitutor.substitute(tParameters[i].getType());
         final PsiType sSubstituted = sSubstitutor.substitute(sParameters[i].getType());

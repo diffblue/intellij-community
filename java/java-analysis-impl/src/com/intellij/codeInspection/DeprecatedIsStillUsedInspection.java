@@ -2,6 +2,7 @@
 package com.intellij.codeInspection;
 
 import com.intellij.codeInspection.deprecation.DeprecationInspectionBase;
+import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.PsiSearchHelper;
@@ -9,9 +10,6 @@ import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.util.PsiUtil;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * @author cdr
- */
 public class DeprecatedIsStillUsedInspection extends LocalInspectionTool {
   @NotNull
   @Override
@@ -38,7 +36,7 @@ public class DeprecatedIsStillUsedInspection extends LocalInspectionTool {
     PsiSearchHelper searchHelper = PsiSearchHelper.getInstance(member.getProject());
     String name = member.getName();
     if (name != null && hasUsages(member, name, searchHelper, member.getResolveScope())) {
-      holder.registerProblem(identifier, "Deprecated member '" + name + "' is still used");
+      holder.registerProblem(identifier, JavaAnalysisBundle.message("deprecated.member.0.is.still.used", name));
     }
   }
 

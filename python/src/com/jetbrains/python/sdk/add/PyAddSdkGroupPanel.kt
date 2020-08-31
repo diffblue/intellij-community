@@ -21,20 +21,20 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import org.jetbrains.annotations.Nls
 import java.awt.BorderLayout
 import javax.swing.ButtonGroup
 import javax.swing.Icon
-import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
  * @author vlan
  */
-class PyAddSdkGroupPanel(name: String,
+class PyAddSdkGroupPanel(private val nameGetter: java.util.function.Supplier<@Nls String>,
                          panelIcon: Icon,
                          val panels: List<PyAddSdkPanel>,
                          defaultPanel: PyAddSdkPanel) : PyAddSdkPanel() {
-  override val panelName: String = name
+  override val panelName: String get() = nameGetter.get()
   override val icon: Icon = panelIcon
   var selectedPanel: PyAddSdkPanel = defaultPanel
   private val changeListeners: MutableList<Runnable> = mutableListOf()
@@ -70,7 +70,7 @@ class PyAddSdkGroupPanel(name: String,
     }
   }
 
-  private fun createRadioButtonPanel(panels: List<PyAddSdkPanel>, defaultPanel: PyAddSdkPanel): JPanel? {
+  private fun createRadioButtonPanel(panels: List<PyAddSdkPanel>, defaultPanel: PyAddSdkPanel): JPanel {
     val buttonMap = panels.map { JBRadioButton(it.panelName) to it }.toMap(linkedMapOf())
     ButtonGroup().apply {
       for (button in buttonMap.keys) {
@@ -80,15 +80,13 @@ class PyAddSdkGroupPanel(name: String,
     val formBuilder = FormBuilder.createFormBuilder()
     for ((button, panel) in buttonMap) {
       panel.border = JBUI.Borders.emptyLeft(30)
-      val name: JComponent = panel.nameExtensionComponent?.let {
-        JPanel(BorderLayout()).apply {
-          val inner = JPanel().apply {
-            add(button)
-            add(it)
-          }
-          add(inner, BorderLayout.WEST)
+      val name = JPanel(BorderLayout()).apply {
+        val inner = JPanel().apply {
+          add(button)
+          panel.nameExtensionComponent?.also { add(it) }
         }
-      } ?: button
+        add(inner, BorderLayout.WEST)
+      }
       formBuilder.addComponent(name)
       formBuilder.addComponent(panel)
       button.addItemListener {

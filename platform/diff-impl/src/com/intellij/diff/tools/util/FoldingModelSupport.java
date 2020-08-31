@@ -21,7 +21,9 @@ import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.FoldingListener;
 import com.intellij.openapi.editor.ex.FoldingModelEx;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
+import com.intellij.openapi.progress.EmptyProgressIndicator;
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.*;
@@ -61,14 +63,14 @@ public class FoldingModelSupport {
 
   protected final int myCount;
   @Nullable protected final Project myProject;
-  @NotNull protected final EditorEx[] myEditors;
+  protected final EditorEx @NotNull [] myEditors;
 
   @NotNull protected final List<FoldedGroup> myFoldings = new ArrayList<>();
 
   private boolean myDuringSynchronize;
   private final boolean[] myShouldUpdateLineNumbers;
 
-  public FoldingModelSupport(@Nullable Project project, @NotNull EditorEx[] editors, @NotNull Disposable disposable) {
+  public FoldingModelSupport(@Nullable Project project, EditorEx @NotNull [] editors, @NotNull Disposable disposable) {
     myProject = project;
     myEditors = editors;
     myCount = myEditors.length;
@@ -140,22 +142,22 @@ public class FoldingModelSupport {
     updateLineNumbers(true);
   }
 
-  private static class FoldingBuilder extends FoldingBuilderBase {
-    @NotNull private final EditorEx[] myEditors;
+  protected static int[] countLines(EditorEx @NotNull [] editors) {
+    return ReadAction.compute(() -> {
+      int[] lineCount = new int[editors.length];
+      for (int i = 0; i < editors.length; i++) {
+        lineCount[i] = getLineCount(editors[i].getDocument());
+      }
+      return lineCount;
+    });
+  }
 
-    private FoldingBuilder(@NotNull EditorEx[] editors, @NotNull Settings settings) {
+  private static class FoldingBuilder extends FoldingBuilderBase {
+    private final EditorEx @NotNull [] myEditors;
+
+    private FoldingBuilder(EditorEx @NotNull [] editors, @NotNull Settings settings) {
       super(countLines(editors), settings);
       myEditors = editors;
-    }
-
-    private static int[] countLines(@NotNull EditorEx[] editors) {
-      return ReadAction.compute(() -> {
-        int[] lineCount = new int[editors.length];
-        for (int i = 0; i < editors.length; i++) {
-          lineCount[i] = getLineCount(editors[i].getDocument());
-        }
-        return lineCount;
-      });
     }
 
     @Nullable
@@ -167,7 +169,7 @@ public class FoldingModelSupport {
 
   protected abstract static class FoldingBuilderBase {
     @NotNull private final Settings mySettings;
-    @NotNull private final int[] myLineCount;
+    private final int @NotNull [] myLineCount;
     private final int myCount;
 
     @NotNull private final List<Data.Group> myGroups = new ArrayList<>();
@@ -278,7 +280,7 @@ public class FoldingModelSupport {
     int offset = document.getLineStartOffset(lineNumber);
 
     FileBreadcrumbsCollector collector = FileBreadcrumbsCollector.findBreadcrumbsCollector(project, virtualFile);
-    List<Crumb> crumbs = ContainerUtil.newArrayList(collector.computeCrumbs(virtualFile, document, offset, null));
+    List<Crumb> crumbs = ContainerUtil.newArrayList(collector.computeCrumbs(virtualFile, document, offset, true));
     if (crumbs.isEmpty()) return null;
 
     String description = StringUtil.join(crumbs, it -> it.getText(), " > ");
@@ -720,9 +722,9 @@ public class FoldingModelSupport {
 
   private static class FoldingCache {
     public final boolean expandByDefault;
-    @NotNull public final List<FoldedGroupState>[] ranges;
+    public final List<FoldedGroupState> @NotNull [] ranges;
 
-    FoldingCache(@NotNull List<FoldedGroupState>[] ranges, boolean expandByDefault) {
+    FoldingCache(List<FoldedGroupState> @NotNull [] ranges, boolean expandByDefault) {
       this.ranges = ranges;
       this.expandByDefault = expandByDefault;
     }
@@ -746,12 +748,12 @@ public class FoldingModelSupport {
     }
 
     private static class Block {
-      @NotNull public final LineRange[] ranges;
+      public final LineRange @NotNull [] ranges;
 
       /**
        * WARN: arrays can have nullable values (ex: when unchanged fragments in editors have different length due to ignore policy)
        */
-      private Block(@NotNull LineRange[] ranges) {
+      private Block(LineRange @NotNull [] ranges) {
         this.ranges = ranges;
       }
     }
@@ -768,9 +770,9 @@ public class FoldingModelSupport {
   private static class FoldedGroupState {
     @Nullable public final LineRange expanded;
     @Nullable public final LineRange collapsed;
-    @Nullable public final String[] collapsedDescription;
+    public final String @Nullable [] collapsedDescription;
 
-    FoldedGroupState(@Nullable LineRange expanded, @Nullable LineRange collapsed, @Nullable String[] collapsedDescription) {
+    FoldedGroupState(@Nullable LineRange expanded, @Nullable LineRange collapsed, String @Nullable [] collapsedDescription) {
       assert expanded != null || collapsed != null;
 
       this.expanded = expanded;
@@ -842,17 +844,17 @@ public class FoldingModelSupport {
    * These regions will be collapsed/expanded synchronously, see {@link MyFoldingListener}.
    */
   protected class FoldedBlock {
-    @NotNull private final FoldRegion[] myRegions;
-    @NotNull private final int[] myLines;
+    private final FoldRegion @NotNull [] myRegions;
+    private final int @NotNull [] myLines;
 
     @NotNull private final List<RangeHighlighter> myHighlighters = new ArrayList<>(myCount);
 
-    @NotNull private final LazyDescription[] myDescriptions;
-    private final Disposable myDescriptionsDisposable = Disposer.newDisposable();
+    private final LazyDescription @NotNull [] myDescriptions;
+    private final ProgressIndicator myDescriptionsIndicator = new EmptyProgressIndicator();
 
-    public FoldedBlock(@NotNull FoldRegion[] regions,
+    public FoldedBlock(FoldRegion @NotNull [] regions,
                        @NotNull DescriptionComputer descriptionComputer,
-                       @Nullable String[] cachedDescriptions) {
+                       String @Nullable [] cachedDescriptions) {
       assert regions.length == myCount;
       assert cachedDescriptions == null || cachedDescriptions.length == myCount;
       myRegions = regions;
@@ -885,7 +887,7 @@ public class FoldingModelSupport {
         FoldRegion region = myRegions[i];
         if (region != null) myEditors[i].getFoldingModel().removeFoldRegion(region);
       }
-      Disposer.dispose(myDescriptionsDisposable);
+      myDescriptionsIndicator.cancel();
     }
 
     public void destroyHighlighter() {
@@ -956,7 +958,7 @@ public class FoldingModelSupport {
               if (result.description != null) repaintEditor();
             })
             .withDocumentsCommitted(myProject)
-            .expireWith(myDescriptionsDisposable)
+            .wrapProgress(myDescriptionsIndicator)
             .submit(NonUrgentExecutor.getInstance());
         }
         return myDescription.description;

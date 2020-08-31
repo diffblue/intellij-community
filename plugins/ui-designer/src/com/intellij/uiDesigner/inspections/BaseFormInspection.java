@@ -2,8 +2,10 @@
 package com.intellij.uiDesigner.inspections;
 
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
-import com.intellij.codeInspection.*;
-import com.intellij.openapi.fileTypes.StdFileTypes;
+import com.intellij.codeInspection.AbstractBaseJavaLocalInspectionTool;
+import com.intellij.codeInspection.InspectionManager;
+import com.intellij.codeInspection.InspectionProfile;
+import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -17,7 +19,6 @@ import com.intellij.uiDesigner.lw.IComponent;
 import com.intellij.uiDesigner.lw.IRootContainer;
 import com.intellij.uiDesigner.lw.LwRootContainer;
 import com.intellij.uiDesigner.radComponents.RadComponent;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -30,12 +31,6 @@ public abstract class BaseFormInspection extends AbstractBaseJavaLocalInspection
 
   public BaseFormInspection(@NonNls @NotNull String inspectionKey) {
     myInspectionKey = inspectionKey;
-  }
-
-  @Override
-  @Nls @NotNull
-  public String getDisplayName() {
-    return "";
   }
 
   @Override
@@ -61,9 +56,8 @@ public abstract class BaseFormInspection extends AbstractBaseJavaLocalInspection
   }
 
   @Override
-  @Nullable
-  public ProblemDescriptor[] checkFile(@NotNull PsiFile file, @NotNull InspectionManager manager, boolean isOnTheFly) {
-    if (!file.getFileType().equals(StdFileTypes.GUI_DESIGNER_FORM)) {
+  public ProblemDescriptor @Nullable [] checkFile(@NotNull PsiFile file, @NotNull InspectionManager manager, boolean isOnTheFly) {
+    if (!file.getFileType().equals(GuiFormFileType.INSTANCE)) {
       return null;
     }
     final VirtualFile virtualFile = file.getVirtualFile();
@@ -107,8 +101,7 @@ public abstract class BaseFormInspection extends AbstractBaseJavaLocalInspection
   }
 
   @Override
-  @Nullable
-  public ErrorInfo[] checkComponent(@NotNull GuiEditor editor, @NotNull RadComponent component) {
+  public ErrorInfo @Nullable [] checkComponent(@NotNull GuiEditor editor, @NotNull RadComponent component) {
     FormEditorErrorCollector collector = new FormEditorErrorCollector(editor, component);
     checkComponentProperties(component.getModule(), component, collector);
     return collector.result();

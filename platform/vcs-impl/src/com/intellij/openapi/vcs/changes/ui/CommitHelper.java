@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.vcs.changes.ui;
 
@@ -14,6 +14,9 @@ import java.util.List;
 
 import static com.intellij.util.ObjectUtils.notNull;
 
+/**
+ * @deprecated use Committer directly
+ */
 @Deprecated
 public class CommitHelper {
   @NotNull private final String myActionName;
@@ -37,7 +40,7 @@ public class CommitHelper {
     // for compatibility with external plugins
     CommitContext commitContext =
       additionalData instanceof PseudoMap ? ((PseudoMap<Object, Object>)additionalData).getCommitContext() : new CommitContext();
-    myCommitter = new SingleChangeListCommitter(project, commitState, commitContext, null, actionName, isDefaultChangeListFullyIncluded);
+    myCommitter = new SingleChangeListCommitter(project, commitState, commitContext, actionName, isDefaultChangeListFullyIncluded);
 
     myCommitter.addResultHandler(new CommitHandlersNotifier(handlers));
     myCommitter.addResultHandler(notNull(resultHandler, new ShowNotificationCommitResultHandler(myCommitter)));

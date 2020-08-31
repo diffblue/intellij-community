@@ -15,6 +15,7 @@
  */
 package com.intellij.codeInsight.daemon.impl.quickfix;
 
+import com.intellij.CommonBundle;
 import com.intellij.codeInsight.FileModificationService;
 import com.intellij.codeInsight.daemon.QuickFixActionRegistrar;
 import com.intellij.codeInsight.intention.impl.BaseIntentionAction;
@@ -56,7 +57,7 @@ public class PullAsAbstractUpFix extends LocalQuickFixAndIntentionActionOnPsiEle
   @Override
   @NotNull
   public String getFamilyName() {
-    return "Pull up";
+    return CommonBundle.message("title.pull.up");
   }
 
   @Override
@@ -142,25 +143,25 @@ public class PullAsAbstractUpFix extends LocalQuickFixAndIntentionActionOnPsiEle
     final PsiManager manager = containingClass.getManager();
 
     boolean canBePulledUp = true;
-    String name = "Pull method \'" + methodWithOverrides.getName() + "\' up";
+    String name = "Pull method '" + methodWithOverrides.getName() + "' up";
     if (containingClass instanceof PsiAnonymousClass) {
       final PsiClassType baseClassType = ((PsiAnonymousClass)containingClass).getBaseClassType();
       final PsiClass baseClass = baseClassType.resolve();
       if (baseClass == null) return;
       if (!BaseIntentionAction.canModify(baseClass)) return;
       if (!baseClass.hasModifierProperty(PsiModifier.ABSTRACT)) {
-        name = "Pull method \'" + methodWithOverrides.getName() + "\' up and make it abstract";
+        name = "Pull method '" + methodWithOverrides.getName() + "' up and make it abstract";
       }
     } else {
       final LinkedHashSet<PsiClass> classesToPullUp = new LinkedHashSet<>();
       collectClassesToPullUp(manager, classesToPullUp, containingClass.getExtendsListTypes());
       collectClassesToPullUp(manager, classesToPullUp, containingClass.getImplementsListTypes());
       if (classesToPullUp.isEmpty()) {
-        name = "Extract method \'" + methodWithOverrides.getName() + "\' to new interface";
+        name = "Extract method '" + methodWithOverrides.getName() + "' to new interface";
         canBePulledUp = false;
       } else if (classesToPullUp.size() == 1) {
         final PsiClass baseClass = classesToPullUp.iterator().next();
-        name = "Pull method \'" + methodWithOverrides.getName() + "\' to \'" + baseClass.getName() + "\'";
+        name = "Pull method '" + methodWithOverrides.getName() + "' to '" + baseClass.getName() + "'";
         if (!baseClass.hasModifierProperty(PsiModifier.ABSTRACT)) {
            name+= " and make it abstract";
         }

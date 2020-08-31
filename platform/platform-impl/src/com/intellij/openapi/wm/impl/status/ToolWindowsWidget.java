@@ -1,12 +1,15 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.wm.impl.status;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.ui.UISettingsListener;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.PopupChooserBuilder;
@@ -15,8 +18,6 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.*;
-import com.intellij.openapi.wm.impl.IdeFrameImpl;
-import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
@@ -33,7 +34,6 @@ import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -58,27 +58,7 @@ class ToolWindowsWidget extends JLabel implements CustomStatusBarWidget, StatusB
 
     IdeEventQueue.getInstance().addDispatcher(e -> {
       if (e instanceof MouseEvent) {
-        MouseEvent mouseEvent = (MouseEvent)e;
-        if (mouseEvent.getComponent() == null || !SwingUtilities.isDescendingFrom(mouseEvent.getComponent(), SwingUtilities.getWindowAncestor(
-          this))) {
-          return false;
-        }
-
-        if (e.getID() == MouseEvent.MOUSE_MOVED && isShowing()) {
-          Point p = mouseEvent.getLocationOnScreen();
-          Point screen = this.getLocationOnScreen();
-          if (new Rectangle(screen.x - 4, screen.y - 2, getWidth() + 4, getHeight() + 4).contains(p)) {
-            mouseEntered();
-            wasExited = false;
-          } else {
-            if (!wasExited) {
-              wasExited = mouseExited(p);
-            }
-          }
-        } else if (e.getID() == MouseEvent.MOUSE_EXITED) {
-          //mouse exits WND
-          mouseExited(mouseEvent.getLocationOnScreen());
-        }
+        dispatchMouseEvent((MouseEvent)e);
       }
       return false;
     }, parent);
@@ -88,7 +68,33 @@ class ToolWindowsWidget extends JLabel implements CustomStatusBarWidget, StatusB
     myAlarm = new Alarm(parent);
   }
 
-  public boolean mouseExited(Point currentLocationOnScreen) {
+  private void dispatchMouseEvent(MouseEvent e) {
+    Component component = e.getComponent();
+    if (component != null && SwingUtilities.isDescendingFrom(component, SwingUtilities.getWindowAncestor(this))) {
+      int id = e.getID();
+      if (id == MouseEvent.MOUSE_MOVED && isShowing()) {
+        mouseMoved(e);
+      } else if (id == MouseEvent.MOUSE_EXITED) {
+        //mouse exits WND
+        mouseExited(e.getLocationOnScreen());
+      }
+    }
+  }
+
+  private void mouseMoved(MouseEvent e) {
+    Point p = e.getLocationOnScreen();
+    Point screen = this.getLocationOnScreen();
+    if (new Rectangle(screen.x - 4, screen.y - 2, getWidth() + 4, getHeight() + 4).contains(p)) {
+      mouseEntered();
+      wasExited = false;
+    } else {
+      if (!wasExited) {
+        wasExited = mouseExited(p);
+      }
+    }
+  }
+
+  private boolean mouseExited(Point currentLocationOnScreen) {
     myAlarm.cancelAllRequests();
     if (popup != null && popup.isVisible()) {
       final Point screen = popup.getLocationOnScreen();
@@ -106,27 +112,27 @@ class ToolWindowsWidget extends JLabel implements CustomStatusBarWidget, StatusB
     return false;
   }
 
-  public void mouseEntered() {
+  private void mouseEntered() {
     final boolean active = ApplicationManager.getApplication().isActive();
     if (!active) {
       return;
     }
-    if (myAlarm.getActiveRequestCount() == 0) {
+    if (myAlarm.isEmpty()) {
       myAlarm.addRequest(() -> {
-        final IdeFrameImpl frame = ComponentUtil.getParentOfType(IdeFrameImpl.class, this);
-        if (frame == null) return;
+        Project project = CommonDataKeys.PROJECT.getData(DataManager.getInstance().getDataContext(this));
+        if (project == null) return;
 
         List<ToolWindow> toolWindows = new ArrayList<>();
-        final ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(frame.getProject());
+        final ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
         for (String id : toolWindowManager.getToolWindowIds()) {
           final ToolWindow tw = toolWindowManager.getToolWindow(id);
           if (tw.isAvailable() && tw.isShowStripeButton()) {
             toolWindows.add(tw);
           }
         }
-        Collections.sort(toolWindows, (o1, o2) -> StringUtil.naturalCompare(o1.getStripeTitle(), o2.getStripeTitle()));
+        toolWindows.sort((o1, o2) -> StringUtil.naturalCompare(o1.getStripeTitle(), o2.getStripeTitle()));
 
-        final JBList<ToolWindow> list = new JBList(toolWindows);
+        JBList<ToolWindow> list = new JBList<>(toolWindows);
         list.setCellRenderer(new ListCellRenderer<ToolWindow>() {
           final JBLabel label = new JBLabel();
 
@@ -178,7 +184,7 @@ class ToolWindowsWidget extends JLabel implements CustomStatusBarWidget, StatusB
   }
 
   @Override
-  public void uiSettingsChanged(UISettings uiSettings) {
+  public void uiSettingsChanged(@NotNull UISettings uiSettings) {
     updateIcon();
   }
 

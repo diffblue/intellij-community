@@ -22,6 +22,7 @@ import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.psi.*;
 import com.intellij.psi.util.InheritanceUtil;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -30,7 +31,6 @@ import com.siyeh.ig.psiutils.ParenthesesUtils;
 import com.siyeh.ig.psiutils.VariableAccessUtils;
 import com.siyeh.ig.ui.UiUtils;
 import org.jdom.Element;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -58,13 +58,6 @@ public class SharedThreadLocalRandomInspection extends BaseInspection {
       InspectionGadgetsBundle.message("result.of.method.call.ignored.class.column.title"),
       InspectionGadgetsBundle.message("result.of.method.call.ignored.method.column.title")));
     return UiUtils.createAddRemoveTreeClassChooserPanel(table, "Choose class");
-  }
-
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("shared.thread.local.random.display.name");
   }
 
   @NotNull
@@ -152,7 +145,7 @@ public class SharedThreadLocalRandomInspection extends BaseInspection {
       if (!PsiTreeUtil.isAncestor(rhs, expression, false)) {
         return null;
       }
-      final PsiExpression lhs = ParenthesesUtils.stripParentheses(assignmentExpression.getLExpression());
+      final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(assignmentExpression.getLExpression());
       if (!(lhs instanceof PsiReferenceExpression)) {
         return null;
       }

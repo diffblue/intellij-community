@@ -103,7 +103,7 @@ public abstract class AbstractEclipseClasspathReader<T> {
         addInvalidModuleEntry(rootModel, exported, moduleName);
       }
       else {
-        String srcUrl = pathToUrl(myRootPath + "/" + path);
+        String srcUrl = pathToUrl(getPathRelativeToRoot(path));
         boolean isTestFolder;
         try {
           isTestFolder = !StringUtil.isEmpty(testPattern) && path.matches(testPattern);
@@ -130,7 +130,7 @@ public abstract class AbstractEclipseClasspathReader<T> {
       }
     }
     else if (kind.equals(EclipseXml.OUTPUT_KIND)) {
-      String output = myRootPath + "/" + path;
+      String output = getPathRelativeToRoot(path);
       String linked = expandLinkedResourcesPath(macroMap, path);
       if (linked != null) {
         output = linked;
@@ -243,6 +243,10 @@ public abstract class AbstractEclipseClasspathReader<T> {
     }
   }
 
+  private String getPathRelativeToRoot(String path) {
+    return path.isEmpty() ? myRootPath : (myRootPath + "/" + path);
+  }
+
   private static String getNativeLibraryRoot(Element element) {
     final Element attributes = element.getChild(EclipseXml.ATTRIBUTES_TAG);
     if (attributes != null) {
@@ -288,7 +292,7 @@ public abstract class AbstractEclipseClasspathReader<T> {
 
   @NotNull
   protected static String pathToUrl(@NotNull String path) {
-    return "file://" + path;
+    return "file://" + FileUtil.toSystemIndependentName(path);
   }
 
   protected static EPathVariable createEPathVariable(String pathAttr, int varStart) {

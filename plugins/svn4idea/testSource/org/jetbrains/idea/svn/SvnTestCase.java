@@ -1,25 +1,17 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.svn;
 
-import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.execution.process.ProcessOutput;
-import com.intellij.ide.startup.impl.StartupManagerImpl;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.command.undo.UndoManager;
 import com.intellij.openapi.progress.EmptyProgressIndicator;
-import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TestDialog;
 import com.intellij.openapi.util.SystemInfo;
-import com.intellij.openapi.util.io.IoTestUtil;
-import com.intellij.openapi.vcs.ProjectLevelVcsManager;
-import com.intellij.openapi.vcs.VcsConfiguration;
-import com.intellij.openapi.vcs.VcsException;
-import com.intellij.openapi.vcs.VcsShowConfirmationOption;
+import com.intellij.openapi.vcs.*;
 import com.intellij.openapi.vcs.changes.*;
 import com.intellij.openapi.vcs.impl.ProjectLevelVcsManagerImpl;
 import com.intellij.openapi.vcs.rollback.RollbackProgressListener;
@@ -35,16 +27,13 @@ import com.intellij.testFramework.vcs.MockChangelistBuilder;
 import com.intellij.testFramework.vcs.TestClientRunner;
 import com.intellij.util.Processor;
 import com.intellij.util.ThrowableRunnable;
-import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.io.ZipUtil;
-import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.idea.svn.actions.CreateExternalAction;
 import org.jetbrains.idea.svn.api.Url;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.rules.ExternalResource;
 
@@ -54,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 
 import static com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext;
 import static com.intellij.openapi.application.PluginPathManager.getPluginHomePath;
@@ -61,15 +51,15 @@ import static com.intellij.openapi.util.io.FileUtil.*;
 import static com.intellij.openapi.util.text.StringUtil.isEmptyOrSpaces;
 import static com.intellij.openapi.vfs.VfsUtilCore.virtualToIoFile;
 import static com.intellij.testFramework.EdtTestUtil.runInEdtAndWait;
-import static com.intellij.testFramework.UsefulTestCase.*;
+import static com.intellij.testFramework.RunAll.runAll;
+import static com.intellij.testFramework.UsefulTestCase.assertDoesntExist;
+import static com.intellij.testFramework.UsefulTestCase.assertExists;
 import static com.intellij.util.ObjectUtils.notNull;
 import static com.intellij.util.containers.ContainerUtil.map2Array;
 import static com.intellij.util.lang.CompoundRuntimeException.throwIfNotEmpty;
 import static java.util.Collections.singletonMap;
 import static org.jetbrains.idea.svn.SvnUtil.parseUrl;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
   @ClassRule public static final ApplicationRule appRule = new ApplicationRule();
@@ -114,47 +104,36 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
     return getPluginHomePath("svn4idea");
   }
 
-  @BeforeClass
-  public static void assumeWindowsUnderTeamCity() {
-    if (IS_UNDER_TEAMCITY) {
-      IoTestUtil.assumeWindows();
-    }
-  }
-
   @Before
   public void setUp() throws Exception {
-    runInEdtAndWait(() -> {
-      myTempDirFixture = IdeaTestFixtureFactory.getFixtureFactory().createTempDirTestFixture();
-      myTempDirFixture.setUp();
-      resetCanonicalTempPathCache(myTempDirFixture.getTempDirPath());
+    myTempDirFixture = IdeaTestFixtureFactory.getFixtureFactory().createTempDirTestFixture();
+    myTempDirFixture.setUp();
+    resetCanonicalTempPathCache(myTempDirFixture.getTempDirPath());
 
-      myPluginRoot = new File(getPluginHome());
-      myClientBinaryPath = getSvnClientDirectory();
-      myRunner =
-        SystemInfo.isMac ? createClientRunner(singletonMap("DYLD_LIBRARY_PATH", myClientBinaryPath.getPath())) : createClientRunner();
+    myPluginRoot = new File(getPluginHome());
+    myClientBinaryPath = getSvnClientDirectory();
+    myRunner =
+      SystemInfo.isMac ? createClientRunner(singletonMap("DYLD_LIBRARY_PATH", myClientBinaryPath.getPath())) : createClientRunner();
 
-      myRepoRoot = virtualToIoFile(myTempDirFixture.findOrCreateDir("svnroot"));
-      ZipUtil.extract(new File(myPluginRoot, getTestDataDir() + "/svn/newrepo.zip"), myRepoRoot, null);
+    myRepoRoot = virtualToIoFile(myTempDirFixture.findOrCreateDir("svnroot"));
+    ZipUtil.extract(new File(myPluginRoot, getTestDataDir() + "/svn/newrepo.zip"), myRepoRoot, null);
 
-      myWcRoot = virtualToIoFile(myTempDirFixture.findOrCreateDir(myWcRootName));
-      myRepoUrl = (SystemInfo.isWindows ? "file:///" : "file://") + toSystemIndependentName(myRepoRoot.getPath());
-      myRepositoryUrl = parseUrl(myRepoUrl);
+    myWcRoot = virtualToIoFile(myTempDirFixture.findOrCreateDir(myWcRootName));
+    myRepoUrl = (SystemInfo.isWindows ? "file:///" : "file://") + toSystemIndependentName(myRepoRoot.getPath());
+    myRepositoryUrl = parseUrl(myRepoUrl);
 
-      verify(runSvn("co", myRepoUrl, myWcRoot.getPath()));
+    verify(runSvn("co", myRepoUrl, myWcRoot.getPath()));
 
-      initProject(myWcRoot, this.getTestName());
-      activateVCS(SvnVcs.VCS_NAME);
+    initProject(myWcRoot, this.getTestName());
+    activateVCS(SvnVcs.VCS_NAME);
 
-      vcsManager = (ProjectLevelVcsManagerImpl)ProjectLevelVcsManager.getInstance(myProject);
-      changeListManager = ChangeListManagerImpl.getInstanceImpl(myProject);
-      dirtyScopeManager = VcsDirtyScopeManager.getInstance(myProject);
-      vcs = SvnVcs.getInstance(myProject);
-      myGate = new MockChangeListManagerGate(changeListManager);
+    vcsManager = (ProjectLevelVcsManagerImpl)ProjectLevelVcsManager.getInstance(myProject);
+    changeListManager = ChangeListManagerImpl.getInstanceImpl(myProject);
+    dirtyScopeManager = VcsDirtyScopeManager.getInstance(myProject);
+    vcs = SvnVcs.getInstance(myProject);
+    myGate = new MockChangeListManagerGate(changeListManager);
 
-      ((StartupManagerImpl)StartupManager.getInstance(myProject)).runPostStartupActivities();
-      refreshSvnMappingsSynchronously();
-    });
-
+    refreshSvnMappingsSynchronously();
     refreshChanges();
   }
 
@@ -172,22 +151,9 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
   }
 
   protected void refreshSvnMappingsSynchronously() {
-    final Semaphore semaphore = new Semaphore();
-    semaphore.down();
-    ((SvnFileUrlMappingImpl) vcs.getSvnFileUrlMapping()).realRefresh(() -> semaphore.up());
-    if (ApplicationManager.getApplication().isDispatchThread()) {
-      long start = System.currentTimeMillis();
-      while (true) {
-        UIUtil.dispatchAllInvocationEvents();
-        if (semaphore.waitFor(50)) break;
-        if (System.currentTimeMillis() - start > 60_000) {
-          throw new AssertionError("Couldn't await SVN mapping refresh\n" + ThreadDumper.dumpThreadsToString());
-        }
-      }
-    }
-    else {
-      semaphore.waitFor();
-    }
+    CountDownLatch done = new CountDownLatch(1);
+    vcs.getSvnFileUrlMappingImpl().scheduleRefresh(() -> done.countDown());
+    runAll(() -> done.await());
   }
 
   protected void refreshChanges() {
@@ -220,21 +186,12 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
 
   @After
   public void tearDown() throws Exception {
-    runInEdtAndWait(
-      () -> new RunAll(
-        this::waitChangeListManager,
-        this::tearDownProject,
-        this::tearDownTempDirectoryFixture,
-        () -> resetCanonicalTempPathCache(ORIGINAL_TEMP_DIRECTORY)
-      ).run()
-    );
-  }
-
-  private void waitChangeListManager() {
-    if (changeListManager != null) {
-      changeListManager.forceStopInTestMode();
-      changeListManager.waitEverythingDoneInTestMode();
-    }
+    new RunAll(
+      () -> changeListManager.waitEverythingDoneInTestMode(),
+      () -> runInEdtAndWait(this::tearDownProject),
+      this::tearDownTempDirectoryFixture,
+      () -> resetCanonicalTempPathCache(ORIGINAL_TEMP_DIRECTORY)
+    ).run();
   }
 
   private void tearDownTempDirectoryFixture() throws Exception {
@@ -299,11 +256,13 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
       assertDoesntExist(rootFile);
       refreshVfs();
 
-      runInAndVerifyIgnoreOutput("co", mainUrl);
-      final File sourceDir = new File(myWorkingCopyDir.getPath(), "source");
-      final File innerDir = new File(sourceDir, "inner1/inner2/inner");
+      File sourceDir = new File(myWorkingCopyDir.getPath(), "source");
+      File innerDir = new File(sourceDir, "inner1/inner2/inner");
+      runInAndVerifyIgnoreOutput("co", mainUrl, sourceDir.getPath());
       runInAndVerifyIgnoreOutput("co", externalURL, innerDir.getPath());
+
       refreshVfs();
+      setVcsMappings(createDirectoryMapping(sourceDir));
     });
   }
 
@@ -403,21 +362,29 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
         runInAndVerifyIgnoreOutput("ci", "-m", "test", sourceDir.getPath());
       }
 
+      refreshVfs();
+      setVcsMappings(createDirectoryMapping(sourceDir));
+
       if (updateExternal) {
-        refreshVfs();
         assertExists(new File(sourceDir, "external"));
       }
     });
   }
 
-  protected void withDisabledChangeListManager(@NotNull ThrowableRunnable<? extends Exception> action) throws Exception {
-    changeListManager.stopEveryThingIfInTestMode();
+  private void withDisabledChangeListManager(@NotNull ThrowableRunnable<? extends Exception> action) throws Exception {
+    changeListManager.waitUntilRefreshed();
+    changeListManager.forceStopInTestMode();
     action.run();
     changeListManager.forceGoInTestMode();
     refreshSvnMappingsSynchronously();
   }
 
-  protected void createAnotherRepo() throws Exception {
+  @NotNull
+  private VcsDirectoryMapping createDirectoryMapping(@NotNull File directory) {
+    return new VcsDirectoryMapping(toSystemIndependentName(directory.getPath()), vcs.getName());
+  }
+
+  private void createAnotherRepo() throws Exception {
     File repo = virtualToIoFile(myTempDirFixture.findOrCreateDir("anotherRepo"));
     copyDir(myRepoRoot, repo);
     myAnotherRepoUrl = (SystemInfo.isWindows ? "file:///" : "file://") + toSystemIndependentName(repo.getPath());
@@ -497,8 +464,8 @@ public abstract class SvnTestCase extends AbstractJunitVcsTestCase {
     runAndVerifyAcrossLocks(workingDir, myRunner, input, verifier, primitiveVerifier);
   }
 
-  public static void runAndVerifyAcrossLocks(File workingDir, final TestClientRunner runner, final String[] input,
-    final Processor<ProcessOutput> verifier, final Processor<ProcessOutput> primitiveVerifier) throws IOException {
+  private static void runAndVerifyAcrossLocks(File workingDir, final TestClientRunner runner, final String[] input,
+                                              final Processor<ProcessOutput> verifier, final Processor<ProcessOutput> primitiveVerifier) throws IOException {
     for (int i = 0; i < 5; i++) {
       final ProcessOutput output = runner.runClient("svn", null, workingDir, input);
       if (output.getExitCode() != 0 && !isEmptyOrSpaces(output.getStderr())) {

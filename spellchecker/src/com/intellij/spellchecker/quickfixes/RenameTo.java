@@ -21,9 +21,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 
 public class RenameTo extends ShowSuggestions implements SpellCheckerQuickFix {
-
-  public static final String FIX_NAME =  SpellCheckerBundle.message("rename.to");
-
   public RenameTo(String wordWithTypo) {
     super(wordWithTypo);
   }
@@ -31,7 +28,7 @@ public class RenameTo extends ShowSuggestions implements SpellCheckerQuickFix {
   @Override
   @NotNull
   public String getFamilyName() {
-    return FIX_NAME;
+    return getFixName();
   }
 
   @Nullable
@@ -67,7 +64,9 @@ public class RenameTo extends ShowSuggestions implements SpellCheckerQuickFix {
     if (editor instanceof EditorWindow) {
       map.put(CommonDataKeys.EDITOR.getName(), editor);
       map.put(CommonDataKeys.PSI_ELEMENT.getName(), psiElement);
-    } else if (ApplicationManager.getApplication().isUnitTestMode()) { // TextEditorComponent / FiledEditorManagerImpl give away the data in real life
+    }
+    else if (ApplicationManager.getApplication().isUnitTestMode()) {
+      // TextEditorComponent / FiledEditorManagerImpl give away the data in real life
       map.put(
         CommonDataKeys.PSI_ELEMENT.getName(),
         new TextEditorPsiDataProvider().getData(CommonDataKeys.PSI_ELEMENT.getName(), editor, editor.getCaretModel().getCurrentCaret())
@@ -88,5 +87,9 @@ public class RenameTo extends ShowSuggestions implements SpellCheckerQuickFix {
     finally {
       editor.putUserData(RenameHandlerRegistry.SELECT_ALL, selectAll);
     }
+  }
+
+  public static String getFixName() {
+    return SpellCheckerBundle.message("rename.to");
   }
 }

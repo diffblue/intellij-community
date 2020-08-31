@@ -19,7 +19,6 @@ import com.intellij.psi.PsiMirrorElement;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiParameterList;
 import com.intellij.psi.PsiSubstitutor;
-import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -41,12 +40,11 @@ public class LightParameterListWrapper extends LightElement implements PsiParame
   }
 
   @Override
-  @NotNull
-  public PsiParameter[] getParameters() {
+  public PsiParameter @NotNull [] getParameters() {
     return mySubstitutor == PsiSubstitutor.EMPTY
            ? myDelegate.getParameters()
            : ContainerUtil.map2Array(myDelegate.getParameters(), PsiParameter.class,
-                                     (Function<PsiParameter, PsiParameter>)parameter -> new LightParameterWrapper(parameter, mySubstitutor));
+                                     parameter -> new LightParameterWrapper(parameter, mySubstitutor));
   }
 
   @Override

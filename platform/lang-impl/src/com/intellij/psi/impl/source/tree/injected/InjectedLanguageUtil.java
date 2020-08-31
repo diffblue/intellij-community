@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.psi.impl.source.tree.injected;
 
@@ -10,7 +10,6 @@ import com.intellij.lang.ASTNode;
 import com.intellij.lang.Language;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.lang.injection.MultiHostRegistrar;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -51,8 +50,7 @@ import java.util.List;
  * @deprecated Use {@link InjectedLanguageManager} instead
  */
 @Deprecated
-public class InjectedLanguageUtil {
-  private static final Logger LOG = Logger.getInstance(InjectedLanguageUtil.class);
+public final class InjectedLanguageUtil {
   public static final Key<IElementType> INJECTED_FRAGMENT_TYPE = Key.create("INJECTED_FRAGMENT_TYPE");
   public static final Key<Boolean> FRANKENSTEIN_INJECTION = InjectedLanguageManager.FRANKENSTEIN_INJECTION;
 
@@ -264,15 +262,21 @@ public class InjectedLanguageUtil {
     return getInjectedEditorForInjectedFile(hostEditor, hostEditor.getCaretModel().getCurrentCaret(), injectedFile);
   }
 
+  /**
+   * @param hostCaret if not {@code null}, take into account caret's selection (in case it's not contained completely in injected fragment,
+   *                  return host editor)
+   */
   @NotNull
-  public static Editor getInjectedEditorForInjectedFile(@NotNull Editor hostEditor, @NotNull Caret hostCaret, @Nullable final PsiFile injectedFile) {
+  public static Editor getInjectedEditorForInjectedFile(@NotNull Editor hostEditor,
+                                                        @Nullable Caret hostCaret,
+                                                        @Nullable final PsiFile injectedFile) {
     if (injectedFile == null || hostEditor instanceof EditorWindow || hostEditor.isDisposed()) return hostEditor;
     Project project = hostEditor.getProject();
     if (project == null) project = injectedFile.getProject();
     Document document = PsiDocumentManager.getInstance(project).getDocument(injectedFile);
     if (!(document instanceof DocumentWindowImpl)) return hostEditor;
     DocumentWindowImpl documentWindow = (DocumentWindowImpl)document;
-    if (hostCaret.hasSelection()) {
+    if (hostCaret != null && hostCaret.hasSelection()) {
       int selstart = hostCaret.getSelectionStart();
       if (selstart != -1) {
         int selend = Math.max(selstart, hostCaret.getSelectionEnd());
@@ -337,8 +341,9 @@ public class InjectedLanguageUtil {
       ProgressManager.checkCanceled();
       if ("EL".equals(current.getLanguage().getID())) break;
       result = SoftReference.deref(current.getUserData(INJECTED_PSI));
-      if (result == null || !result.isModCountUpToDate(hostPsiFile) || !result.isValid()) {
+      if (result == null || !result.isModCountUpToDate() || !result.isValid()) {
         result = injectedManager.processInPlaceInjectorsFor(hostPsiFile, current);
+        preventResultFromGCWhileInjectedPsiIsReachable(result);
       }
 
       current = current.getParent();
@@ -387,6 +392,20 @@ public class InjectedLanguageUtil {
     for (PsiElement e = from; e != upUntil && e != null; e = e.getParent()) {
       ProgressManager.checkCanceled();
       e.putUserData(INJECTED_PSI, cachedRef);
+    }
+  }
+
+  private static final Key<InjectionResult> INJECTION_HOLDER_BACK_REFERENCE = Key.create("INJECTION_HOLDER_BACK_REFERENCE");
+
+  /**
+   * Prevents InjectionResult from being GC-ed while there are references to the PSI inside,
+   * to avoid new injected PSI being created when there's one alive already.
+   */
+  private static void preventResultFromGCWhileInjectedPsiIsReachable(@Nullable InjectionResult result) {
+    if (result != null && result.files != null) {
+      for (PsiFile injectedPsiFile : result.files) {
+        injectedPsiFile.getViewProvider().putUserData(INJECTION_HOLDER_BACK_REFERENCE, result);
+      }
     }
   }
 
@@ -665,7 +684,7 @@ public class InjectedLanguageUtil {
       Boolean myState = startElement == null ? Boolean.TRUE : null;
 
       @Override
-      public void visitElement(PsiElement element) {
+      public void visitElement(@NotNull PsiElement element) {
         if (element == startElement) myState = Boolean.TRUE;
         if (element == endElement) myState = Boolean.FALSE;
         if (Boolean.FALSE == myState) return;
@@ -759,7 +778,7 @@ public class InjectedLanguageUtil {
    */
   @Deprecated
   public static <T> void putInjectedFileUserData(MultiHostRegistrar registrar, Key<T> key, T value) {
-    DeprecatedMethodException.report("use #putInjectedFileUserData(com.intellij.psi.PsiElement, com.intellij.lang.Language, com.intellij.openapi.util.Key, java.lang.Object)} instead");
+    DeprecatedMethodException.report("use putInjectedFileUserData(PsiElement, Language, Key, Object)} instead");
     InjectionResult result = ((InjectionRegistrarImpl)registrar).getInjectedResult();
     if (result != null && result.files != null) {
       List<? extends PsiFile> files = result.files;

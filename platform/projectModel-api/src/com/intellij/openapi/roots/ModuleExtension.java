@@ -19,6 +19,7 @@ package com.intellij.openapi.roots;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import org.jdom.Element;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -29,6 +30,10 @@ import org.jetbrains.annotations.NotNull;
  * configuration file.
  */
 public abstract class ModuleExtension implements Disposable {
+  /**
+   * @deprecated don't enumerate extensions in the plugin, use {@link ModuleRootModel#getModuleExtension(Class)} instead
+   */
+  @Deprecated
   public static final ExtensionPointName<ModuleExtension> EP_NAME = ExtensionPointName.create("com.intellij.moduleExtension");
 
   /**
@@ -51,6 +56,7 @@ public abstract class ModuleExtension implements Disposable {
    * @param writable  flag which identifies if resulting model is writable
    * @return          extension model
    */
+  @ApiStatus.OverrideOnly
   @NotNull
   public abstract ModuleExtension getModifiableModel(final boolean writable);
 

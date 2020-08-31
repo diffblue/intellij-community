@@ -1,8 +1,8 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.execution;
 
-import com.intellij.debugger.DebuggerBundle;
 import com.intellij.debugger.DebuggerManager;
+import com.intellij.debugger.JavaDebuggerBundle;
 import com.intellij.debugger.engine.DebugProcess;
 import com.intellij.debugger.engine.DebugProcessImpl;
 import com.intellij.debugger.engine.jdi.VirtualMachineProxy;
@@ -10,7 +10,6 @@ import com.intellij.debugger.engine.managerThread.DebuggerCommand;
 import com.intellij.debugger.jdi.VirtualMachineProxyImpl;
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.ProgramRunnerUtil;
-import com.intellij.execution.RunManager;
 import com.intellij.execution.RunnerAndConfigurationSettings;
 import com.intellij.execution.executors.DefaultDebugExecutor;
 import com.intellij.execution.impl.ConsoleViewImpl;
@@ -18,8 +17,6 @@ import com.intellij.execution.impl.EditorHyperlinkSupport;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
-import com.intellij.execution.remote.RemoteConfiguration;
-import com.intellij.execution.remote.RemoteConfigurationType;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.runners.ProgramRunner;
@@ -32,6 +29,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.markup.HighlighterLayer;
 import com.intellij.openapi.editor.markup.RangeHighlighter;
 import com.intellij.openapi.editor.markup.TextAttributes;
+import com.intellij.openapi.externalSystem.debugger.DebuggerBackendExtension;
+import com.intellij.openapi.externalSystem.rt.execution.ForkedDebuggerHelper;
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.StreamUtil;
@@ -64,9 +63,9 @@ class ForkedDebuggerThread extends Thread {
   private final ExecutionConsole myMainExecutionConsole;
 
   ForkedDebuggerThread(@NotNull ProcessHandler mainProcessHandler,
-                              @NotNull RunContentDescriptor mainRunContentDescriptor,
-                              @NotNull ServerSocket socket,
-                              @NotNull Project project) {
+                       @NotNull RunContentDescriptor mainRunContentDescriptor,
+                       @NotNull ServerSocket socket,
+                       @NotNull Project project) {
     super("external task forked debugger runner");
     setDaemon(true);
     mySocket = socket;
@@ -120,8 +119,17 @@ class ForkedDebuggerThread extends Thread {
 
   private void handleForkedProcessSignal(Socket accept) throws IOException {
     // the stream can not be closed in the current thread
-    //noinspection IOResourceOpenedButNotSafelyClosed
     DataInputStream stream = new DataInputStream(accept.getInputStream());
+
+    String debuggerId = stream.readUTF();
+    String processName = stream.readUTF();
+    String processParameters = stream.readUTF();
+
+    if (processParameters.startsWith(ForkedDebuggerHelper.FINISH_PARAMS)) {
+      removeTerminatedForks(processName, accept, stream);
+      return;
+    }
+
     myMainProcessHandler.addProcessListener(new ProcessAdapter() {
       @Override
       public void processTerminated(@NotNull ProcessEvent event) {
@@ -129,82 +137,85 @@ class ForkedDebuggerThread extends Thread {
         StreamUtil.closeStream(accept);
       }
     });
-    int signal = stream.readInt();
-    String processName = stream.readUTF();
-    if (signal > 0) {
-      String debugPort = String.valueOf(signal);
-      attachVM(myProject, processName, debugPort, new ProgramRunner.Callback() {
-        @Override
-        public void processStarted(RunContentDescriptor descriptor) {
-          // select tab for the forked process only when it has been suspended
-          descriptor.setSelectContentWhenAdded(false);
 
-          // restore selection of the 'main' tab to avoid flickering of the reused content tab when no suspend events occur
-          ProcessHandler forkedProcessHandler = descriptor.getProcessHandler();
-          if (forkedProcessHandler != null) {
-            myMainProcessHandler.addProcessListener(new ProcessAdapter() {
-              @Override
-              public void processWillTerminate(@NotNull ProcessEvent event, boolean willBeDestroyed) {
-                myMainProcessHandler.removeProcessListener(this);
-                terminateForkedProcess(forkedProcessHandler);
-              }
-            });
-
-            forkedProcessHandler.addProcessListener(new MyForkedProcessListener(descriptor, processName));
-            try {
-              accept.getOutputStream().write(0);
-              stream.close();
-            }
-            catch (IOException e) {
-              ExternalSystemTaskDebugRunner.LOG.debug(e);
-            }
+    for (DebuggerBackendExtension extension : DebuggerBackendExtension.EP_NAME.getExtensionList()) {
+      if (extension.id().equals(debuggerId)) {
+        RunnerAndConfigurationSettings settings = extension.debugConfigurationSettings(myProject, processName, processParameters);
+        runDebugConfiguration(settings, new ProgramRunner.Callback() {
+          @Override
+          public void processStarted(RunContentDescriptor descriptor) {
+            handleStartedDebugConfiguration(descriptor, processName, accept, stream);
           }
-        }
-      });
-    }
-    else if (signal == 0) {
-      // remove content for terminated forked processes
-      ApplicationManager.getApplication().invokeLater(() -> {
-        final ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
-        ContentManager contentManager = toolWindowManager.getToolWindow(ToolWindowId.DEBUG).getContentManager();
-        Content content = contentManager.findContent(processName);
-        if (content != null) {
-          RunContentDescriptor descriptor = content.getUserData(RunContentDescriptor.DESCRIPTOR_KEY);
-          if (descriptor != null) {
-            ProcessHandler handler = descriptor.getProcessHandler();
-            if (handler != null) {
-              handler.destroyProcess();
-            }
-          }
-        }
-        try {
-          accept.getOutputStream().write(0);
-          stream.close();
-        }
-        catch (IOException e) {
-          ExternalSystemTaskDebugRunner.LOG.debug(e);
-        }
-      });
+        });
+        break;
+      }
     }
   }
 
-  private static void attachVM(@NotNull Project project, String runConfigName, @NotNull String debugPort, ProgramRunner.Callback callback) {
-    RunnerAndConfigurationSettings runSettings = RunManager.getInstance(project).createConfiguration(runConfigName, RemoteConfigurationType.class);
-    runSettings.setActivateToolWindowBeforeRun(false);
-
-    RemoteConfiguration configuration = (RemoteConfiguration)runSettings.getConfiguration();
-    configuration.HOST = "localhost";
-    configuration.PORT = debugPort;
-    configuration.USE_SOCKET_TRANSPORT = true;
-    configuration.SERVER_MODE = true;
-
+  private static void unblockRemote(Socket socket, DataInputStream inputStream) {
     try {
+      socket.getOutputStream().write(0);
+      inputStream.close();
+    }
+    catch (IOException e) {
+      ExternalSystemTaskDebugRunner.LOG.debug(e);
+    }
+  }
+
+  private void handleStartedDebugConfiguration(RunContentDescriptor descriptor,
+                                               String processName,
+                                               Socket socket,
+                                               DataInputStream inputStream) {
+    // select tab for the forked process only when it has been suspended
+    descriptor.setSelectContentWhenAdded(false);
+
+    // restore selection of the 'main' tab to avoid flickering of the reused content tab when no suspend events occur
+    ProcessHandler forkedProcessHandler = descriptor.getProcessHandler();
+    if (forkedProcessHandler != null) {
+      myMainProcessHandler.addProcessListener(new ProcessAdapter() {
+        @Override
+        public void processWillTerminate(@NotNull ProcessEvent event, boolean willBeDestroyed) {
+          myMainProcessHandler.removeProcessListener(this);
+          terminateForkedProcess(forkedProcessHandler);
+        }
+      });
+
+      forkedProcessHandler.addProcessListener(new MyForkedProcessListener(descriptor, processName));
+      unblockRemote(socket, inputStream);
+    }
+  }
+
+  private void removeTerminatedForks(@NotNull String processName,
+                                     Socket socket,
+                                     DataInputStream inputStream) {
+    ApplicationManager.getApplication().invokeLater(() -> {
+      final ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(myProject);
+      ContentManager contentManager = toolWindowManager.getToolWindow(ToolWindowId.DEBUG).getContentManager();
+      Content content = contentManager.findContent(processName);
+      if (content != null) {
+        RunContentDescriptor descriptor = content.getUserData(RunContentDescriptor.DESCRIPTOR_KEY);
+        if (descriptor != null) {
+          ProcessHandler handler = descriptor.getProcessHandler();
+          if (handler != null) {
+            handler.destroyProcess();
+          }
+        }
+      }
+      unblockRemote(socket, inputStream);
+    });
+  }
+
+  private static void runDebugConfiguration(@NotNull RunnerAndConfigurationSettings runSettings, ProgramRunner.Callback callback) {
+    try {
+      runSettings.setActivateToolWindowBeforeRun(false);
       ExecutionEnvironment environment = ExecutionEnvironmentBuilder.create(DefaultDebugExecutor.getDebugExecutorInstance(), runSettings)
         .contentToReuse(null)
         .dataContext(null)
         .activeTarget()
         .build();
-      ProgramRunnerUtil.executeConfigurationAsync(environment, true, true, callback);
+      ApplicationManager.getApplication().invokeAndWait(() -> {
+        ProgramRunnerUtil.executeConfigurationAsync(environment, true, true, callback);
+      });
     }
     catch (ExecutionException e) {
       ExternalSystemTaskDebugRunner.LOG.error(e);
@@ -253,7 +264,7 @@ class ForkedDebuggerThread extends Thread {
         String addressDisplayName = "";
         DebugProcess debugProcess = DebuggerManager.getInstance(myProject).getDebugProcess(handler);
         if (debugProcess instanceof DebugProcessImpl) {
-          addressDisplayName = "(" + DebuggerBundle.getAddressDisplayName(((DebugProcessImpl)debugProcess).getConnection()) + ")";
+          addressDisplayName = "(" + JavaDebuggerBundle.getAddressDisplayName(((DebugProcessImpl)debugProcess).getConnection()) + ")";
         }
         String linkText = ExternalSystemBundle.message("debugger.open.session.tab");
         String debuggerAttachedStatusMessage =
@@ -286,15 +297,15 @@ class ForkedDebuggerThread extends Thread {
               EditorHyperlinkSupport hyperlinkSupport = mainConsoleView.getHyperlinks();
               int startOffset = myHyperlink.getStartOffset();
               int endOffset = myHyperlink.getEndOffset();
-              TextAttributes inactiveTextAttributes = myHyperlink.getTextAttributes() != null
-                                                      ? myHyperlink.getTextAttributes().clone() : TextAttributes.ERASE_MARKER.clone();
+              TextAttributes attributes = myHyperlink.getTextAttributes(mainConsoleView.getEditor().getColorsScheme());
+              TextAttributes inactiveTextAttributes = attributes != null ? attributes.clone() : TextAttributes.ERASE_MARKER.clone();
               inactiveTextAttributes.setForegroundColor(UIUtil.getInactiveTextColor());
               inactiveTextAttributes.setEffectColor(UIUtil.getInactiveTextColor());
               inactiveTextAttributes.setFontType(Font.ITALIC);
               hyperlinkSupport.removeHyperlink(myHyperlink);
               hyperlinkSupport.addHighlighter(startOffset, endOffset, inactiveTextAttributes, HighlighterLayer.CONSOLE_FILTER);
             }
-          );
+          , myProject.getDisposed());
         }
       }
     }
@@ -337,7 +348,8 @@ class ForkedDebuggerThread extends Thread {
           debugProcess.stop(true);
         }
       });
-    } else {
+    }
+    else {
       processHandler.destroyProcess();
     }
   }

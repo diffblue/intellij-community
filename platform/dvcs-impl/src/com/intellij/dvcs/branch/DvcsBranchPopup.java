@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.dvcs.branch;
 
 import com.intellij.dvcs.DvcsUtil;
@@ -52,7 +38,7 @@ public abstract class DvcsBranchPopup<Repo extends Repository> {
 
   @NotNull protected final Repo myCurrentRepository;
   @NotNull protected final BranchActionGroupPopup myPopup;
-  @NotNull protected final String myRepoTitleInfo;
+  protected final boolean myInSpecificRepository;
 
   protected DvcsBranchPopup(@NotNull Repo currentRepository,
                             @NotNull AbstractRepositoryManager<Repo> repositoryManager,
@@ -65,10 +51,16 @@ public abstract class DvcsBranchPopup<Repo extends Repository> {
     myVcs = currentRepository.getVcs();
     myVcsSettings = vcsSettings;
     myMultiRootBranchConfig = multiRootBranchConfig;
-    String title = myVcs.getDisplayName() + " Branches";
-    myRepoTitleInfo = (myRepositoryManager.moreThanOneRoot() && myVcsSettings.getSyncSetting() == DvcsSyncSettings.Value.DONT_SYNC)
-                 ? " in " + DvcsUtil.getShortRepositoryName(currentRepository) : "";
-    myPopup = new BranchActionGroupPopup(title + myRepoTitleInfo, myProject, preselectActionCondition, createActions(), dimensionKey);
+    myInSpecificRepository = myRepositoryManager.moreThanOneRoot() && myVcsSettings.getSyncSetting() == DvcsSyncSettings.Value.DONT_SYNC;
+    String title = myInSpecificRepository ?
+                   DvcsBundle.message("branch.popup.vcs.name.branches", myVcs.getDisplayName()) :
+                   DvcsBundle.message("branch.popup.vcs.name.branches.in.repo", myVcs.getDisplayName(),
+                                      DvcsUtil.getShortRepositoryName(currentRepository));
+    myPopup = new BranchActionGroupPopup(title,
+                                         myProject,
+                                         preselectActionCondition,
+                                         createActions(),
+                                         dimensionKey);
     initBranchSyncPolicyIfNotInitialized();
     warnThatBranchesDivergedIfNeeded();
     if (myRepositoryManager.moreThanOneRoot()) {
@@ -95,8 +87,9 @@ public abstract class DvcsBranchPopup<Repo extends Repository> {
 
   private void notifyAboutSyncedBranches() {
     Notification notification = STANDARD_NOTIFICATION.createNotification("Branch Operations Are Executed on All Roots", "", NotificationType.INFORMATION, null);
-    notification.addAction(NotificationAction.createSimple("Disable...", () -> {
-      ShowSettingsUtil.getInstance().showSettingsDialog(myProject, myVcs.getConfigurable().getDisplayName());
+    notification
+      .addAction(NotificationAction.createSimple(DvcsBundle.messagePointer("action.NotificationAction.DvcsBranchPopup.text.disable"), () -> {
+      ShowSettingsUtil.getInstance().showSettingsDialog(myProject, myVcs.getDisplayName());
       if (myVcsSettings.getSyncSetting() == DvcsSyncSettings.Value.DONT_SYNC) {
         notification.expire();
       }
@@ -152,7 +145,7 @@ public abstract class DvcsBranchPopup<Repo extends Repository> {
   protected abstract void fillPopupWithCurrentRepositoryActions(@NotNull LightActionGroup popupGroup,
                                                                 @Nullable LightActionGroup actions);
 
-  public static class MyMoreIndex {
+  public static final class MyMoreIndex {
     public static final int MAX_NUM = 8;
     public static final int DEFAULT_NUM = 5;
   }

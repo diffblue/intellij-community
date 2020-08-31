@@ -6,7 +6,7 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ObjectUtils;
-import com.jetbrains.python.PyNames;
+import com.jetbrains.python.PyBundle;
 import com.jetbrains.python.codeInsight.PyCodeInsightSettings;
 import com.jetbrains.python.psi.*;
 import com.jetbrains.python.psi.search.PyOverridingMethodsSearch;
@@ -62,16 +62,18 @@ public class RenamePyFunctionProcessor extends RenamePyElementProcessor {
     if (containingClass == null) {
       return function;
     }
-    if (PyNames.INIT.equals(function.getName())) {
+    if (PyUtil.isInitMethod(function)) {
       return containingClass;
     }
 
     final PyFunction deepestSuperMethod = PySuperMethodsSearch.findDeepestSuperMethod(function);
     if (!deepestSuperMethod.equals(function)) {
-      final String message = "Method " + function.getName() + " of class " + containingClass.getQualifiedName() + "\n" +
-                             "overrides method of class " + deepestSuperMethod.getContainingClass().getQualifiedName() + ".\n" +
-                             "Do you want to rename the base method?";
-      final int rc = Messages.showYesNoCancelDialog(element.getProject(), message, "Rename", Messages.getQuestionIcon());
+      final String message = PyBundle.message("python.rename.processor.override.message",
+                                              function.getName(),
+                                              containingClass.getQualifiedName(),
+                                              deepestSuperMethod.getContainingClass().getQualifiedName());
+      final int rc =
+        Messages.showYesNoCancelDialog(element.getProject(), message, PyBundle.message("refactoring.rename"), Messages.getQuestionIcon());
       switch (rc) {
         case Messages.YES:
           return deepestSuperMethod;
@@ -89,9 +91,9 @@ public class RenamePyFunctionProcessor extends RenamePyElementProcessor {
         if (ApplicationManager.getApplication().isUnitTestMode()) {
           return site;
         }
-        final String message = String.format("Do you want to rename the property '%s' instead of its accessor function '%s'?",
-                                             property.getName(), function.getName());
-        final int rc = Messages.showYesNoCancelDialog(element.getProject(), message, "Rename", Messages.getQuestionIcon());
+        final int rc =
+          Messages.showYesNoCancelDialog(element.getProject(),
+                                         PyBundle.message("python.rename.processor.property", property.getName(), function.getName()), PyBundle.message("refactoring.rename"), Messages.getQuestionIcon());
         switch (rc) {
           case Messages.YES:
             return site;

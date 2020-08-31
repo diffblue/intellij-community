@@ -49,10 +49,10 @@ public class CodeStyleSettingsCodeFragmentFilter {
 
   @NotNull
   public CodeStyleSettingsToShow getFieldNamesAffectingCodeFragment(LanguageCodeStyleSettingsProvider.SettingsType... types) {
-    CodeStyleSettings clonedSettings = CodeStyle.getSettings(myFile).clone();
     Ref<CodeStyleSettingsToShow> settingsToShow = new Ref<>();
-    CodeStyle.doWithTemporarySettings(myProject, clonedSettings,
-                                      () -> settingsToShow.set(computeFieldsWithTempSettings(clonedSettings, types)));
+    CodeStyle.doWithTemporarySettings(myProject,
+                                      CodeStyle.getSettings(myFile),
+                                      tempSettings -> settingsToShow.set(computeFieldsWithTempSettings(tempSettings, types)));
     return settingsToShow.get();
   }
 
@@ -239,10 +239,6 @@ public class CodeStyleSettingsCodeFragmentFilter {
 
       return oldValue;
     }
-
-    @Override
-    public void prepare() {
-    }
   }
 
   public interface CodeStyleSettingsToShow {
@@ -317,10 +313,6 @@ class CompositeSequentialTask implements SequentialTask {
         popUntilCurrentTaskUnfinishedOrNull();
       }
     }
-  }
-
-  @Override
-  public void prepare() {
   }
 
   @Override

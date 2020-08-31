@@ -7,8 +7,10 @@ APP_NAME=$4
 BUNDLE_ID=$5
 FAKE_ROOT="${6:-fake-root}"
 
-if [[ -z "$APP_DIRECTORY" ]] || [[ -z "$APPL_USER" ]] || [[ -z "$APPL_PASSWORD" ]]; then
-  echo "Usage: $0 AppDirectory Username Password"
+if [[ -z "$APP_DIRECTORY" ]] || \
+   [[ -z "$APPL_USER" ]] || [[ -z "$APPL_PASSWORD" ]] || \
+   [[ -z "$APP_NAME" ]] || [[ -z "$BUNDLE_ID" ]] ; then
+  echo "Usage: $0 AppDirectory Username Password AppName BundleId [FakeRootForAltool]"
   exit 1
 fi
 if [[ ! -d "$APP_DIRECTORY" ]]; then
@@ -21,8 +23,9 @@ function log() {
 }
 
 function publish-log() {
-  id=$1
-  file=$2
+  [ -z "${ARTIFACTORY_URL:=}" ] && return
+  id="$1"
+  file="$2"
   curl -T "$file" "$ARTIFACTORY_URL/$id" || true
 }
 
@@ -69,7 +72,7 @@ rm -rf "$file"
 notarization_info="$(grep -e "RequestUUID" "altool.init.out" | grep -oE '([0-9a-f-]{36})')"
 
 if [ -z "$notarization_info" ]; then
-  log "Faile to read RequestUUID from altool.init.out"
+  log "Failed to read RequestUUID from altool.init.out"
   exit 10
 fi
 
@@ -78,6 +81,7 @@ PATH="$PATH:/usr/local/bin/"
 log "Notarization request sent, awaiting response"
 spent=0
 
+max_wait=300
 while true; do
   # For some reason altool prints everything to stderr, not stdout
   xcrun altool --username "$APPL_USER" --notarization-info "$notarization_info" --password "$APPL_PASSWORD" >"altool.check.out" 2>&1 || true
@@ -94,8 +98,8 @@ while true; do
       log "Unknown notarization status, waiting more, altool output:"
       cat "altool.check.out"
     fi
-    if [[ $spent -gt 60 ]]; then
-      log "Waiting time out (apx 60 minutes)"
+    if [[ $spent -gt $max_wait ]]; then
+      log "Waiting time out (apx $max_wait minutes)"
       ec=2
       break
     fi
@@ -105,9 +109,15 @@ while true; do
   fi
   developer_log="developer_log.json"
   log "Fetching $developer_log"
-  # TODO: Replace cut with trim or something better
-  url="$(grep -oe 'LogFileURL: .*' "altool.check.out" | cut -c 13-)"
-  wget "$url" -O "$developer_log" && cat "$developer_log" || true
+  url="$(grep -oe 'LogFileURL: .*' "altool.check.out" | sed 's/LogFileURL: //')"
+  wget "$url" -O "$developer_log"
+  log "$developer_log content:"
+  cat "$developer_log"
+  issues=$(python -c "import sys, json; print(json.load(sys.stdin)['issues'])" < "$developer_log")
+  if [ "$issues" != "None" ] && [ "$issues" != "[]" ]; then
+    log "Notarization has issues"
+    ec=1
+  fi
   if [ $ec != 0 ]; then
     log "Publishing $developer_log"
     publish-log "$notarization_info" "$developer_log"

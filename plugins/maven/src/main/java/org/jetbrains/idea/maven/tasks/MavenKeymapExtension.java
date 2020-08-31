@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2010 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.tasks;
 
 import com.intellij.icons.AllIcons;
@@ -30,7 +16,6 @@ import com.intellij.openapi.options.ex.Settings;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.util.Pair;
-import icons.MavenIcons;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.idea.maven.execution.MavenRunConfigurationType;
@@ -52,13 +37,13 @@ import java.awt.event.MouseEvent;
 import java.io.File;
 import java.util.*;
 
-public class MavenKeymapExtension implements ExternalSystemKeymapExtension.ActionsProvider {
+import static icons.ExternalSystemIcons.Task;
+import static icons.OpenapiIcons.RepositoryLibraryLogo;
 
+public final class MavenKeymapExtension implements ExternalSystemKeymapExtension.ActionsProvider {
   @Override
   public KeymapGroup createGroup(Condition<? super AnAction> condition, final Project project) {
-    KeymapGroup result = KeymapGroupFactory.getInstance().createGroup(TasksBundle.message("maven.tasks.action.group.name"),
-                                                                      MavenIcons.MavenLogo
-    );
+    KeymapGroup result = KeymapGroupFactory.getInstance().createGroup(TasksBundle.message("maven.tasks.action.group.name"), RepositoryLibraryLogo);
     if (project == null) return result;
 
     Comparator<MavenProject> projectComparator = (o1, o2) -> o1.getDisplayName().compareToIgnoreCase(o2.getDisplayName());
@@ -218,7 +203,7 @@ public class MavenKeymapExtension implements ExternalSystemKeymapExtension.Actio
       myGoal = goal;
       Presentation template = getTemplatePresentation();
       template.setText(goal + " (" + mavenProject.getMavenId() + ")", false);
-      template.setIcon(MavenIcons.Phase);
+      template.setIcon(Task);
     }
 
     @Override

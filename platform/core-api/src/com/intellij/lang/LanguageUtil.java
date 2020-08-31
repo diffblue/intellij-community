@@ -1,9 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
-
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang;
 
 import com.intellij.lexer.Lexer;
-import com.intellij.openapi.extensions.Extensions;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
@@ -16,12 +15,12 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.templateLanguages.TemplateLanguage;
 import com.intellij.testFramework.LightVirtualFile;
-import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.containers.JBIterable;
+import gnu.trove.THashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public final class LanguageUtil {
   private LanguageUtil() {
@@ -30,28 +29,23 @@ public final class LanguageUtil {
   public static final Comparator<Language> LANGUAGE_COMPARATOR =
     (o1, o2) -> StringUtil.naturalCompare(o1.getDisplayName(), o2.getDisplayName());
 
-
-  @Nullable
-  public static Language getLanguageForPsi(@NotNull Project project, @Nullable VirtualFile file) {
+  public static @Nullable Language getLanguageForPsi(@NotNull Project project, @Nullable VirtualFile file) {
     Language language = getFileLanguage(file);
     if (language == null) return null;
     return LanguageSubstitutors.getInstance().substituteLanguage(language, file, project);
   }
 
-  @Nullable
-  public static Language getFileLanguage(@Nullable VirtualFile file) {
+  public static @Nullable Language getFileLanguage(@Nullable VirtualFile file) {
     if (file == null) return null;
     Language l = file instanceof LightVirtualFile? ((LightVirtualFile)file).getLanguage() : null;
     return l != null ? l : getFileTypeLanguage(file.getFileType());
   }
 
-  @Nullable
-  public static Language getFileTypeLanguage(@Nullable FileType fileType) {
+  public static @Nullable Language getFileTypeLanguage(@Nullable FileType fileType) {
     return fileType instanceof LanguageFileType ? ((LanguageFileType)fileType).getLanguage() : null;
   }
 
-  @Nullable
-  public static FileType getLanguageFileType(@Nullable Language language) {
+  public static @Nullable FileType getLanguageFileType(@Nullable Language language) {
     return language == null ? null : language.getAssociatedFileType();
   }
 
@@ -69,13 +63,20 @@ public final class LanguageUtil {
     return ParserDefinition.SpaceRequirements.MAY;
   }
 
-  @NotNull
-  public static Language[] getLanguageDialects(@NotNull final Language base) {
-    final List<Language> list = ContainerUtil.findAll(Language.getRegisteredLanguages(), language -> language.getBaseLanguage() == base);
-    return list.toArray(new Language[0]);
+  public static @NotNull Set<Language> getAllDerivedLanguages(@NotNull Language base) {
+    Set<Language> result = new HashSet<>();
+    getAllDerivedLanguages(base, result);
+    return result;
   }
 
-  public static boolean isInTemplateLanguageFile(@Nullable final PsiElement element) {
+  private static void getAllDerivedLanguages(Language base, Set<? super Language> result) {
+    result.add(base);
+    for (Language dialect : base.getDialects()) {
+      getAllDerivedLanguages(dialect, result);
+    }
+  }
+
+  public static boolean isInTemplateLanguageFile(final @Nullable PsiElement element) {
     if (element == null) return false;
 
     final PsiFile psiFile = element.getContainingFile();
@@ -98,10 +99,7 @@ public final class LanguageUtil {
     if (language instanceof TemplateLanguage || language instanceof DependentLanguage) {
       return false;
     }
-    if (LanguageParserDefinitions.INSTANCE.forLanguage(language) == null) {
-      return false;
-    }
-    return true;
+    return LanguageParserDefinitions.INSTANCE.forLanguage(language) != null;
   }
 
   public static boolean isFileLanguage(@NotNull Language language) {
@@ -112,8 +110,7 @@ public final class LanguageUtil {
     return StringUtil.isNotEmpty(type.getDefaultExtension());
   }
 
-  @NotNull
-  public static List<Language> getFileLanguages() {
+  public static @NotNull List<Language> getFileLanguages() {
     LanguageParserDefinitions.INSTANCE.ensureValuesLoaded();
     List<Language> result = new ArrayList<>();
     for (Language language : Language.getRegisteredLanguages()) {
@@ -124,8 +121,7 @@ public final class LanguageUtil {
     return result;
   }
 
-  @NotNull
-  public static Language getRootLanguage(@NotNull PsiElement element) {
+  public static @NotNull Language getRootLanguage(@NotNull PsiElement element) {
     final PsiFile containingFile = element.getContainingFile();
     final FileViewProvider provider = containingFile.getViewProvider();
     final Set<Language> languages = provider.getLanguages();
@@ -140,17 +136,38 @@ public final class LanguageUtil {
 
   private static final Key<Collection<MetaLanguage>> MATCHING_LANGUAGES = Key.create("language.matching");
 
-  @NotNull
-  static Collection<MetaLanguage> matchingMetaLanguages(@NotNull Language language) {
-    if (!Extensions.getRootArea().hasExtensionPoint(MetaLanguage.EP_NAME)) {
-      return Collections.emptyList(); // don't cache
-    }
-
+  static @NotNull Collection<MetaLanguage> matchingMetaLanguages(@NotNull Language language) {
     Collection<MetaLanguage> cached = language.getUserData(MATCHING_LANGUAGES);
     if (cached != null) {
       return cached;
     }
-    Set<MetaLanguage> result = MetaLanguage.getAllMatchingMetaLanguages(language).collect(Collectors.toSet());
+
+    if (!ApplicationManager.getApplication().getExtensionArea().hasExtensionPoint(MetaLanguage.EP_NAME)) {
+      // don't cache
+      return Collections.emptyList();
+    }
+
+    Set<MetaLanguage> result;
+    if (language instanceof MetaLanguage) {
+      result = Collections.emptySet();
+    }
+    else {
+      result = new THashSet<>();
+      MetaLanguage.EP_NAME.forEachExtensionSafe(metaLanguage -> {
+        if (metaLanguage.matchesLanguage(language)) {
+          result.add(metaLanguage);
+        }
+      });
+    }
     return language.putUserDataIfAbsent(MATCHING_LANGUAGES, result);
+  }
+
+  static void clearMatchingMetaLanguages(@NotNull Language language) {
+    language.putUserData(MATCHING_LANGUAGES, null);
+  }
+
+  @NotNull
+  static JBIterable<Language> hierarchy(@NotNull Language language) {
+    return JBIterable.generate(language, Language::getBaseLanguage);
   }
 }

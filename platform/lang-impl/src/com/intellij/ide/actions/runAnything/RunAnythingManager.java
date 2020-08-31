@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.actions.runAnything;
 
 import com.intellij.ide.IdeEventQueue;
@@ -9,14 +9,15 @@ import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
-import com.intellij.openapi.util.DimensionService;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.WindowStateService;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ui.JBInsets;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
+import java.util.Objects;
 
 public class RunAnythingManager {
   private static final String LOCATION_SETTINGS_KEY = "run.anything.popup";
@@ -48,11 +49,12 @@ public class RunAnythingManager {
     if (searchText != null && !searchText.isEmpty()) {
       myRunAnythingUI.getSearchField().setText(searchText);
     }
+
+    predefineSelectedText(searchText);
+
     if (selectSearchText) {
       myRunAnythingUI.getSearchField().selectAll();
     }
-
-    predefineSelectedText(searchText);
 
     myBalloon = JBPopupFactory.getInstance().createComponentPopupBuilder(myRunAnythingUI, myRunAnythingUI.getSearchField())
       .setProject(myProject)
@@ -61,13 +63,16 @@ public class RunAnythingManager {
       .setRequestFocus(true)
       .setCancelKeyEnabled(false)
       .setCancelCallback(() -> {
-        saveSearchText();
+        if (isShown() && !Objects.equals(myRunAnythingUI.getUserInputText(), searchText)) {
+          saveSearchText();
+        }
+
         return true;
       })
       .addUserData("SIMPLE_WINDOW")
       .setResizable(true)
       .setMovable(true)
-      .setDimensionServiceKey(project, LOCATION_SETTINGS_KEY, true)
+      .setDimensionServiceKey(myProject, LOCATION_SETTINGS_KEY, true)
       .setLocateWithinScreenBounds(false)
       .createPopup();
     Disposer.register(myBalloon, myRunAnythingUI);
@@ -87,7 +92,7 @@ public class RunAnythingManager {
     });
 
     if (myRunAnythingUI.getViewType() == RunAnythingPopupUI.ViewType.SHORT) {
-      myBalloonFullSize = DimensionService.getInstance().getSize(LOCATION_SETTINGS_KEY, project);
+      myBalloonFullSize = WindowStateService.getInstance(myProject).getSize(LOCATION_SETTINGS_KEY);
       Dimension prefSize = myRunAnythingUI.getPreferredSize();
       myBalloon.setSize(prefSize);
     }
@@ -101,23 +106,15 @@ public class RunAnythingManager {
 
     if (StringUtil.isNotEmpty(searchText)) {
       myRunAnythingUI.getSearchField().setText(searchText);
-      myRunAnythingUI.getSearchField().selectAll();
     }
   }
 
   private void saveSearchText() {
-    if (!isShown()) {
-      return;
-    }
-
-    String searchText = myRunAnythingUI.getSearchField().getText();
-    if (!searchText.isEmpty()) {
-      mySelectedText = searchText;
-    }
+    mySelectedText = myRunAnythingUI.getUserInputText();
   }
 
   private void calcPositionAndShow(Project project, JBPopup balloon) {
-    Point savedLocation = DimensionService.getInstance().getLocation(LOCATION_SETTINGS_KEY, project);
+    Point savedLocation = WindowStateService.getInstance(myProject).getLocation(LOCATION_SETTINGS_KEY);
 
     if (project != null) {
       balloon.showCenteredInCurrentWindow(project);
@@ -182,7 +179,7 @@ public class RunAnythingManager {
 
   private void saveSize() {
     if (myRunAnythingUI.getViewType() == RunAnythingPopupUI.ViewType.SHORT) {
-      DimensionService.getInstance().setSize(LOCATION_SETTINGS_KEY, myBalloonFullSize, myProject);
+      WindowStateService.getInstance(myProject).putSize(LOCATION_SETTINGS_KEY, myBalloonFullSize);
     }
   }
 }

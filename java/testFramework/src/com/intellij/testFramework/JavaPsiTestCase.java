@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.testFramework;
 
 import com.intellij.openapi.application.WriteAction;
@@ -12,6 +12,7 @@ import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.roots.OrderRootType;
 import com.intellij.openapi.util.DefaultJDOMExternalizer;
+import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -21,7 +22,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiManagerImpl;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.JdomKt;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -31,9 +31,6 @@ import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.StringTokenizer;
 
-/**
- * @author Mike
- */
 public abstract class JavaPsiTestCase extends JavaModuleTestCase {
   protected PsiManagerImpl myPsiManager;
   protected PsiFile myFile;
@@ -44,7 +41,7 @@ public abstract class JavaPsiTestCase extends JavaModuleTestCase {
   @Override
   protected void setUp() throws Exception {
     super.setUp();
-    myPsiManager = (PsiManagerImpl) PsiManager.getInstance(myProject);
+    myPsiManager = (PsiManagerImpl)PsiManager.getInstance(myProject);
   }
 
   @Override
@@ -83,8 +80,7 @@ public abstract class JavaPsiTestCase extends JavaModuleTestCase {
   @NotNull
   protected VirtualFile createTempVfsDirectory() throws IOException {
     File dir = createTempDirectory();
-    VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(dir.getCanonicalPath().replace(File.separatorChar, '/'));
-
+    VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(dir);
     assert vDir != null : dir;
     return vDir;
   }
@@ -151,7 +147,7 @@ public abstract class JavaPsiTestCase extends JavaModuleTestCase {
   @NotNull
   private PsiTestData loadData(String dataName) throws Exception {
     PsiTestData data = createData();
-    Element documentElement = JdomKt.loadElement(Paths.get(myDataRoot, "data.xml"));
+    Element documentElement = JDOMUtil.load(Paths.get(myDataRoot, "data.xml"));
     for (Element node : documentElement.getChildren("data")) {
       String value = node.getAttributeValue("name");
       if (value.equals(dataName)) {

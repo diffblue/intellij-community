@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.groovy.lang.psi.util;
 
 import com.intellij.openapi.util.text.StringUtil;
@@ -21,7 +21,7 @@ import java.util.Set;
 
 import static org.jetbrains.plugins.groovy.lang.resolve.imports.GroovyUnusedImportUtil.unusedImports;
 
-public class GroovyImportUtil {
+public final class GroovyImportUtil {
   public static void processFile(@NotNull final GroovyFile file,
                                  @NotNull final Set<? super String> importedClasses,
                                  @NotNull final Set<? super String> staticallyImportedMembers,
@@ -35,7 +35,7 @@ public class GroovyImportUtil {
 
     file.accept(new PsiRecursiveElementWalkingVisitor() {
       @Override
-      public void visitElement(PsiElement element) {
+      public void visitElement(@NotNull PsiElement element) {
         if (!(element instanceof GrImportStatement) && !(element instanceof GrPackageDefinition)) {
           super.visitElement(element);
         }

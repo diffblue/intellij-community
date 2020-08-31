@@ -157,7 +157,7 @@ public class AnchorReferenceImpl implements AnchorReference, PsiReference, Empty
 
   @Override
   public PsiElement handleElementRename(@NotNull String newElementName) throws IncorrectOperationException {
-    return ElementManipulators.getManipulator(myElement).handleContentChange(
+    return ElementManipulators.handleContentChange(
       myElement,
       getRangeInElement(),
       newElementName
@@ -176,8 +176,7 @@ public class AnchorReferenceImpl implements AnchorReference, PsiReference, Empty
   }
 
   @Override
-  @NotNull
-  public Object[] getVariants() {
+  public Object @NotNull [] getVariants() {
     final Map<String, XmlTag> idMap = getIdMap();
     if (idMap == null) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
 

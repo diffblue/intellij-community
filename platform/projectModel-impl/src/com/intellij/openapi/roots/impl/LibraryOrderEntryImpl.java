@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2012 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.openapi.roots.impl;
 
@@ -22,7 +8,6 @@ import com.intellij.openapi.roots.impl.libraries.LibraryEx;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTable;
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager;
@@ -33,11 +18,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.model.serialization.java.JpsJavaModelSerializerExtension;
 import org.jetbrains.jps.model.serialization.module.JpsModuleRootModelSerializer;
 
-/**
- *  @author dsl
- */
-class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements LibraryOrderEntry, ClonableOrderEntry, WritableOrderEntry {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.roots.impl.LibraryOrderEntryImpl");
+import java.util.Objects;
+
+final class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements LibraryOrderEntry, ClonableOrderEntry, WritableOrderEntry {
+  private static final Logger LOG = Logger.getInstance(LibraryOrderEntryImpl.class);
   private Library myLibrary;
   @Nullable private String myLibraryName; // is non-null if myLibrary == null
   private String myLibraryLevel; // is non-null if myLibrary == null
@@ -58,7 +42,7 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
 
   LibraryOrderEntryImpl(@NotNull Element element, @NotNull RootModelImpl rootModel, @NotNull ProjectRootManagerImpl projectRootManager) throws InvalidDataException {
     super(rootModel, projectRootManager);
-    LOG.assertTrue(ENTRY_TYPE.equals(element.getAttributeValue(OrderEntryFactory.ORDER_ENTRY_TYPE_ATTR)));
+    LOG.assertTrue(ENTRY_TYPE.equals(element.getAttributeValue(JpsModuleRootModelSerializer.TYPE_ATTRIBUTE)));
     myExported = element.getAttributeValue(EXPORTED_ATTR) != null;
     myScope = DependencyScope.readExternal(element);
     String level = element.getAttributeValue(LEVEL_ATTR);
@@ -117,6 +101,7 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
 
   @Override
   public void setExported(boolean exported) {
+    getRootModel().assertWritable();
     myExported = exported;
   }
 
@@ -128,6 +113,7 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
 
   @Override
   public void setScope(@NotNull DependencyScope scope) {
+    getRootModel().assertWritable();
     myScope = scope;
   }
 
@@ -141,8 +127,8 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
     if (myLibrary != null) {
       myLibraryName = myLibrary.getName();
       myLibraryLevel = myLibrary.getTable().getTableLevel();
+      myLibrary = null;
     }
-    myLibrary = null;
     return null;
   }
 
@@ -179,11 +165,11 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
 
   @Override
   @NotNull
-  public OrderEntry cloneEntry(@NotNull RootModelImpl rootModel,
+  public OrderEntry cloneEntry(@NotNull ModifiableRootModel rootModel,
                                @NotNull ProjectRootManagerImpl projectRootManager,
                                @NotNull VirtualFilePointerManager filePointerManager) {
     ProjectRootManagerImpl rootManager = ProjectRootManagerImpl.getInstanceImpl(getRootModel().getModule().getProject());
-    return new LibraryOrderEntryImpl(this, rootModel, rootManager);
+    return new LibraryOrderEntryImpl(this, (RootModelImpl)rootModel, rootManager);
   }
 
   @Override
@@ -241,7 +227,7 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
 
   private void afterLibraryAdded(@NotNull Library newLibrary) {
     if (myLibrary == null) {
-      if (Comparing.equal(myLibraryName, newLibrary.getName())) {
+      if (Objects.equals(myLibraryName, newLibrary.getName())) {
         myLibrary = newLibrary;
         myLibraryName = null;
         myLibraryLevel = null;
@@ -269,7 +255,7 @@ class LibraryOrderEntryImpl extends LibraryOrderEntryBaseImpl implements Library
     }
 
     @Override
-    public void afterLibraryRenamed(@NotNull Library library) {
+    public void afterLibraryRenamed(@NotNull Library library, @Nullable String oldName) {
       afterLibraryAdded(library);
     }
 

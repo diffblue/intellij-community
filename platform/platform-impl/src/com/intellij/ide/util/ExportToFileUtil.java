@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ide.util;
 
 import com.intellij.CommonBundle;
@@ -42,8 +42,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.TooManyListenersException;
 
-public class ExportToFileUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.ide.util.ExportToFileUtil");
+public final class ExportToFileUtil {
+  private static final Logger LOG = Logger.getInstance(ExportToFileUtil.class);
 
   public static void exportTextToFile(Project project, String fileName, String textToExport) {
     String prepend = "";
@@ -52,7 +52,7 @@ public class ExportToFileUtil {
       int result = Messages.showYesNoCancelDialog(
         project,
         IdeBundle.message("error.text.file.already.exists", fileName),
-        "Export To File",
+        IdeBundle.message("dialog.title.export.to.file"),
         IdeBundle.message("action.overwrite"),
         IdeBundle.message("action.append"),
         CommonBundle.getCancelButtonText(),
@@ -214,8 +214,7 @@ public class ExportToFileUtil {
     }
 
     @Override
-    @NotNull
-    protected Action[] createActions() {
+    protected Action @NotNull [] createActions() {
       return new Action[]{getOKAction(), new CopyToClipboardAction(), getCancelAction()};
     }
 

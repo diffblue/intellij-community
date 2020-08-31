@@ -21,11 +21,9 @@ public class MavenDependencyReferenceProvider extends PsiReferenceProvider imple
 
   private boolean myCanHasVersion = true;
 
-  @NotNull
   @Override
-  public PsiReference[] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
-    ElementManipulator<PsiElement> manipulator = ElementManipulators.getManipulator(element);
-    TextRange range = manipulator.getRangeInElement(element);
+  public PsiReference @NotNull [] getReferencesByElement(@NotNull PsiElement element, @NotNull ProcessingContext context) {
+    TextRange range = ElementManipulators.getValueTextRange(element);
 
     String text = range.substring(element.getText());
 
@@ -49,7 +47,7 @@ public class MavenDependencyReferenceProvider extends PsiReferenceProvider imple
       };
     }
 
-    int lastDelim = text.indexOf(secondDelim + 1);
+    int lastDelim = text.indexOf(':',secondDelim + 1);
     if (lastDelim == -1) {
       lastDelim = text.length();
     }
@@ -90,9 +88,8 @@ public class MavenDependencyReferenceProvider extends PsiReferenceProvider imple
       return null;
     }
 
-    @NotNull
     @Override
-    public Object[] getVariants() {
+    public Object @NotNull [] getVariants() {
       return MavenProjectIndicesManager.getInstance(getElement().getProject()).getGroupIds().toArray();
     }
   }
@@ -112,9 +109,8 @@ public class MavenDependencyReferenceProvider extends PsiReferenceProvider imple
       return null;
     }
 
-    @NotNull
     @Override
-    public Object[] getVariants() {
+    public Object @NotNull [] getVariants() {
       if (StringUtil.isEmptyOrSpaces(myGroupId)) return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
 
       MavenProjectIndicesManager manager = MavenProjectIndicesManager.getInstance(getElement().getProject());
@@ -139,9 +135,8 @@ public class MavenDependencyReferenceProvider extends PsiReferenceProvider imple
       return null;
     }
 
-    @NotNull
     @Override
-    public Object[] getVariants() {
+    public Object @NotNull [] getVariants() {
       if (StringUtil.isEmptyOrSpaces(myGroupId) || StringUtil.isEmptyOrSpaces(myArtifactId)) {
         return ArrayUtilRt.EMPTY_OBJECT_ARRAY;
       }

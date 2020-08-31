@@ -3,6 +3,7 @@ package com.intellij.codeInspection.streamMigration;
 
 import com.intellij.codeInspection.*;
 import com.intellij.codeInspection.util.LambdaGenerationUtil;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
@@ -45,7 +46,7 @@ public class FoldExpressionIntoStreamInspection extends AbstractBaseJavaLocalIns
         if (diff.isEmpty()) return;
         if (!LambdaGenerationUtil.canBeUncheckedLambda(expression)) return;
         boolean stringJoin = generator.isStringJoin(expression, diff);
-        String message = InspectionsBundle.message(stringJoin ?
+        String message = JavaBundle.message(stringJoin ?
                                                    "inspection.fold.expression.into.string.display.name" :
                                                    "inspection.fold.expression.into.stream.display.name");
         holder.registerProblem(expression, message,
@@ -81,8 +82,10 @@ public class FoldExpressionIntoStreamInspection extends AbstractBaseJavaLocalIns
         PsiBinaryExpression binOp = tryCast(PsiUtil.skipParenthesizedExprDown(operands[0]), PsiBinaryExpression.class);
         if (binOp != null) {
           if (ComparisonUtils.isComparison(binOp) &&
-              (left == binOp.getLOperand() && ExpressionUtils.isSafelyRecomputableExpression(binOp.getROperand())) ||
-              (left == binOp.getROperand() && ExpressionUtils.isSafelyRecomputableExpression(binOp.getLOperand()))) {
+              (left == PsiUtil.skipParenthesizedExprDown(binOp.getLOperand()) && 
+               ExpressionUtils.isSafelyRecomputableExpression(binOp.getROperand())) ||
+              (left == PsiUtil.skipParenthesizedExprDown(binOp.getROperand()) && 
+               ExpressionUtils.isSafelyRecomputableExpression(binOp.getLOperand()))) {
             // Disable for simple comparison chains like "a == null && b == null && c == null":
             // using Stream API here looks an overkill
             return Collections.emptyList();
@@ -178,14 +181,14 @@ public class FoldExpressionIntoStreamInspection extends AbstractBaseJavaLocalIns
     @NotNull
     @Override
     public String getFamilyName() {
-      return InspectionsBundle.message("inspection.fold.expression.fix.family.name");
+      return JavaBundle.message("inspection.fold.expression.fix.family.name");
     }
 
     @Nls(capitalization = Nls.Capitalization.Sentence)
     @NotNull
     @Override
     public String getName() {
-      return InspectionsBundle.message(myStringJoin ?
+      return JavaBundle.message(myStringJoin ?
                                        "inspection.fold.expression.into.string.fix.name" :
                                        "inspection.fold.expression.into.stream.fix.name");
     }

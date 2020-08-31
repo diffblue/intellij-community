@@ -7,6 +7,7 @@ import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
+import com.intellij.psi.util.PsiUtil;
 import com.siyeh.InspectionGadgetsBundle;
 import com.siyeh.ig.BaseInspection;
 import com.siyeh.ig.BaseInspectionVisitor;
@@ -14,8 +15,6 @@ import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.PsiReplacementUtil;
 import com.siyeh.ig.psiutils.BoolUtils;
 import com.siyeh.ig.psiutils.CommentTracker;
-import com.siyeh.ig.psiutils.ParenthesesUtils;
-import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,13 +22,6 @@ import org.jetbrains.annotations.Nullable;
  * @author Bas Leijdekkers
  */
 public class NegatedConditionalExpressionInspection extends BaseInspection implements CleanupLocalInspectionTool {
-
-  @Nls
-  @NotNull
-  @Override
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("negated.conditional.expression.display.name");
-  }
 
   @NotNull
   @Override
@@ -58,7 +50,7 @@ public class NegatedConditionalExpressionInspection extends BaseInspection imple
         return;
       }
       final PsiPrefixExpression prefixExpression = (PsiPrefixExpression)element;
-      final PsiExpression operand = ParenthesesUtils.stripParentheses(prefixExpression.getOperand());
+      final PsiExpression operand = PsiUtil.skipParenthesizedExprDown(prefixExpression.getOperand());
       if (!(operand instanceof PsiConditionalExpression)) {
         return;
       }
@@ -93,7 +85,7 @@ public class NegatedConditionalExpressionInspection extends BaseInspection imple
       if (!JavaTokenType.EXCL.equals(expression.getOperationTokenType())) {
         return;
       }
-      final PsiExpression operand = ParenthesesUtils.stripParentheses(expression.getOperand());
+      final PsiExpression operand = PsiUtil.skipParenthesizedExprDown(expression.getOperand());
       if (!(operand instanceof PsiConditionalExpression)) {
         return;
       }

@@ -17,7 +17,7 @@ package com.intellij.execution.testframework.sm.runner.ui;
 
 import com.intellij.execution.executors.DefaultDebugExecutor;
 import com.intellij.execution.testframework.PoolOfTestIcons;
-import com.intellij.execution.testframework.sm.SMTestsRunnerBundle;
+import com.intellij.execution.testframework.sm.SmRunnerBundle;
 import com.intellij.execution.testframework.sm.UITestUtil;
 import com.intellij.execution.testframework.sm.runner.BaseSMTRunnerTestCase;
 import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties;
@@ -83,7 +83,6 @@ public class TestsPresentationUtilTest extends BaseSMTRunnerTestCase {
 
     final Set<String> category = new LinkedHashSet<>();
 
-    category.clear();
     category.add("Scenarios");
     assertEquals("Running: Scenarios 0 of <...>  ",
                  TestsPresentationUtil.getProgressStatus_Text(0, 0, 0, 0, 0, category, false));
@@ -592,7 +591,7 @@ public class TestsPresentationUtilTest extends BaseSMTRunnerTestCase {
 
     assertEquals(PoolOfTestIcons.NOT_RAN, myRenderer.getIcon());
     assertOneElement(myFragContainer.getFragments());
-    assertEquals(SMTestsRunnerBundle.message("sm.test.runner.ui.tests.tree.presentation.labels.test.reporter.not.attached"), myFragContainer.getTextAt(0));
+    assertEquals(SmRunnerBundle.message("sm.test.runner.ui.tests.tree.presentation.labels.test.reporter.not.attached"), myFragContainer.getTextAt(0));
     assertEquals(SimpleTextAttributes.ERROR_ATTRIBUTES, myFragContainer.getAttribsAt(0));
 
   }

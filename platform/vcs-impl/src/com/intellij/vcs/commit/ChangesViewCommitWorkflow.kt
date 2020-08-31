@@ -10,15 +10,13 @@ import com.intellij.openapi.vcs.impl.PartialChangesUtil
 
 private val LOG = logger<ChangesViewCommitWorkflow>()
 
-internal class CommitState(val changes: List<Change>, val commitMessage: String)
-
 class ChangesViewCommitWorkflow(project: Project) : AbstractCommitWorkflow(project) {
   private val vcsManager = ProjectLevelVcsManager.getInstance(project)
-  private val changeListManager = ChangeListManager.getInstance(project)
+  private val changeListManager = ChangeListManager.getInstance(project) as ChangeListManagerEx
 
   override val isDefaultCommitEnabled: Boolean get() = true
 
-  internal lateinit var commitState: CommitState
+  internal lateinit var commitState: ChangeListCommitState
 
   init {
     updateVcses(vcsManager.allActiveVcss.toSet())
@@ -31,7 +29,7 @@ class ChangesViewCommitWorkflow(project: Project) : AbstractCommitWorkflow(proje
     if (result == CheckinHandler.ReturnResult.COMMIT) doCommit()
   }
 
-  override fun executeCustom(executor: CommitExecutor, session: CommitSession) =
+  override fun executeCustom(executor: CommitExecutor, session: CommitSession): Boolean =
     executeCustom(executor, session, commitState.changes, commitState.commitMessage)
 
   override fun processExecuteCustomChecksResult(executor: CommitExecutor, session: CommitSession, result: CheckinHandler.ReturnResult) {
@@ -39,12 +37,17 @@ class ChangesViewCommitWorkflow(project: Project) : AbstractCommitWorkflow(proje
   }
 
   override fun doRunBeforeCommitChecks(checks: Runnable) =
-    PartialChangesUtil.runUnderChangeList(project, getAffectedChangeList(commitState.changes), checks)
+    PartialChangesUtil.runUnderChangeList(project, commitState.changeList, checks)
 
   private fun doCommit() {
     LOG.debug("Do actual commit")
 
-    with(LocalChangesCommitter(project, commitState.changes, commitState.commitMessage, commitContext)) {
+    with(object : LocalChangesCommitter(project, commitState.changes, commitState.commitMessage, commitContext) {
+      override fun afterRefreshChanges() = endExecution {
+        if (isSuccess) clearChangeListData()
+        super.afterRefreshChanges()
+      }
+    }) {
       addResultHandler(CommitHandlersNotifier(commitHandlers))
       addResultHandler(getCommitEventDispatcher())
       addResultHandler(ShowNotificationCommitResultHandler(this))
@@ -57,7 +60,12 @@ class ChangesViewCommitWorkflow(project: Project) : AbstractCommitWorkflow(proje
     with(CustomCommitter(project, session, commitState.changes, commitState.commitMessage)) {
       addResultHandler(CommitHandlersNotifier(commitHandlers))
       addResultHandler(getCommitCustomEventDispatcher())
+      addResultHandler(getEndExecutionHandler())
 
       runCommit(executor.actionText)
     }
+
+  private fun clearChangeListData() {
+    changeListManager.editChangeListData(commitState.changeList.name, null)
+  }
 }

@@ -17,6 +17,7 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.*;
+import com.intellij.openapi.roots.impl.JavaLanguageLevelPusher;
 import com.intellij.openapi.roots.impl.LibraryScopeCache;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
@@ -34,6 +35,7 @@ import com.intellij.psi.impl.source.codeStyle.ImportHelper;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -47,7 +49,7 @@ import java.util.stream.Stream;
  * @author yole
  */
 public class JavaPsiImplementationHelperImpl extends JavaPsiImplementationHelper {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.psi.impl.JavaPsiImplementationHelperImpl");
+  private static final Logger LOG = Logger.getInstance(JavaPsiImplementationHelperImpl.class);
 
   private final Project myProject;
 
@@ -158,16 +160,19 @@ public class JavaPsiImplementationHelperImpl extends JavaPsiImplementationHelper
     // prevent expensive look-up into VFS
     if (virtualFile == null || myProject.isDefault()) return PsiUtil.getLanguageLevel(myProject);
 
-    VirtualFile parent = virtualFile.getParent();
-    if (parent != null) {
-      LanguageLevel level = parent.getUserData(LanguageLevel.KEY);
-      if (level != null) return level;
+    LanguageLevel level = JavaLanguageLevelPusher.getPushedLanguageLevel(virtualFile);
+    if (level != null) {
+      return level;
     }
 
     ProjectFileIndex index = ProjectRootManager.getInstance(myProject).getFileIndex();
     Module module = index.getModuleForFile(virtualFile);
     if (module != null && index.isInSourceContent(virtualFile)) {
       return EffectiveLanguageLevelUtil.getEffectiveLanguageLevel(module);
+    }
+
+    if (virtualFile instanceof LightVirtualFile) {
+      return LanguageLevel.HIGHEST;
     }
 
     LanguageLevel classesLanguageLevel = getClassesLanguageLevel(virtualFile);

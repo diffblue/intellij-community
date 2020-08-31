@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.usageView;
 
@@ -36,6 +22,7 @@ import com.intellij.refactoring.util.NonCodeUsageInfo;
 import com.intellij.usages.Usage;
 import com.intellij.usages.UsageInfo2UsageAdapter;
 import com.intellij.usages.UsageView;
+import com.intellij.usages.impl.UsageViewStatisticsCollector;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -44,8 +31,8 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-public class UsageViewUtil {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.usageView.UsageViewUtil");
+public final class UsageViewUtil {
+  private static final Logger LOG = Logger.getInstance(UsageViewUtil.class);
 
   private UsageViewUtil() { }
 
@@ -66,19 +53,19 @@ public class UsageViewUtil {
     return ElementDescriptionUtil.getElementDescription(psiElement, UsageViewLongNameLocation.INSTANCE);
   }
 
-  @NotNull 
+  @NotNull
   public static String getType(@NotNull PsiElement psiElement) {
     return ElementDescriptionUtil.getElementDescription(psiElement, UsageViewTypeLocation.INSTANCE);
   }
 
-  private static boolean hasNonCodeUsages(@NotNull UsageInfo[] usages) {
+  private static boolean hasNonCodeUsages(UsageInfo @NotNull [] usages) {
     for (UsageInfo usage : usages) {
       if (usage.isNonCodeUsage) return true;
     }
     return false;
   }
 
-  private static boolean hasUsagesInGeneratedCode(@NotNull UsageInfo[] usages, @NotNull Project project) {
+  private static boolean hasUsagesInGeneratedCode(UsageInfo @NotNull [] usages, @NotNull Project project) {
     for (UsageInfo usage : usages) {
       VirtualFile file = usage.getVirtualFile();
       if (file != null && GeneratedSourcesFilter.isGeneratedSourceByAnyFilter(file, project)) {
@@ -88,15 +75,14 @@ public class UsageViewUtil {
     return false;
   }
 
-  public static boolean hasReadOnlyUsages(@NotNull UsageInfo[] usages) {
+  public static boolean hasReadOnlyUsages(UsageInfo @NotNull [] usages) {
     for (UsageInfo usage : usages) {
       if (!usage.isWritable()) return true;
     }
     return false;
   }
 
-  @NotNull
-  public static UsageInfo[] removeDuplicatedUsages(@NotNull UsageInfo[] usages) {
+  public static UsageInfo @NotNull [] removeDuplicatedUsages(UsageInfo @NotNull [] usages) {
     Set<UsageInfo> set = new LinkedHashSet<>(Arrays.asList(usages));
 
     // Replace duplicates of move rename usage infos in injections from non code usages of master files
@@ -143,14 +129,12 @@ public class UsageViewUtil {
     return set.toArray(UsageInfo.EMPTY_ARRAY);
   }
 
-  @NotNull
-  public static UsageInfo[] toUsageInfoArray(@NotNull final Collection<? extends UsageInfo> collection) {
+  public static UsageInfo @NotNull [] toUsageInfoArray(@NotNull final Collection<? extends UsageInfo> collection) {
     final int size = collection.size();
     return size == 0 ? UsageInfo.EMPTY_ARRAY : collection.toArray(new UsageInfo[size]);
   }
 
-  @NotNull
-  public static PsiElement[] toElements(@NotNull UsageInfo[] usageInfos) {
+  public static PsiElement @NotNull [] toElements(UsageInfo @NotNull [] usageInfos) {
     return ContainerUtil.map2Array(usageInfos, PsiElement.class, UsageInfo::getElement);
   }
 
@@ -159,6 +143,7 @@ public class UsageViewUtil {
     VirtualFile file = info.getVirtualFile();
     Project project = info.getProject();
     if (file != null) {
+      UsageViewStatisticsCollector.logUsageNavigate(project, info);
       FileEditorManager.getInstance(project).openTextEditor(new OpenFileDescriptor(project, file, offset), requestFocus);
     }
   }
@@ -177,7 +162,7 @@ public class UsageViewUtil {
     return usageInfos;
   }
 
-  public static boolean reportNonRegularUsages(@NotNull UsageInfo[] usages, @NotNull Project project) {
+  public static boolean reportNonRegularUsages(UsageInfo @NotNull [] usages, @NotNull Project project) {
     boolean inGeneratedCode = hasUsagesInGeneratedCode(usages, project);
     if (hasNonCodeUsages(usages) || inGeneratedCode) {
       StatusBar statusBar = WindowManager.getInstance().getStatusBar(project);

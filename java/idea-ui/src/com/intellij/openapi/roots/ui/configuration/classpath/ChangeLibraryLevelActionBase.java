@@ -1,6 +1,7 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.ui.configuration.classpath;
 
+import com.intellij.ide.JavaUiBundle;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
@@ -38,11 +39,8 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * @author nik
- */
 public abstract class ChangeLibraryLevelActionBase extends AnAction {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.openapi.roots.ui.configuration.classpath.ChangeLibraryLevelActionBase");
+  private static final Logger LOG = Logger.getInstance(ChangeLibraryLevelActionBase.class);
   protected final Project myProject;
   protected final String myTargetTableLevel;
   protected final boolean myCopy;
@@ -51,7 +49,7 @@ public abstract class ChangeLibraryLevelActionBase extends AnAction {
     myProject = project;
     myTargetTableLevel = targetTableLevel;
     myCopy = copy;
-    getTemplatePresentation().setText(getActionName() + " to " + targetTableName + "...");
+    getTemplatePresentation().setText(JavaUiBundle.message(myCopy ? "action.text.library.0.to.1.copy" : "action.text.library.0.to.1.move", targetTableName));
   }
 
   protected abstract LibraryTableModifiableModelProvider getModifiableTableModelProvider();
@@ -100,7 +98,7 @@ public abstract class ChangeLibraryLevelActionBase extends AnAction {
                                     @NotNull final String targetDirPath,
                                     final Map<String, String> copiedFiles) {
     final Ref<Boolean> finished = Ref.create(false);
-    new Task.Modal(myProject, (myCopy ? "Copying" : "Moving") + " Library Files", true) {
+    new Task.Modal(myProject, JavaUiBundle.message("progress.title.0.library.files", myCopy ? "Copying" : "Moving"), true) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
         final File targetDir = new File(FileUtil.toSystemDependentName(targetDirPath));
@@ -127,9 +125,11 @@ public abstract class ChangeLibraryLevelActionBase extends AnAction {
             }
           }
           catch (IOException e) {
-            final String actionName = getActionName();
-            final String message = "Cannot " + StringUtil.toLowerCase(actionName) + " file " + from.getAbsolutePath() + ": " + e.getMessage();
-            Messages.showErrorDialog(ChangeLibraryLevelActionBase.this.myProject, message, "Cannot " + actionName);
+            String message = JavaUiBundle.message(myCopy ? "dialog.message.cannot.file.copy" : "dialog.message.cannot.file.move",
+                                                  from.getAbsolutePath(), e.getMessage());
+            String title = JavaUiBundle.message(
+              myCopy ? "dialog.title.cannot.change.library.0.copy" : "dialog.title.cannot.change.library.0.move");
+            Messages.showErrorDialog(ChangeLibraryLevelActionBase.this.myProject, message, title);
             LOG.info(e);
             return;
           }
@@ -164,10 +164,6 @@ public abstract class ChangeLibraryLevelActionBase extends AnAction {
     final Presentation presentation = e.getPresentation();
     boolean enabled = isEnabled();
     presentation.setEnabledAndVisible(enabled);
-  }
-
-  private String getActionName() {
-    return myCopy ? "Copy" : "Move";
   }
 
   @Nullable

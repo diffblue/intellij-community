@@ -22,7 +22,6 @@ import com.intellij.util.containers.MostlySingularMultiMap;
 import com.intellij.util.text.CharSequenceReader;
 import gnu.trove.THashSet;
 import one.util.streamex.StreamEx;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.xml.sax.Attributes;
@@ -35,19 +34,20 @@ import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public abstract class BaseExternalAnnotationsManager extends ExternalAnnotationsManager {
-  private static final Logger LOG = Logger.getInstance("#com.intellij.codeInsight.BaseExternalAnnotationsManager");
+  private static final Logger LOG = Logger.getInstance(BaseExternalAnnotationsManager.class);
   private static final Key<Boolean> EXTERNAL_ANNO_MARKER = Key.create("EXTERNAL_ANNO_MARKER");
   private static final List<PsiFile> NULL_LIST = Collections.emptyList();
 
   protected final PsiManager myPsiManager;
 
-  private final ConcurrentMap<VirtualFile, List<PsiFile>> myExternalAnnotationsCache = ContainerUtil.createConcurrentWeakKeySoftValueMap();
+  private final Map<Object, List<PsiFile>> myExternalAnnotationsCache = ContainerUtil.createConcurrentWeakKeySoftValueMap();
   private final Map<AnnotationData, AnnotationData> myAnnotationDataCache = ContainerUtil.createWeakKeyWeakValueMap(); // guarded by myAnnotationDataCache
-  private final ConcurrentMap<PsiFile, Pair<MostlySingularMultiMap<String, AnnotationData>, Long>> myAnnotationFileToDataAndModStampCache = ContainerUtil.createConcurrentSoftMap();
+  private final Map<PsiFile, Pair<MostlySingularMultiMap<String, AnnotationData>, Long>> myAnnotationFileToDataAndModStampCache = ContainerUtil.createConcurrentSoftMap();
 
   public BaseExternalAnnotationsManager(@NotNull PsiManager psiManager) {
     myPsiManager = psiManager;
@@ -65,17 +65,6 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
   @Nullable
   protected static String getExternalName(@NotNull PsiModifierListOwner listOwner) {
     return PsiFormatUtil.getExternalName(listOwner, false, Integer.MAX_VALUE);
-  }
-
-  /**
-   * @deprecated use {@link #getExternalName(PsiModifierListOwner)} instead
-   * since external annotations files don't contain parameters' names anyway.
-   */
-  @ApiStatus.ScheduledForRemoval(inVersion = "2019.3")
-  @Deprecated
-  @Nullable
-  protected static String getExternalName(@NotNull PsiModifierListOwner listOwner, boolean showParamName) {
-    return PsiFormatUtil.getExternalName(listOwner, showParamName, Integer.MAX_VALUE);
   }
 
   protected abstract boolean hasAnyAnnotationsRoots();
@@ -146,8 +135,7 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
   }
 
   @Override
-  @Nullable
-  public PsiAnnotation[] findExternalAnnotations(@NotNull final PsiModifierListOwner listOwner) {
+  public PsiAnnotation @Nullable [] findExternalAnnotations(@NotNull final PsiModifierListOwner listOwner) {
     final List<AnnotationData> result = collectExternalAnnotations(listOwner);
     return result.isEmpty() ? null : ContainerUtil.map2Array(result, PsiAnnotation.EMPTY_ARRAY,
                                                              data -> data.getAnnotation(this));
@@ -211,22 +199,34 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
       return cached.getFirst();
     }
 
-    DataParsingSaxHandler handler = new DataParsingSaxHandler(file);
-    try {
-      SAXParser saxParser = SAXParserFactory.newInstance().newSAXParser();
-      saxParser.parse(new InputSource(new CharSequenceReader(escapeAttributes(file.getViewProvider().getContents()))), handler);
-    }
-    catch (IOException | ParserConfigurationException | SAXException e) {
-      LOG.error(file.getViewProvider().getVirtualFile().getPath(), e);
-    }
-
-    MostlySingularMultiMap<String, AnnotationData> result = handler.getResult();
+    MostlySingularMultiMap<String, AnnotationData> result = loadData(file.getViewProvider().getVirtualFile(), file.getViewProvider().getContents(), this);
     myAnnotationFileToDataAndModStampCache.put(file, Pair.create(result, fileModificationStamp));
     return result;
   }
 
-  protected void duplicateError(@NotNull PsiFile file, @NotNull String externalName, @NotNull String text) {
-    LOG.error(text + "; for signature: '" + externalName + "' in the " + file.getVirtualFile());
+  public static @NotNull MostlySingularMultiMap<String, AnnotationData> loadData(@NotNull VirtualFile virtualFile,
+                                                                                 @NotNull CharSequence fileText,
+                                                                                 @Nullable BaseExternalAnnotationsManager externalAnnotationsManager) {
+    DataParsingSaxHandler handler = new DataParsingSaxHandler(virtualFile, externalAnnotationsManager);
+    try {
+      SAXParser saxParser = Holder.FACTORY.newSAXParser();
+      saxParser.parse(new InputSource(new CharSequenceReader(escapeAttributes(fileText))), handler);
+    }
+    catch (IOException | ParserConfigurationException | SAXException e) {
+      LOG.error(virtualFile.getPath(), e);
+    }
+
+    return handler.getResult();
+  }
+
+  private interface Holder {
+    SAXParserFactory FACTORY = SAXParserFactory.newInstance();
+  }
+
+  protected void duplicateError(@NotNull VirtualFile virtualFile,
+                                @NotNull String externalName,
+                                @NotNull String text) {
+    LOG.error(text + "; for signature: '" + externalName + "' in the " + virtualFile);
   }
 
   @NotNull
@@ -266,13 +266,25 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
   @Override
   @Nullable
   public List<PsiFile> findExternalAnnotationsFiles(@NotNull PsiModifierListOwner listOwner) {
+    if (listOwner instanceof PsiPackage) {
+      String packageName = ((PsiPackage)listOwner).getQualifiedName();
+      Function<PsiPackage, List<VirtualFile>> roots = pack -> Arrays.stream(pack.getDirectories())
+        .flatMap(dir -> getExternalAnnotationsRoots(dir.getVirtualFile()).stream())
+        .distinct()
+        .collect(Collectors.toList());
+      return findExternalAnnotationsFiles(packageName, (PsiPackage)listOwner, roots);
+    }
     final PsiFile containingFile = PsiUtil.preferCompiledElement(listOwner).getContainingFile();
     if (!(containingFile instanceof PsiClassOwner)) return null;
 
     final VirtualFile virtualFile = containingFile.getVirtualFile();
     if (virtualFile == null) return null;
 
-    final List<PsiFile> files = myExternalAnnotationsCache.get(virtualFile);
+    return findExternalAnnotationsFiles(((PsiClassOwner)containingFile).getPackageName(), virtualFile, f -> getExternalAnnotationsRoots(f));
+  }
+
+  private <T> List<PsiFile> findExternalAnnotationsFiles(String packageName, T key, Function<T, List<VirtualFile>> roots) {
+    final List<PsiFile> files = myExternalAnnotationsCache.get(key);
     if (files == NULL_LIST) return null;
 
     if (files != null) {
@@ -289,8 +301,9 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
     }
 
     Set<PsiFile> possibleAnnotationXmls = new THashSet<>();
-    String relativePath = ((PsiClassOwner)containingFile).getPackageName().replace('.', '/') + '/' + ANNOTATIONS_XML;
-    for (VirtualFile root : getExternalAnnotationsRoots(virtualFile)) {
+
+    String relativePath = packageName.replace('.', '/') + '/' + ANNOTATIONS_XML;
+    for (VirtualFile root : roots.apply(key)) {
       VirtualFile ext = root.findFileByRelativePath(relativePath);
       if (ext != null && ext.isValid()) {
         PsiFile psiFile = myPsiManager.findFile(ext);
@@ -301,7 +314,7 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
     }
 
     if (possibleAnnotationXmls.isEmpty()) {
-      myExternalAnnotationsCache.put(virtualFile, NULL_LIST);
+      myExternalAnnotationsCache.put(key, NULL_LIST);
       return null;
     }
 
@@ -312,7 +325,7 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
       boolean w2 = f2.isWritable();
       return w1 == w2 ? 0 : w1 ? -1 : 1;
     });
-    myExternalAnnotationsCache.put(virtualFile, result);
+    myExternalAnnotationsCache.put(key, result);
     return result;
   }
 
@@ -330,6 +343,9 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
   // failing, we escape attributes values.
   @NotNull
   private static CharSequence escapeAttributes(@NotNull CharSequence invalidXml) {
+    if (!hasInvalidAttribute(invalidXml)) {
+      return invalidXml;
+    }
     // We assume that XML has single- and double-quote characters only for attribute values, therefore we don't any complex parsing,
     // just have binary inAttribute state
     StringBuilder buf = new StringBuilder(invalidXml.length());
@@ -353,11 +369,28 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
     return buf;
   }
 
+  private static boolean hasInvalidAttribute(@NotNull CharSequence invalidXml) {
+    boolean inAttribute = false;
+    for (int i = 0; i < invalidXml.length(); i++) {
+      char c = invalidXml.charAt(i);
+      if (inAttribute && c == '<') {
+        return true;
+      }
+      else if (inAttribute && c == '>') {
+        return true;
+      }
+      else if (c == '\"' || c == '\'') {
+        inAttribute = !inAttribute;
+      }
+    }
+    return false;
+  }
+
   @Override
   public void annotateExternally(@NotNull PsiModifierListOwner listOwner,
                                  @NotNull String annotationFQName,
                                  @NotNull PsiFile fromFile,
-                                 @Nullable PsiNameValuePair[] value) throws CanceledConfigurationException {
+                                 PsiNameValuePair @Nullable [] value) throws CanceledConfigurationException {
     throw new UnsupportedOperationException();
   }
 
@@ -369,7 +402,13 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
   @Override
   public boolean editExternalAnnotation(@NotNull PsiModifierListOwner listOwner,
                                         @NotNull String annotationFQN,
-                                        @Nullable PsiNameValuePair[] value) {
+                                        PsiNameValuePair @Nullable [] value) {
+    throw new UnsupportedOperationException();
+  }
+
+  @NotNull
+  @Override
+  public AnnotationPlace chooseAnnotationsPlaceNoUi(@NotNull PsiElement element) {
     throw new UnsupportedOperationException();
   }
 
@@ -379,18 +418,15 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
     throw new UnsupportedOperationException();
   }
 
-  protected void registerExternalAnnotations(@NotNull PsiFile fromFile, @NotNull PsiFile annotationsFile) {
-    VirtualFile virtualFile = fromFile.getVirtualFile();
-    if (virtualFile != null) {
-      myExternalAnnotationsCache.compute(virtualFile, (k, v) -> {
-        if (v == null || v == NULL_LIST) {
-          return new SmartList<>(annotationsFile);
-        }
+  protected void registerExternalAnnotations(@NotNull Object key, @NotNull PsiFile annotationsFile) {
+    myExternalAnnotationsCache.compute(key, (k, v) -> {
+      if (v == null || v == NULL_LIST) {
+        return new SmartList<>(annotationsFile);
+      }
 
-        v.add(annotationsFile);
-        return v;
-      });
-    }
+      v.add(annotationsFile);
+      return v;
+    });
   }
 
   public static class AnnotationData {
@@ -458,16 +494,18 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
 
   private static final JavaParserUtil.ParserWrapper ANNOTATION = JavaParser.INSTANCE.getDeclarationParser()::parseAnnotation;
 
-  private class DataParsingSaxHandler extends DefaultHandler {
+  private static final class DataParsingSaxHandler extends DefaultHandler {
     private final MostlySingularMultiMap<String, AnnotationData> myData = new MostlySingularMultiMap<>();
-    private final PsiFile myFile;
+    private final @NotNull VirtualFile myFile;
+    private final BaseExternalAnnotationsManager myExternalAnnotationsManager;
 
     private String myExternalName;
     private String myAnnotationFqn;
     private StringBuilder myArguments;
 
-    private DataParsingSaxHandler(PsiFile file) {
+    private DataParsingSaxHandler(@NotNull VirtualFile file, @Nullable BaseExternalAnnotationsManager manager) {
       myFile = file;
+      myExternalAnnotationsManager = manager;
     }
 
     @Override
@@ -498,21 +536,22 @@ public abstract class BaseExternalAnnotationsManager extends ExternalAnnotations
         myExternalName = null;
       }
       else if ("annotation".equals(qName) && myExternalName != null && myAnnotationFqn != null) {
-        String argumentsString = myArguments.length() == 0 ? "" : intern(myArguments.toString());
         for (AnnotationData existingData : myData.get(myExternalName)) {
-          if (existingData.annotationClassFqName.equals(myAnnotationFqn)) {
-            duplicateError(myFile, myExternalName, "Duplicate annotation '" + myAnnotationFqn + "'");
+          if (existingData.annotationClassFqName.equals(myAnnotationFqn) && myExternalAnnotationsManager != null) {
+            myExternalAnnotationsManager.duplicateError(myFile, myExternalName, "Duplicate annotation '" + myAnnotationFqn + "'");
           }
         }
 
+        String argumentsString = myArguments.length() == 0 ? "" : myExternalAnnotationsManager == null ? myArguments.toString() : myExternalAnnotationsManager.intern(myArguments.toString());
         AnnotationData data = new AnnotationData(myAnnotationFqn, argumentsString);
-        myData.add(myExternalName, internAnnotationData(data));
+        myData.add(myExternalName, myExternalAnnotationsManager == null ? data : myExternalAnnotationsManager.internAnnotationData(data));
 
         myAnnotationFqn = null;
         myArguments = null;
       }
     }
 
+    @NotNull
     public MostlySingularMultiMap<String, AnnotationData> getResult() {
       if (myData.isEmpty()) {
         return MostlySingularMultiMap.emptyMap();

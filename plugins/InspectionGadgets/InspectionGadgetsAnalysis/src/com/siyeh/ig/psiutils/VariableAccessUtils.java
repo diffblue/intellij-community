@@ -276,7 +276,7 @@ public class VariableAccessUtils {
     final PsiExpressionStatement expressionStatement =
       (PsiExpressionStatement)statement;
     PsiExpression expression = expressionStatement.getExpression();
-    expression = ParenthesesUtils.stripParentheses(expression);
+    expression = PsiUtil.skipParenthesizedExprDown(expression);
     if (expression instanceof PsiUnaryExpression) {
       final PsiUnaryExpression unaryExpression =
         (PsiUnaryExpression)expression;
@@ -297,7 +297,7 @@ public class VariableAccessUtils {
         return false;
       }
       PsiExpression rhs = assignmentExpression.getRExpression();
-      rhs = ParenthesesUtils.stripParentheses(rhs);
+      rhs = PsiUtil.skipParenthesizedExprDown(rhs);
       if (tokenType == JavaTokenType.EQ) {
         if (!(rhs instanceof PsiBinaryExpression)) {
           return false;
@@ -404,7 +404,7 @@ public class VariableAccessUtils {
    * Check if local variable has the same behavior as its initializer.
    */
   public static boolean isLocalVariableCopy(@NotNull PsiLocalVariable variable) {
-    return isLocalVariableCopy(variable, ParenthesesUtils.stripParentheses(variable.getInitializer()));
+    return isLocalVariableCopy(variable, PsiUtil.skipParenthesizedExprDown(variable.getInitializer()));
   }
 
   /**
@@ -487,6 +487,27 @@ public class VariableAccessUtils {
     }
 
     return !TypeConversionUtil.boxingConversionApplicable(variableType, initializationType);
+  }
+
+  /**
+   * @param statement statement to scan
+   * @return list of variables declared inside given element that could conflict with other declarations on statement level.
+   * I.e. all local and pattern declarations declared inside, except declarations from the local/anonymous classes.
+   */
+  public static List<PsiVariable> findDeclaredVariables(@NotNull PsiStatement statement) {
+    List<PsiVariable> variables = new ArrayList<>();
+    statement.accept(new JavaRecursiveElementWalkingVisitor() {
+
+      @Override
+      public void visitClass(final PsiClass aClass) {}
+
+      @Override
+      public void visitVariable(PsiVariable variable) {
+        variables.add(variable);
+        super.visitVariable(variable);
+      }
+    });
+    return variables;
   }
 
   private static boolean isFinalChain(PsiReferenceExpression reference) {

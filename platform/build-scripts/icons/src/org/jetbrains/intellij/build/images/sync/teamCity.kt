@@ -93,16 +93,18 @@ internal fun thisBuildReportableLink() =
 internal fun triggeredBy() =
   System.getProperty("teamcity.build.triggeredBy.username")
     ?.takeIf(String::isNotBlank)
+    ?.takeIf { it != "null" && it != "n/a" }
     ?.let { teamCityGet("users/username:$it/email") }
     ?.removeSuffix(System.lineSeparator())
     ?.takeIf { triggeredByName != null }
-    ?.let { email -> TriggeredBy(triggeredByName, email) }
-  ?: error("Unable to find who triggered the build")
-
-internal class TriggeredBy(val name: String, val email: String)
+    ?.let { email -> Committer(triggeredByName, email) }
+  ?: Committer("IconSyncRobot", "icon-sync-robot-no-reply@jetbrains.com")
 
 internal fun isScheduled() = triggeredByName?.contains("Schedule") == true
 
 private val triggeredByName by lazy {
   System.getProperty("teamcity.build.triggeredBy")
 }
+
+internal fun triggerBuild(buildId: String, branch: String) =
+  teamCityPost("buildQueue", """<build branchName="$branch"><buildType id="$buildId"/></build>""")

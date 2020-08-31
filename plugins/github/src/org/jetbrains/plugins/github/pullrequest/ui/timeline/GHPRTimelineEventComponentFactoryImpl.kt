@@ -1,24 +1,30 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.plugins.github.pullrequest.ui.timeline
 
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.changes.ui.CurrentBranchComponent
 import com.intellij.ui.ColorUtil
+import com.intellij.ui.components.panels.HorizontalLayout
+import com.intellij.ui.components.panels.NonOpaquePanel
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UI
 import com.intellij.util.ui.UIUtil
 import icons.GithubIcons
 import org.intellij.lang.annotations.Language
 import org.jetbrains.plugins.github.api.data.GHLabel
 import org.jetbrains.plugins.github.api.data.GHUser
 import org.jetbrains.plugins.github.api.data.pullrequest.GHGitRefName
-import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestReviewer
+import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestRequestedReviewer
 import org.jetbrains.plugins.github.api.data.pullrequest.GHPullRequestState
 import org.jetbrains.plugins.github.api.data.pullrequest.timeline.*
+import org.jetbrains.plugins.github.i18n.GithubBundle
 import org.jetbrains.plugins.github.pullrequest.avatars.GHAvatarIconsProvider
 import org.jetbrains.plugins.github.pullrequest.ui.timeline.GHPRTimelineItemComponentFactory.Item
 import org.jetbrains.plugins.github.ui.util.HtmlEditorPane
 import org.jetbrains.plugins.github.util.GithubUIUtil
 import javax.swing.Icon
+import javax.swing.JComponent
+import javax.swing.JLabel
 
 class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHAvatarIconsProvider)
   : GHPRTimelineEventComponentFactory<GHPRTimelineEvent> {
@@ -96,53 +102,54 @@ class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHA
     private fun assigneesHTML(assigned: Collection<GHUser> = emptyList(), unassigned: Collection<GHUser> = emptyList()): String {
       val builder = StringBuilder()
       if (assigned.isNotEmpty()) {
-        builder.append(assigned.joinToString(prefix = "assigned ") { "<b>${it.login}</b>" })
+        builder.append(
+          assigned.joinToString(prefix = "${GithubBundle.message("pull.request.timeline.assigned")} ") { "<b>${it.login}</b>" })
       }
       if (unassigned.isNotEmpty()) {
-        if (builder.isNotEmpty()) builder.append(" and ")
-        builder.append(unassigned.joinToString(prefix = "unassigned ") { "<b>${it.login}</b>" })
+        if (builder.isNotEmpty()) builder.append(" ${GithubBundle.message("pull.request.timeline.and")} ")
+        builder.append(
+          unassigned.joinToString(prefix = "${GithubBundle.message("pull.request.timeline.unassigned")} ") { "<b>${it.login}</b>" })
       }
       return builder.toString()
     }
 
-    private fun reviewersHTML(added: Collection<GHPullRequestReviewer> = emptyList(),
-                              removed: Collection<GHPullRequestReviewer> = emptyList()): String {
+    private fun reviewersHTML(added: Collection<GHPullRequestRequestedReviewer?> = emptyList(),
+                              removed: Collection<GHPullRequestRequestedReviewer?> = emptyList()): String {
       val builder = StringBuilder()
       if (added.isNotEmpty()) {
-        builder.append(added.joinToString(prefix = "requested a review from ") { "<b>${extractReviewerName(it)}</b>" })
+        builder.append(
+          added.joinToString(prefix = "${GithubBundle.message("pull.request.timeline.requested.review")} ") {
+            "<b>${it?.shortName ?: GithubBundle.message("user.someone")}</b>"
+          })
       }
       if (removed.isNotEmpty()) {
-        if (builder.isNotEmpty()) builder.append(" and ")
-        builder.append(removed.joinToString(prefix = "removed review request from ") { "<b>${extractReviewerName(it)}</b>" })
+        if (builder.isNotEmpty()) builder.append(" ${GithubBundle.message("pull.request.timeline.and")} ")
+        builder.append(removed.joinToString(
+          prefix = "${GithubBundle.message("pull.request.timeline.removed.review.request")} ") {
+          "<b>${it?.shortName ?: GithubBundle.message("user.someone")}</b>"
+        })
       }
       return builder.toString()
-    }
-
-    private fun extractReviewerName(reviewer: GHPullRequestReviewer): String {
-      return when (reviewer) {
-        is GHUser -> reviewer.login
-        is GHPullRequestReviewer.Team -> "team"
-        else -> throw IllegalArgumentException()
-      }
     }
 
     private fun labelsHTML(added: Collection<GHLabel> = emptyList(), removed: Collection<GHLabel> = emptyList()): String {
       val builder = StringBuilder()
       if (added.isNotEmpty()) {
         if (added.size > 1) {
-          builder.append(added.joinToString(prefix = "added labels ") { labelHTML(it) })
+          builder.append(added.joinToString(prefix = "${GithubBundle.message("pull.request.timeline.added.labels")} ") { labelHTML(it) })
         }
         else {
-          builder.append("added the ").append(labelHTML(added.first())).append(" label")
+          builder.append(GithubBundle.message("pull.request.timeline.added.label", labelHTML(added.first())))
         }
       }
       if (removed.isNotEmpty()) {
-        if (builder.isNotEmpty()) builder.append(" and ")
+        if (builder.isNotEmpty()) builder.append(" ${GithubBundle.message("pull.request.timeline.and")} ")
         if (removed.size > 1) {
-          builder.append(removed.joinToString(prefix = "removed labels ") { labelHTML(it) })
+          builder.append(
+            removed.joinToString(prefix = "${GithubBundle.message("pull.request.timeline.removed.labels")} ") { labelHTML(it) })
         }
         else {
-          builder.append("removed the ").append(labelHTML(removed.first())).append(" label")
+          builder.append(GithubBundle.message("pull.request.timeline.removed.label", labelHTML(removed.first())))
         }
       }
       return builder.toString()
@@ -156,7 +163,7 @@ class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHA
                   &nbsp;${StringUtil.escapeXmlEntities(label.name)}&nbsp;</span>"""
     }
 
-    private fun renameHTML(oldName: String, newName: String) = "renamed this from <b>$oldName</b> to <b>$newName</b>"
+    private fun renameHTML(oldName: String, newName: String) = GithubBundle.message("pull.request.timeline.renamed", oldName, newName)
   }
 
   private inner class StateEventComponentFactory : EventComponentFactory<GHPRTimelineEvent.State>() {
@@ -168,9 +175,18 @@ class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHA
       }
 
       val text = when (event.newState) {
-        GHPullRequestState.CLOSED -> "closed this"
-        GHPullRequestState.MERGED -> "merged this"
-        GHPullRequestState.OPEN -> "reopened this"
+        GHPullRequestState.CLOSED -> GithubBundle.message("pull.request.timeline.closed")
+        GHPullRequestState.MERGED -> {
+          val mergeEvent = (if (event is GHPRTimelineMergedStateEvents) event.lastStateEvent else event) as GHPRMergedEvent
+          if (mergeEvent.commit != null) {
+            //language=HTML
+            val commitText = """<a href='${mergeEvent.commit.url}'>${mergeEvent.commit.abbreviatedOid}</a>"""
+            val ref = branchHTML(mergeEvent.mergeRefName)
+            GithubBundle.message("pull.request.timeline.merged.commit", commitText, ref)
+          }
+          else GithubBundle.message("pull.request.timeline.merged")
+        }
+        GHPullRequestState.OPEN -> GithubBundle.message("pull.request.timeline.reopened")
       }
 
       return eventItem(icon, event, text)
@@ -181,45 +197,73 @@ class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHA
     override fun createComponent(event: GHPRTimelineEvent.Branch): Item {
       return when (event) {
         is GHPRBaseRefChangedEvent ->
-          eventItem(event, "changed the base branch")
+          eventItem(event, GithubBundle.message("pull.request.timeline.changed.base.branch"))
         is GHPRBaseRefForcePushedEvent ->
-          eventItem(event, "force-pushed the ${branchHTML(event.ref) ?: "base"} branch")
+          eventItem(event, GithubBundle.message("pull.request.timeline.branch.force.pushed", branchHTML(event.ref) ?: "base"))
 
         is GHPRHeadRefForcePushedEvent ->
-          eventItem(event, "force-pushed the ${branchHTML(event.ref) ?: "head"} branch")
+          eventItem(event, GithubBundle.message("pull.request.timeline.branch.force.pushed", branchHTML(event.ref) ?: "head"))
         is GHPRHeadRefDeletedEvent ->
-          eventItem(event, "deleted the ${branchHTML(event.headRefName)} branch")
+          eventItem(event, GithubBundle.message("pull.request.timeline.branch.deleted", branchHTML(event.headRefName)))
         is GHPRHeadRefRestoredEvent ->
-          eventItem(event, "restored head branch")
+          eventItem(event, GithubBundle.message("pull.request.timeline.branch.head.restored"))
 
         else -> throwUnknownType(event)
       }
     }
 
     private fun branchHTML(ref: GHGitRefName?) = ref?.name?.let { branchHTML(it) }
-
-    //language=HTML
-    private fun branchHTML(name: String): String {
-      val foreground = CurrentBranchComponent.TEXT_COLOR
-      val background = CurrentBranchComponent.getBranchPresentationBackground(UIUtil.getListBackground())
-
-      return """<span style='color: #${ColorUtil.toHex(foreground)}; background: #${ColorUtil.toHex(background)}'>
-                  &nbsp;<icon-inline src='GithubIcons.Branch'/>$name&nbsp;</span>"""
-    }
   }
 
   private inner class ComplexEventComponentFactory : EventComponentFactory<GHPRTimelineEvent.Complex>() {
     override fun createComponent(event: GHPRTimelineEvent.Complex): Item {
       return when (event) {
         is GHPRReviewDismissedEvent ->
-          Item(GithubIcons.Timeline, GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
-                                                                                  "dismissed <b>${event.reviewAuthor?.login}</b>`s stale review",
-                                                                                  event.createdAt),
+          Item(GithubIcons.Timeline,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message(
+                                                              "pull.request.timeline.stale.review.dismissed",
+                                                              event.reviewAuthor?.login
+                                                              ?: GithubBundle.message("pull.request.timeline.stale.review.author")),
+                                                            event.createdAt),
                event.dismissalMessageHTML?.let {
                  HtmlEditorPane(it).apply {
                    border = JBUI.Borders.emptyLeft(28)
                  }
                })
+        is GHPRReadyForReviewEvent ->
+          Item(GithubIcons.Review,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message("pull.request.timeline.marked.as.ready"),
+                                                            event.createdAt))
+
+        is GHPRConvertToDraftEvent ->
+          Item(GithubIcons.Review,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message("pull.request.timeline.marked.as.draft"),
+                                                            event.createdAt))
+
+        is GHPRCrossReferencedEvent -> {
+          Item(GithubIcons.Timeline,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message("pull.request.timeline.mentioned"),
+                                                            event.createdAt),
+               createComponent(event.source))
+        }
+        is GHPRConnectedEvent -> {
+          Item(GithubIcons.Timeline,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message("pull.request.timeline.connected"),
+                                                            event.createdAt),
+               createComponent(event.subject))
+        }
+        is GHPRDisconnectedEvent -> {
+          Item(GithubIcons.Timeline,
+               GHPRTimelineItemComponentFactory.actionTitle(avatarIconsProvider, event.actor,
+                                                            GithubBundle.message("pull.request.timeline.disconnected"),
+                                                            event.createdAt),
+               createComponent(event.subject))
+        }
 
         else -> throwUnknownType(event)
       }
@@ -227,9 +271,37 @@ class GHPRTimelineEventComponentFactoryImpl(private val avatarIconsProvider: GHA
   }
 
   companion object {
+    private fun branchHTML(name: String): String {
+      val foreground = CurrentBranchComponent.TEXT_COLOR
+      val background = CurrentBranchComponent.getBranchPresentationBackground(UIUtil.getListBackground())
+
+      //language=HTML
+      return """<span style='color: #${ColorUtil.toHex(foreground)}; background: #${ColorUtil.toHex(background)}'>
+                  &nbsp;<icon-inline src='GithubIcons.Branch'/>$name&nbsp;</span>"""
+    }
+
     private fun StringBuilder.appendParagraph(text: String): StringBuilder {
       if (text.isNotEmpty()) this.append("<p>").append(text).append("</p>")
       return this
+    }
+
+    private fun createComponent(reference: GHPRReferencedSubject): JComponent {
+      val stateIcon = when (reference) {
+        is GHPRReferencedSubject.Issue -> GithubUIUtil.getIssueStateIcon(reference.state)
+        is GHPRReferencedSubject.PullRequest -> GithubUIUtil.getPullRequestStateIcon(reference.state, reference.isDraft)
+      }
+      val stateToolTip = when (reference) {
+        is GHPRReferencedSubject.Issue -> GithubUIUtil.getIssueStateText(reference.state)
+        is GHPRReferencedSubject.PullRequest -> GithubUIUtil.getPullRequestStateText(reference.state, reference.isDraft)
+      }
+      return NonOpaquePanel(HorizontalLayout(UI.scale(5))).apply {
+        border = JBUI.Borders.emptyLeft(28)
+        add(JLabel(stateIcon).apply {
+          toolTipText = stateToolTip
+        })
+        //language=HTML
+        add(HtmlEditorPane("""${reference.title}&nbsp<a href='${reference.url}'>#${reference.number}</a>"""))
+      }
     }
   }
 }

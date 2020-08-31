@@ -33,12 +33,13 @@ import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author Anton Katilin
  * @author Vladimir Kondratyev
  */
-public class TextEditorProvider implements DefaultPlatformFileEditorProvider, DumbAware {
+public class TextEditorProvider implements DefaultPlatformFileEditorProvider, QuickDefinitionProvider, DumbAware {
   protected static final Logger LOG = Logger.getInstance(TextEditorProvider.class);
 
   private static final Key<TextEditor> TEXT_EDITOR_KEY = Key.create("textEditor");
@@ -56,7 +57,7 @@ public class TextEditorProvider implements DefaultPlatformFileEditorProvider, Du
 
   @NotNull
   public static TextEditorProvider getInstance() {
-    return FileEditorProvider.EP_FILE_EDITOR_PROVIDER.findExtensionOrFail(TextEditorProvider.class);
+    return Objects.requireNonNull(FileEditorProvider.EP_FILE_EDITOR_PROVIDER.findFirstAssignableExtension(TextEditorProvider.class));
   }
 
   @Override
@@ -94,7 +95,7 @@ public class TextEditorProvider implements DefaultPlatformFileEditorProvider, Du
     return state;
   }
 
-  private static TextEditorState.CaretState readCaretInfo(@NotNull Element element) {
+  private static @NotNull TextEditorState.CaretState readCaretInfo(@NotNull Element element) {
     TextEditorState.CaretState caretState = new TextEditorState.CaretState();
     caretState.LINE = parseWithDefault(element, LINE_ATTR);
     caretState.COLUMN = parseWithDefault(element, COLUMN_ATTR);
@@ -173,12 +174,10 @@ public class TextEditorProvider implements DefaultPlatformFileEditorProvider, Du
     return new EditorWrapper(editor);
   }
 
-  @Nullable
-  public static Document[] getDocuments(@NotNull FileEditor editor) {
+  public static Document @NotNull [] getDocuments(@NotNull FileEditor editor) {
     if (editor instanceof DocumentsEditor) {
       DocumentsEditor documentsEditor = (DocumentsEditor)editor;
-      Document[] documents = documentsEditor.getDocuments();
-      return documents.length > 0 ? documents : null;
+      return documentsEditor.getDocuments();
     }
 
     if (editor instanceof TextEditor) {
@@ -197,7 +196,7 @@ public class TextEditorProvider implements DefaultPlatformFileEditorProvider, Du
       }
     }
 
-    return null;
+    return Document.EMPTY_ARRAY;
   }
 
   static void putTextEditor(Editor editor, TextEditor textEditor) {

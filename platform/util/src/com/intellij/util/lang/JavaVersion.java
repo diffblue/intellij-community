@@ -1,6 +1,7 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.util.lang;
 
+import com.intellij.ReviseWhenPortedToJDK;
 import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -94,22 +95,49 @@ public final class JavaVersion implements Comparable<JavaVersion> {
     return hash;
   }
 
+  /**
+   * @return feature version string, e.g. <b>1.8</b> or <b>11</b>
+   */
+  public @NotNull String toFeatureString() {
+    return formatVersionTo(true, true);
+  }
+
+  /**
+   * @return feature, minor and update components of the version string, e.g.
+   * <b>1.8.0_242</b> or <b>11.0.5</b>
+   */
+  public @NotNull String toFeatureMinorUpdateString() {
+    return formatVersionTo(false, true);
+  }
+
   @Override
   public String toString() {
+    return formatVersionTo(false, false);
+  }
+
+  private String formatVersionTo(boolean upToFeature, boolean upToUpdate) {
     StringBuilder sb = new StringBuilder();
     if (feature > 8) {
       sb.append(feature);
-      if (minor > 0 || update > 0) sb.append('.').append(minor);
-      if (update > 0) sb.append('.').append(update);
-      if (ea) sb.append("-ea");
-      if (build > 0) sb.append('+').append(build);
+      if (!upToFeature) {
+        if (minor > 0 || update > 0) sb.append('.').append(minor);
+        if (update > 0) sb.append('.').append(update);
+        if (!upToUpdate) {
+          if (ea) sb.append("-ea");
+          if (build > 0) sb.append('+').append(build);
+        }
+      }
     }
     else {
       sb.append("1.").append(feature);
-      if (minor > 0 || update > 0 || ea || build > 0) sb.append('.').append(minor);
-      if (update > 0) sb.append('_').append(update);
-      if (ea) sb.append("-ea");
-      if (build > 0) sb.append("-b").append(build);
+      if (!upToFeature) {
+        if (minor > 0 || update > 0 || ea || build > 0) sb.append('.').append(minor);
+        if (update > 0) sb.append('_').append(update);
+        if (!upToUpdate) {
+          if (ea) sb.append("-ea");
+          if (build > 0) sb.append("-b").append(build);
+        }
+      }
     }
     return sb.toString();
   }
@@ -154,6 +182,7 @@ public final class JavaVersion implements Comparable<JavaVersion> {
   /**
    * Attempts to use Runtime.version() method available since Java 9.
    */
+  @ReviseWhenPortedToJDK("9")
   @SuppressWarnings("JavaReflectionMemberAccess")
   private static @Nullable JavaVersion rtVersion() {
     try {
@@ -198,8 +227,7 @@ public final class JavaVersion implements Comparable<JavaVersion> {
     }
 
     // partitioning
-    List<String> separators = new ArrayList<>();
-    List<String> numbers = new ArrayList<>();
+    List<String> numbers = new ArrayList<>(), separators = new ArrayList<>();
     int length = str.length(), p = 0;
     boolean number = false;
     while (p < length) {

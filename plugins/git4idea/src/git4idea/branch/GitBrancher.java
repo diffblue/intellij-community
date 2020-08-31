@@ -59,6 +59,16 @@ public interface GitBrancher {
   void createBranch(@NotNull String name, @NotNull Map<GitRepository, String> startPoints);
 
   /**
+   * Creates new branch without checking it out.
+   *
+   * @param name        name of the new branch.
+   * @param startPoints position (commit hash) where the branch should be created, for each repository.
+   *                    Such position can be indicated by any valid Git reference (commit hash, branch name, etc.)
+   * @param force       create and overwrite existing if needed
+   */
+  void createBranch(@NotNull String name, @NotNull Map<GitRepository, String> startPoints, boolean force);
+
+  /**
    * <p>Creates new tag on the selected reference.</p>
    *  @param name           the name of new tag.
    * @param reference      the reference which tag will point to.
@@ -93,9 +103,27 @@ public interface GitBrancher {
    * @param startPoint     the reference to checkout.
    * @param repositories   repositories to operate on.
    * @param callInAwtLater the Runnable that should be called after execution of the method (both successful and unsuccessful).
-*                       If given, it will be called in the EDT {@link javax.swing.SwingUtilities#invokeLater(Runnable) later}.
+   *                       If given, it will be called in the EDT {@link javax.swing.SwingUtilities#invokeLater(Runnable) later}.
    */
   void checkoutNewBranchStartingFrom(@NotNull String newBranchName, @NotNull String startPoint, @NotNull List<? extends GitRepository> repositories,
+                                     @Nullable Runnable callInAwtLater);
+
+
+  /**
+   * Creates and checks out a new local branch starting from the given reference:
+   * {@code git checkout -b <branchname> <start-point>}. <br/>
+   * Provides the "smart checkout" procedure the same as in {@link #checkout(String, boolean, List, Runnable)}.
+   *
+   * @param newBranchName     the name of the new local branch.
+   * @param startPoint        the reference to checkout.
+   * @param overwriteIfNeeded reset existing branch to {@code startPoint} if needed.
+   * @param repositories      repositories to operate on.
+   * @param callInAwtLater    the Runnable that should be called after execution of the method (both successful and unsuccessful).
+   *                          If given, it will be called in the EDT {@link javax.swing.SwingUtilities#invokeLater(Runnable) later}.
+   */
+  void checkoutNewBranchStartingFrom(@NotNull String newBranchName,
+                                     @NotNull String startPoint, boolean overwriteIfNeeded,
+                                     @NotNull List<? extends GitRepository> repositories,
                                      @Nullable Runnable callInAwtLater);
 
   /**
@@ -109,6 +137,8 @@ public interface GitBrancher {
    */
   void deleteBranch(@NotNull String branchName, @NotNull List<? extends GitRepository> repositories);
 
+  void deleteBranches(@NotNull Map<String, List<? extends GitRepository>> branchesToContainingRepositories, @Nullable Runnable callInAwtAfterExecution);
+
   /**
    * <p>Deletes the remote branch:</p>
    * <p>{@code git push <remote> :<name>}</p>
@@ -118,9 +148,20 @@ public interface GitBrancher {
   void deleteRemoteBranch(@NotNull String branchName, @NotNull List<? extends GitRepository> repositories);
 
   /**
+   * Delete multiple remote branches.
+   * @see #deleteRemoteBranch
+   */
+  void deleteRemoteBranches(@NotNull List<String> branchNames, @NotNull List<? extends GitRepository> repositories);
+
+  /**
    * Compares commits from the HEAD with the specified branch.
    */
-  void compare(@NotNull String branchName, @NotNull List<? extends GitRepository> repositories, @NotNull GitRepository selectedRepository);
+  void compare(@NotNull String branchName, @NotNull List<? extends GitRepository> repositories);
+
+  /**
+   * Compares 2 specified branches commit-wise.
+   */
+  void compareAny(@NotNull String branchName, @NotNull String otherBranchName, @NotNull List<? extends GitRepository> repositories);
 
   /**
    * Compares the current working tree with its state in the selected branch.
@@ -142,6 +183,11 @@ public interface GitBrancher {
    * Call {@code git rebase <branchName>} for each of the given repositories.
    */
   void rebase(@NotNull List<? extends GitRepository> repositories, @NotNull String branchName);
+
+  /**
+   * Call {@code git rebase <upstream> <branchName>} for each of the given repositories
+   */
+  void rebase(@NotNull List<? extends GitRepository> repositories, @NotNull String upstream, @NotNull String branchName);
 
   /**
    * Call {@code git rebase <current branch> <branchName>} for each of the given repositories.

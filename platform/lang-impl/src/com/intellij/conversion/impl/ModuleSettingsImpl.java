@@ -5,10 +5,8 @@ package com.intellij.conversion.impl;
 import com.intellij.conversion.CannotConvertException;
 import com.intellij.conversion.ComponentManagerSettings;
 import com.intellij.conversion.ModuleSettings;
-import com.intellij.facet.FacetManagerImpl;
 import com.intellij.ide.highlighter.ModuleFileType;
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.roots.impl.libraries.LibraryImpl;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -19,15 +17,13 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jps.model.serialization.JDomSerializationUtil;
 import org.jetbrains.jps.model.serialization.facet.JpsFacetSerializer;
+import org.jetbrains.jps.model.serialization.library.JpsLibraryTableSerializer;
 import org.jetbrains.jps.model.serialization.module.JpsModuleRootModelSerializer;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.util.*;
 
-/**
- * @author nik
- */
 public class ModuleSettingsImpl extends ComponentManagerSettingsImpl implements ModuleSettings {
   private final String myModuleName;
 
@@ -61,7 +57,7 @@ public class ModuleSettingsImpl extends ComponentManagerSettingsImpl implements 
   @Override
   @NotNull
   public Collection<? extends Element> getFacetElements(@NotNull String facetTypeId) {
-    final Element facetManager = getComponentElement(FacetManagerImpl.COMPONENT_NAME);
+    final Element facetManager = getComponentElement(JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME);
     final ArrayList<Element> elements = new ArrayList<>();
 
     addFacetTypes(facetTypeId, facetManager, elements);
@@ -86,7 +82,7 @@ public class ModuleSettingsImpl extends ComponentManagerSettingsImpl implements 
 
   @Override
   public void addFacetElement(@NotNull String facetTypeId, @NotNull String facetName, Element configuration) {
-    Element componentElement = JDomSerializationUtil.findOrCreateComponentElement(getRootElement(), FacetManagerImpl.COMPONENT_NAME);
+    Element componentElement = JDomSerializationUtil.findOrCreateComponentElement(getRootElement(), JpsFacetSerializer.FACET_MANAGER_COMPONENT_NAME);
     Element facetElement = new Element(JpsFacetSerializer.FACET_TAG);
     facetElement.setAttribute(JpsFacetSerializer.TYPE_ATTRIBUTE, facetTypeId);
     facetElement.setAttribute(JpsFacetSerializer.NAME_ATTRIBUTE, facetName);
@@ -193,8 +189,8 @@ public class ModuleSettingsImpl extends ComponentManagerSettingsImpl implements 
   private Element findModuleLibraryElement(String libraryName) {
     for (Element element : getOrderEntries()) {
       if (JpsModuleRootModelSerializer.MODULE_LIBRARY_TYPE.equals(element.getAttributeValue(JpsModuleRootModelSerializer.TYPE_ATTRIBUTE))) {
-        final Element library = element.getChild(LibraryImpl.ELEMENT);
-        if (library != null && libraryName.equals(library.getAttributeValue(LibraryImpl.LIBRARY_NAME_ATTR))) {
+        final Element library = element.getChild(JpsLibraryTableSerializer.LIBRARY_TAG);
+        if (library != null && libraryName.equals(library.getAttributeValue(JpsLibraryTableSerializer.NAME_ATTRIBUTE))) {
           return library;
         }
       }

@@ -27,7 +27,7 @@ import org.jetbrains.annotations.NotNull;
 public class ExtendsThreadInspection extends BaseInspection {
 
   /**
-   * @see com.siyeh.ig.inheritance.ExtendsConcreteCollectionInspection#buildFix(java.lang.Object...)
+   * @see com.siyeh.ig.inheritance.ExtendsConcreteCollectionInspection#buildFix(Object...)
    */
   @Override
   protected InspectionGadgetsFix buildFix(Object... infos) {
@@ -42,12 +42,6 @@ public class ExtendsThreadInspection extends BaseInspection {
   @NotNull
   public String getID() {
     return "ClassExplicitlyExtendsThread";
-  }
-
-  @Override
-  @NotNull
-  public String getDisplayName() {
-    return InspectionGadgetsBundle.message("extends.thread.display.name");
   }
 
   @Override

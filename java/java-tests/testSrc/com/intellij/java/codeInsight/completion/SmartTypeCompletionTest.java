@@ -22,6 +22,7 @@ import com.intellij.psi.codeStyle.CodeStyleSettingsManager;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
 import com.intellij.psi.codeStyle.JavaCodeStyleSettings;
 import com.intellij.psi.util.PsiUtil;
+import com.intellij.testFramework.NeedsIndex;
 import com.intellij.testFramework.fixtures.CodeInsightTestUtil;
 import com.intellij.util.containers.ContainerUtil;
 
@@ -47,6 +48,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   }
 
 
+  @NeedsIndex.ForStandardLibrary
   public void testParenAfterCast3() {
     String path = "/parenAfterCast";
 
@@ -150,6 +152,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after3.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew4() {
     String path = "/afterNew";
 
@@ -158,6 +161,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after4.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew5() {
     String path = "/afterNew";
 
@@ -166,6 +170,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after5.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew6() {
     String path = "/afterNew";
 
@@ -174,6 +179,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after6.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew7() {
     String path = "/afterNew";
 
@@ -182,6 +188,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after7.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew8() {
     String path = "/afterNew";
 
@@ -190,6 +197,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after8.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterNew9() {
     String path = "/afterNew";
 
@@ -214,14 +222,16 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after13.java");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAfterThrowNew1() {
     String path = "/afterNew";
 
     configureByFile(path + "/before14.java");
-    //select();
+    select();
     checkResultByFile(path + "/after14.java");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAfterThrowNew2() {
     String path = "/afterNew";
 
@@ -230,15 +240,17 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after15.java");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAfterThrowNew3() {
     String path = "/afterNew";
 
     configureByFile(path + "/before16.java");
-    //select();
+    select();
     checkResultByFile(path + "/after16.java");
   }
 
   public void testCastInThrow() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testNonExistentGenericAfterNew() { doTest('\n'); }
 
   public void testParenAfterNewWithinInnerExpr() {
@@ -313,6 +325,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after5.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterInstanceOf1() {
     String path = "/afterInstanceOf";
 
@@ -320,6 +333,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after1.java");
   }
 
+  @NeedsIndex.Full
   public void testAfterInstanceOf2() {
     String path = "/afterInstanceOf";
 
@@ -327,8 +341,11 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByFile(path + "/after2.java");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testInsideCatch() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testInsideCatchFinal() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testInsideCatchWithoutThrow() { doTest(); }
 
   public void testGenerics6() {
@@ -388,28 +405,36 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertEquals(2, myItems.length);
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCollectionsEmptySetInMethodCall() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCollectionsEmptySetInTernary() { doTest(); }
 
   public void testStringConstantInAnno() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCollectionsEmptySetInTernary2() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testConstructorOnSeparateLineInMethodCall() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testConstructorWithExistingParens() { doTest(); }
 
   public void testMethodAnnotationNamedParameter() { doTest(); }
 
   public void testInheritedClass() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteralInAnno1() { doTest(); }
 
   public void testMeaninglessExplicitWildcardParam() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testExplicitWildcardArrayParam() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCatchInAnonymous() { doTest(); }
 
   public void testThrowRuntimeException() { doTest(); }
@@ -422,8 +447,10 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testQualifiedThisInAnonymousConstructor() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testExceptionTwice() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testExceptionTwice2() { doTest(); }
 
   public void testNewInnerRunnable() { doTest(); }
@@ -434,6 +461,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testJavadocThrows() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testMethodThrows() { doTest(); }
 
   public void testDoNotExcludeAssignedVariable() { doTest(); }
@@ -443,25 +471,32 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   public void testPrivateOverloads() { doTest(); }
   public void testInaccessibleMethodArgument() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testPolyadicExpression() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCastAutoboxing() {
     doItemTest();
   }
+  @NeedsIndex.ForStandardLibrary
   public void testCastAutoboxing2() {
     doItemTest();
   }
+  @NeedsIndex.ForStandardLibrary
   public void testCastAutoboxing3() {
     doItemTest();
   }
   public void testCastWildcards() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoSecondMethodTypeArguments() { doTest(Lookup.REPLACE_SELECT_CHAR); }
 
   public void testNoFieldsInSuperConstructorCall() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testChainMethodsInSuperConstructorCall() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoUninitializedFieldsInConstructor() {
     configureByTestName();
     assertStringItems("aac", "aab", "hashCode");
@@ -488,6 +523,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByTestName();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testVoidExpectedType() {
     configureByTestName();
     assertStringItems("notify", "notifyAll", "wait", "wait", "wait", "equals", "hashCode", "toString", "getClass");
@@ -523,10 +559,12 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testSameNamedFieldAndLocal() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoTailWhenNoPairBracket() { doTestNoPairBracket(Lookup.NORMAL_SELECT_CHAR); }
 
   public void testNoTailWhenNoPairBracket2() { doTestNoPairBracket(Lookup.NORMAL_SELECT_CHAR); }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testAnonymousNoPairBracket() { doTestNoPairBracket(Lookup.NORMAL_SELECT_CHAR); }
 
   private void doTestNoPairBracket(final char c) {
@@ -540,8 +578,10 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     }
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoConstructorTailWhenNoPairBracket() { doTestNoPairBracket(Lookup.NORMAL_SELECT_CHAR); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testConstructorNoPairBracketSemicolon() { doTestNoPairBracket(';'); }
 
   public void testMethodNoPairBracketComma() { doTestNoPairBracket(','); }
@@ -553,6 +593,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testConstantTwice() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testConstantTwice2() {
     configureByTestName();
     assertEquals(2, myItems.length);
@@ -576,6 +617,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testExclamationMethodFinish() { doTest('!'); }
   public void testExclamationVariableFinish() { doTest('!'); }
+  @NeedsIndex.ForStandardLibrary
   public void testExclamationStaticFieldFinish() { doTest('!'); }
   public void testExclamationFinishNonBoolean() { doTest('!'); }
 
@@ -589,6 +631,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testBeforeBinaryExpressionInMethodCall() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAssignableToAfterCast() { doTest(); }
 
   public void testInstanceMethodParametersFromStaticContext() { doTest(); }
@@ -601,10 +644,20 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testVoidCast() { doAntiTest(); }
 
+  @NeedsIndex.ForStandardLibrary
+  public void testNoGenericMethodAutoInsertion() {
+    configureByTestName();
+    myFixture.assertPreferredCompletionItems(0, "valueOf");
+  }
+
+  public void testAutoInsertMethodReturningClassTypeParam() { doActionTest(); }
+
   public void testIntPlusLongNotDouble() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNestedAssignments() { doTest(); }
 
+  @NeedsIndex.SmartMode(reason = "AbstractExpectedTypeSkipper works in smart mode only")
   public void testAfterNewInTernary() { doTest(); }
 
   public void testSuggestAnythingWhenWildcardExpected() {
@@ -620,6 +673,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertEquals("[]{...} (default package)", LookupElementPresentation.renderElement(myItems[2]).getTailText());
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNewVararg2() {
     configureByTestName();
     assertStringItems("String", "String", "String");
@@ -645,8 +699,10 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testDefaultAnnoParam() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNewWithTypeParameterErasure() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEverythingDoubles() {
     configureByTestName();
     assertStringItems("hashCode", "indexOf", "lastIndexOf", "size");
@@ -685,8 +741,10 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testDefaultAnnoMethodValue() { doTest(); }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNewAnonymousFunction() { doTest(); }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNewRunnableInsideMethod() {
     CommonCodeStyleSettings settings = getCodeStyleSettings();
     boolean lParenOnNextLine = settings.CALL_PARAMETERS_LPAREN_ON_NEXT_LINE;
@@ -698,6 +756,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     }
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNewRunnableInsideMethodMultiParams() {
     CommonCodeStyleSettings settings = getCodeStyleSettings();
     boolean lParenOnNextLine = settings.CALL_PARAMETERS_LPAREN_ON_NEXT_LINE;
@@ -713,6 +772,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   }
 
   public void testUseIntConstantsFromTargetClass() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testUseObjectConstantsFromTargetClass() { doTest(); }
   public void testUseIntConstantsFromTargetClassReturnValue() { doTest(); }
   public void testUseIntConstantsFromConstructedClass() { doTest(); }
@@ -724,6 +784,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoSemicolonInsideParentheses() { doTest(); }
 
   public void testAssignFromTheSameFieldOfAnotherObject() {
@@ -752,6 +813,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testCastToArray() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCommaDoublePenetration() {
     doFirstItemTest(',');
   }
@@ -811,11 +873,13 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByTestName();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testSuggestTypeParametersInTypeArgumentList() {
     configureByTestName();
     myFixture.assertPreferredCompletionItems(0, "T", "String");
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testWrongAnonymous() {
     configureByTestName();
     select();
@@ -826,6 +890,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doActionTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteral() {
     doActionTest();
     assertStringItems("String.class");
@@ -839,39 +904,49 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertInstanceOf(item.getPsiElement(), PsiClass.class);
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoClassLiteral() {
     doActionTest();
     assertStringItems("Object.class", "getClass", "forName", "forName");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteralInAnno2() {
     doItemTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteralInheritors() {
     doItemTest();
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testInsertOverride() {
     JavaCodeStyleSettings styleSettings = JavaCodeStyleSettings.getInstance(getProject());
     styleSettings.INSERT_OVERRIDE_ANNOTATION = true;
     doItemTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testForeach() {
     doActionTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testIDEADEV2626() {
     doItemTest();
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testDontSuggestWildcardGenerics() { doItemTest(); }
 
   public void testCastWith2TypeParameters() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteralInArrayAnnoInitializer() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testClassLiteralInArrayAnnoInitializer2() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAnnotation() {
     configureByTestName();
     assertStringItems("ElementType.ANNOTATION_TYPE", "ElementType.CONSTRUCTOR",
@@ -880,10 +955,12 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
                       "ElementType.TYPE" /*, "ElementType.TYPE_PARAMETER", "ElementType.TYPE_USE"*/);
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAnnotation2() {
     configureByTestName();
     assertStringItems("RetentionPolicy.CLASS", "RetentionPolicy.RUNTIME", "RetentionPolicy.SOURCE");
   }
+  @NeedsIndex.ForStandardLibrary
   public void testAnnotation2_2() {
     configureByTestName();
     assertSameElements(myFixture.getLookupElementStrings(), "RetentionPolicy.CLASS", "RetentionPolicy.SOURCE", "RetentionPolicy.RUNTIME");
@@ -911,6 +988,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertStringItems("CONNECTION", "NO_CONNECTION");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testAnnotation6() {
     configureByTestName();
 
@@ -924,6 +1002,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testIDEADEV5150() {
     doTest('\n');
   }
@@ -936,11 +1015,14 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testTypeArgs2() {
     doTest();
   }
+  @NeedsIndex.ForStandardLibrary
   public void testTypeArgsOverwrite() { doTest(); }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testIfConditionExpectedType() { doTest(); }
 
   public void testUnboundTypeArgs() { doTest(); }
@@ -952,6 +1034,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
   }
 
   public void testExcessiveTail() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testSeveralTypeArguments() { doTest(); }
   public void testSeveralTypeArgumentsSomeUnknown() { doTest(); }
 
@@ -963,8 +1046,10 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doFirstItemTest(Lookup.REPLACE_SELECT_CHAR);
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testConstructorArgsSmartEnter() { doTest(Lookup.COMPLETE_STATEMENT_SELECT_CHAR); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testIDEADEV13148() {
     configureByFile("/IDEADEV13148.java");
     assertStringItems("false", "true"); //todo don't suggest boolean literals in synchronized
@@ -979,32 +1064,41 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoCommaBeforeVarargs() { doTest(); }
 
   public void testEnumField() {
     doItemTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEnumField1() {
     configureByTestName();
     checkResultByTestName();
     assertEquals(4, myItems.length);
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testInsertTypeParametersOnImporting() { doTest('\n'); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEmptyListInReturn() { doItemTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEmptyListInReturn2() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEmptyListInReturnTernary() { doItemTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEmptyListBeforeSemicolon() { doItemTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testEmptyListWithCollectionsPrefix() { doItemTest(); }
 
   public void testForeachLoopVariableInIterableExpression() { doAntiTest(); }
 
+  @NeedsIndex.Full
   public void testStaticallyImportedMagicMethod() {
     configureByTestName();
     assertStringItems("foo");
@@ -1014,21 +1108,29 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void _testCallVarargArgument() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testTabToReplaceClassKeyword() {
     configureByTestName();
     selectItem(myItems[0], Lookup.REPLACE_SELECT_CHAR);
     checkResultByTestName();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoTypeParametersForToArray() {
     doTest();
   }
 
+  @NeedsIndex.Full
   public void testStaticallyImportedField() { doTest('\n'); }
+  @NeedsIndex.Full
   public void testSiblingOfAStaticallyImportedField() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testPrimitiveArrayClassInMethod() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testPrimitiveClassInAnno() { doTest(); }
+  @NeedsIndex.Full
   public void testNewInnerClassOfSuper() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testAssertThatMatcher() { doTest(); }
 
   public void testInferFromCall() {
@@ -1073,12 +1175,15 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
       "}}");
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNewAbstractInsideAnonymous() { doTest(); }
 
   public void testFilterPrivateConstructors() { doAntiTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testExplicitMethodTypeParametersQualify() { doTest(); }
   public void testExplicitMethodTypeParametersOverZealous() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testExplicitMethodTypeParametersFromSuperClass() { doTest(); }
 
   public void testWildcardedInstanceof() { doTest(); }
@@ -1099,6 +1204,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertStringItems("Bar", "Goo");
   }
 
+  @NeedsIndex.SmartMode(reason = "AbstractExpectedTypeSkipper works in smart mode only")
   public void testAutoImportExpectedType() {
     boolean old = CodeInsightSettings.getInstance().ADD_UNAMBIGIOUS_IMPORTS_ON_THE_FLY;
     CodeInsightSettings.getInstance().ADD_UNAMBIGIOUS_IMPORTS_ON_THE_FLY = true;
@@ -1112,25 +1218,32 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     }
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNoWrongSubstitutorFromStats() {
     doTest();
     FileDocumentManager.getInstance().saveDocument(myFixture.getEditor().getDocument());
     doTest(); // stats are changed now
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testCommonPrefixWithSelection() {
     doItemTest();
   }
 
+  @NeedsIndex.SmartMode(reason = "For now ConstructorInsertHandler.createOverrideRunnable doesn't work in dumb mode")
   public void testNewAbstractClassWithConstructorArgs() {
     doItemTest();
   }
 
   public void testArrayInitializerBeforeVarargs() { doTest(); }
+  @NeedsIndex.Full
   public void testDuplicateMembersFromSuperClass() { doTest(); }
   public void testInnerAfterNew() { doTest(); }
+  @NeedsIndex.Full
   public void testOuterAfterNew() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testEverythingInStringConcatenation() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testGetClassWhenClassExpected() { doTest(); }
 
   public void testMemberImportStatically() {
@@ -1149,11 +1262,13 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertStringItems("Foo");
   }
 
+  @NeedsIndex.Full
   public void testDuplicateMembersFromSuperClassInAnotherFile() {
     myFixture.addClass("class Super { public static final Super FOO = null; }");
     doTest();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testInsideGenericClassLiteral() {
     configureByTestName();
     assertStringItems("String.class", "StringBuffer.class", "StringBuilder.class");
@@ -1163,6 +1278,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     doActionTest();
   }
 
+  @NeedsIndex.Full
   public void testInnerClassImports() {
     JavaCodeStyleSettings settings = JavaCodeStyleSettings.getInstance(getProject());
     settings.INSERT_INNER_CLASS_IMPORTS = true;
@@ -1182,20 +1298,24 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByTestName();
   }
 
+  @NeedsIndex.Full
   public void testQualifiedAfterNew() {
     myFixture.addClass("package foo; public interface Foo<T> {}");
     myFixture.addClass("package bar; public class Bar implements foo.Foo {}");
     doTest();
   }
+  @NeedsIndex.Full
   public void testAfterQualifiedNew() {
     myFixture.addClass("class Aa { public class B { } }");
     doTest();
   }
 
+  @NeedsIndex.Full
   public void testTabAfterNew() {
     doFirstItemTest('\t');
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testSuggestMethodReturnType() {
     configureByTestName();
     myFixture.assertPreferredCompletionItems(0, "Serializable", "CharSequence", "Object");
@@ -1206,12 +1326,14 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     assertOrderedEquals(myFixture.getLookupElementStrings(), "Object");
   }
 
+  @NeedsIndex.Full
   public void testSuggestCastReturnTypeByCalledMethod() { doTest(); }
 
   public void testOnlyInterfacesInImplements() { doTest(); }
 
   public void testNonStaticField() { doAntiTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testLocalClassInExpectedTypeArguments() { doTest(); }
 
   private void doActionTest() {
@@ -1281,6 +1403,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     return CodeStyleSettingsManager.getSettings(getProject()).getCommonSettings(JavaLanguage.INSTANCE);
   }
 
+  @NeedsIndex.ForStandardLibrary(reason = "On empty indices 'get2' is filtered out by unmatching type in ReferenceExpressionCompletionContributor.addSmartReferenceSuggestions")
   public void testOnlyCompatibleTypes() {
     configureByTestName();
     assertOrderedEquals(myFixture.getLookupElementStrings(), "get2");
@@ -1288,6 +1411,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testQualifyOuterClassCall() { doActionTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testExpressionSubtypesInCast() {
     configureByTestName();
     myFixture.assertPreferredCompletionItems(0, "String", "StringBuffer", "StringBuilder");
@@ -1295,6 +1419,7 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
 
   public void testStaticBuilder() { doTest(); }
   public void testStaticBuilderWithArguments() { doTest(); }
+  @NeedsIndex.Full
   public void testStaticBuilderWithInterfaceAndGenerics() { doTest(); }
 
   public void testStaticBuilderWithGenerics() {
@@ -1304,20 +1429,26 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     checkResultByTestName();
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testFreeGenericsAfterClassLiteral() {
     configureByTestName();
     myFixture.assertPreferredCompletionItems(0, "String.class", "tryCast");
   }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNewHashMapTypeArguments() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testNewMapTypeArguments() { doTest(); }
+  @NeedsIndex.ForStandardLibrary
   public void testNewMapObjectTypeArguments() { doTest(); }
 
+  @NeedsIndex.ForStandardLibrary
   public void testNoUnrelatedMethodSuggestion() {
     configureByTestName();
     assertOrderedEquals(myFixture.getLookupElementStrings(), "this");
   }
 
+  @NeedsIndex.Full
   public void testLog4jLevel() {
     myFixture.addClass("package org.apache.log4j; " +
                        "public class Category { " +
@@ -1336,5 +1467,11 @@ public class SmartTypeCompletionTest extends LightFixtureCompletionTestCase {
     // This test specifically tests the problem in pre-Java-8 inference
     assertTrue(PsiUtil.getLanguageLevel(getProject()).isLessThan(LanguageLevel.JDK_1_8));
     doTest();
+  }
+
+  public void testSuggestChainsWhenNoDirectMatches() {
+    myFixture.configureFromExistingVirtualFile(myFixture.copyFileToProject("second/MethodAsQualifier.java", "a.java"));
+    myFixture.complete(CompletionType.SMART);
+    checkResultByFile("second/MethodAsQualifier-out.java");
   }
 }

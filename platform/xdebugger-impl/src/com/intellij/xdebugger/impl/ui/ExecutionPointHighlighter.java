@@ -1,13 +1,14 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.xdebugger.impl.ui;
 
+import com.intellij.openapi.application.AppUIExecutor;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.TransactionGuard;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ScrollType;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
-import com.intellij.openapi.editor.colors.EditorColorsScheme;
+import com.intellij.openapi.editor.colors.TextAttributesKey;
 import com.intellij.openapi.editor.impl.DocumentMarkupModel;
 import com.intellij.openapi.editor.impl.EditorMouseHoverPopupControl;
 import com.intellij.openapi.editor.markup.*;
@@ -32,9 +33,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * @author nik
- */
 public class ExecutionPointHighlighter {
   private final Project myProject;
   private RangeHighlighter myRangeHighlighter;
@@ -57,24 +55,29 @@ public class ExecutionPointHighlighter {
   public void show(final @NotNull XSourcePosition position, final boolean notTopFrame,
                    @Nullable final GutterIconRenderer gutterIconRenderer) {
     updateRequested.set(false);
-    TransactionGuard.submitTransaction(myProject, () -> {
-      updateRequested.set(false);
+    AppUIExecutor
+      .onWriteThread(ModalityState.NON_MODAL)
+      .expireWith(myProject)
+      .submit(() -> {
+        updateRequested.set(false);
 
-      mySourcePosition = position;
+        mySourcePosition = position;
 
-      clearDescriptor();
-      myOpenFileDescriptor = XSourcePositionImpl.createOpenFileDescriptor(myProject, position);
-      if (!XDebuggerSettingManagerImpl.getInstanceImpl().getGeneralSettings().isScrollToCenter()) {
-        myOpenFileDescriptor.setScrollType(notTopFrame ? ScrollType.CENTER : ScrollType.MAKE_VISIBLE);
-      }
-      //see IDEA-125645 and IDEA-63459
-      //myOpenFileDescriptor.setUseCurrentWindow(true);
+        clearDescriptor();
+        myOpenFileDescriptor = XSourcePositionImpl.createOpenFileDescriptor(myProject, position);
+        if (!XDebuggerSettingManagerImpl.getInstanceImpl().getGeneralSettings().isScrollToCenter()) {
+          myOpenFileDescriptor.setScrollType(notTopFrame ? ScrollType.CENTER : ScrollType.MAKE_VISIBLE);
+        }
+        //see IDEA-125645 and IDEA-63459
+        //myOpenFileDescriptor.setUseCurrentWindow(true);
 
-      myGutterIconRenderer = gutterIconRenderer;
-      myNotTopFrame = notTopFrame;
-
-      doShow(true);
-    });
+        myGutterIconRenderer = gutterIconRenderer;
+        myNotTopFrame = notTopFrame;
+      }).thenAsync(ignored -> AppUIExecutor
+      .onUiThread()
+      .expireWith(myProject)
+      .submit(() -> doShow(true))
+    );
   }
 
   public void hide() {
@@ -180,23 +183,21 @@ public class ExecutionPointHighlighter {
 
     if (myRangeHighlighter != null) return;
 
-    EditorColorsScheme scheme = EditorColorsManager.getInstance().getGlobalScheme();
-    TextAttributes attributes = myNotTopFrame ? scheme.getAttributes(DebuggerColors.NOT_TOP_FRAME_ATTRIBUTES)
-                                              : scheme.getAttributes(DebuggerColors.EXECUTIONPOINT_ATTRIBUTES);
+    TextAttributesKey attributesKey = myNotTopFrame ? DebuggerColors.NOT_TOP_FRAME_ATTRIBUTES : DebuggerColors.EXECUTIONPOINT_ATTRIBUTES;
     MarkupModel markupModel = DocumentMarkupModel.forDocument(document, myProject, true);
     if (mySourcePosition instanceof HighlighterProvider) {
       TextRange range = ((HighlighterProvider)mySourcePosition).getHighlightRange();
       if (range != null) {
         TextRange lineRange = DocumentUtil.getLineTextRange(document, line);
         if (!range.equals(lineRange)) {
-          myRangeHighlighter = markupModel.addRangeHighlighter(range.getStartOffset(), range.getEndOffset(),
-                                                               DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER, attributes,
-                                                               HighlighterTargetArea.EXACT_RANGE);
+          myRangeHighlighter = markupModel
+            .addRangeHighlighter(attributesKey, range.getStartOffset(), range.getEndOffset(), DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER,
+                                 HighlighterTargetArea.EXACT_RANGE);
         }
       }
     }
     if (myRangeHighlighter == null) {
-      myRangeHighlighter = markupModel.addLineHighlighter(line, DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER, attributes);
+      myRangeHighlighter = markupModel.addLineHighlighter(attributesKey, line, DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER);
     }
     myRangeHighlighter.putUserData(EXECUTION_POINT_HIGHLIGHTER_TOP_FRAME_KEY, !myNotTopFrame);
     myRangeHighlighter.setEditorFilter(MarkupEditorFilterFactory.createIsNotDiffFilter());
@@ -209,16 +210,16 @@ public class ExecutionPointHighlighter {
   }
 
   private static void disableMouseHoverPopups(@NotNull final Editor editor, final boolean disable) {
-    if (ApplicationManager.getApplication().isUnitTestMode()) return;
+    Project project = editor.getProject();
+    if (ApplicationManager.getApplication().isUnitTestMode() || project == null) return;
 
     // need to always invoke later to maintain order of enabling/disabling
-    //noinspection SSBasedInspection
     SwingUtilities.invokeLater(() -> {
       if (disable) {
-        EditorMouseHoverPopupControl.disablePopups(editor.getDocument());
+        EditorMouseHoverPopupControl.disablePopups(project);
       }
       else {
-        EditorMouseHoverPopupControl.enablePopups(editor.getDocument());
+        EditorMouseHoverPopupControl.enablePopups(project);
       }
     });
   }

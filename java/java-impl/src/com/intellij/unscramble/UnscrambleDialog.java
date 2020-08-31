@@ -5,6 +5,7 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.java.JavaBundle;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
@@ -40,9 +41,6 @@ import java.util.List;
 
 import static com.intellij.util.containers.ContainerUtil.ar;
 
-/**
- * @author cdr
- */
 public class UnscrambleDialog extends DialogWrapper {
   @NonNls private static final String PROPERTY_LOG_FILE_HISTORY_URLS = "UNSCRAMBLE_LOG_FILE_URL";
   @NonNls private static final String PROPERTY_LOG_FILE_LAST_URL = "UNSCRAMBLE_LOG_FILE_LAST_URL";
@@ -136,7 +134,7 @@ public class UnscrambleDialog extends DialogWrapper {
     int index = 0;
     if (selectedUnscrambler != null) {
       for (int i = 0; i < count; i++) {
-        final UnscrambleSupport unscrambleSupport = (UnscrambleSupport)myUnscrambleChooser.getItemAt(i);
+        final UnscrambleSupport unscrambleSupport = myUnscrambleChooser.getItemAt(i);
         if (unscrambleSupport != null && Comparing.strEqual(unscrambleSupport.getPresentableName(), selectedUnscrambler.getPresentableName())) {
           index = i;
           break;
@@ -200,9 +198,8 @@ public class UnscrambleDialog extends DialogWrapper {
     myEditorPanel.add(myStacktraceEditorPanel, BorderLayout.CENTER);
   }
 
-  @NotNull
   @Override
-  protected Action[] createActions() {
+  protected Action @NotNull [] createActions() {
     return ArrayUtil.prepend(createNormalizeTextAction(), super.createActions());
   }
 
@@ -235,7 +232,7 @@ public class UnscrambleDialog extends DialogWrapper {
       myUnscrambleChooser.addItem(unscrambleSupport);
     }
     myUnscrambleChooser.setRenderer(SimpleListCellRenderer.create(
-      IdeBundle.message("unscramble.no.unscrambler.item"), UnscrambleSupport::getPresentableName));
+      JavaBundle.message("unscramble.no.unscrambler.item"), UnscrambleSupport::getPresentableName));
   }
 
   @Override
@@ -280,7 +277,7 @@ public class UnscrambleDialog extends DialogWrapper {
 
   private final class NormalizeTextAction extends AbstractAction {
     NormalizeTextAction(){
-      putValue(NAME, IdeBundle.message("unscramble.normalize.button"));
+      putValue(NAME, JavaBundle.message("unscramble.normalize.button"));
       putValue(DEFAULT_ACTION, Boolean.FALSE);
     }
 
@@ -391,9 +388,9 @@ public class UnscrambleDialog extends DialogWrapper {
 
   private static RunContentDescriptor addConsole(final Project project, final List<ThreadState> threadDump, String unscrambledTrace) {
     Icon icon = null;
-    String message = IdeBundle.message("unscramble.unscrambled.stacktrace.tab");
+    String message = JavaBundle.message("unscramble.unscrambled.stacktrace.tab");
     if (!threadDump.isEmpty()) {
-      message = IdeBundle.message("unscramble.unscrambled.threaddump.tab");
+      message = JavaBundle.message("unscramble.unscrambled.threaddump.tab");
       icon = AllIcons.Actions.Dump;
     }
     else {
@@ -404,7 +401,7 @@ public class UnscrambleDialog extends DialogWrapper {
       }
     }
     if (ContainerUtil.find(threadDump, DEADLOCK_CONDITION) != null) {
-      message = IdeBundle.message("unscramble.unscrambled.deadlock.tab");
+      message = JavaBundle.message("unscramble.unscrambled.deadlock.tab");
       icon = AllIcons.Debugger.KillProcess;
     }
     return AnalyzeStacktraceUtil.addConsole(project, threadDump.size() > 1 ? new ThreadDumpConsoleFactory(project, threadDump) : null, message, unscrambledTrace, icon);

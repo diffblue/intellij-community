@@ -32,8 +32,8 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Processor for member-based refactorings. It moves members from one place to another using {@link com.jetbrains.python.refactoring.classes.membersManager.MembersManager}.
- * Inheritors only need to implement {@link com.intellij.usageView.UsageViewDescriptor} methods (while this interface is also implemented by this class)
+ * Processor for member-based refactorings. It moves members from one place to another using {@link MembersManager}.
+ * Inheritors only need to implement {@link UsageViewDescriptor} methods (while this interface is also implemented by this class)
  *
  * @author Ilya.Kazakevich
  */
@@ -43,8 +43,7 @@ public abstract class PyMembersRefactoringBaseProcessor extends BaseRefactoringP
   protected final Collection<PyMemberInfo<PyElement>> myMembersToMove;
   @NotNull
   protected final PyClass myFrom;
-  @NotNull
-  private final PyClass[] myTo;
+  private final PyClass @NotNull [] myTo;
 
   /**
    * @param membersToMove what to move
@@ -55,7 +54,7 @@ public abstract class PyMembersRefactoringBaseProcessor extends BaseRefactoringP
     @NotNull final Project project,
     @NotNull final Collection<PyMemberInfo<PyElement>> membersToMove,
     @NotNull final PyClass from,
-    @NotNull final PyClass... to) {
+    final PyClass @NotNull ... to) {
     super(project);
     myFrom = from;
     myMembersToMove = new ArrayList<>(membersToMove);
@@ -64,22 +63,20 @@ public abstract class PyMembersRefactoringBaseProcessor extends BaseRefactoringP
 
   @NotNull
   @Override
-  protected UsageViewDescriptor createUsageViewDescriptor(@NotNull final UsageInfo[] usages) {
+  protected UsageViewDescriptor createUsageViewDescriptor(final UsageInfo @NotNull [] usages) {
     return this;
   }
 
-  @NotNull
   @Override
-  public PsiElement[] getElements() {
+  public PsiElement @NotNull [] getElements() {
     return myTo.clone();
   }
 
   /**
    * @return destinations (so user would be able to choose if she wants to move member to certain place or not)
    */
-  @NotNull
   @Override
-  protected final PyUsageInfo[] findUsages() {
+  protected final PyUsageInfo @NotNull [] findUsages() {
     final List<PyUsageInfo> result = new ArrayList<>(myTo.length);
     for (final PyClass pyDestinationClass : myTo) {
       result.add(new PyUsageInfo(pyDestinationClass));
@@ -88,7 +85,7 @@ public abstract class PyMembersRefactoringBaseProcessor extends BaseRefactoringP
   }
 
   @Override
-  protected final void performRefactoring(@NotNull final UsageInfo[] usages) {
+  protected final void performRefactoring(final UsageInfo @NotNull [] usages) {
     final Collection<PyClass> destinations = new ArrayList<>(usages.length);
     for (final UsageInfo usage : usages) {
       if (!(usage instanceof PyUsageInfo)) {
@@ -113,7 +110,7 @@ public abstract class PyMembersRefactoringBaseProcessor extends BaseRefactoringP
 
   @Nullable
   @Override
-  protected RefactoringEventData getAfterData(@NotNull UsageInfo[] usages) {
+  protected RefactoringEventData getAfterData(UsageInfo @NotNull [] usages) {
     final RefactoringEventData data = new RefactoringEventData();
     data.addElements(myTo);
     return data;

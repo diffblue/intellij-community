@@ -11,9 +11,11 @@ import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementPresentation;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.actionSystem.IdeActions;
+import com.intellij.openapi.application.impl.NonBlockingReadActionImpl;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.testFramework.fixtures.EditorHintFixture;
 import com.intellij.util.ui.UIUtil;
+import org.intellij.lang.annotations.Language;
 
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
@@ -39,26 +41,35 @@ public abstract class AbstractParameterInfoTestCase extends LightFixtureCompleti
     super.tearDown();
   }
 
-  protected void configureJava(String text) {
+  protected void configureJava(@Language("JAVA") String text) {
     myFixture.configureByText(JavaFileType.INSTANCE, text);
   }
 
   protected void showParameterInfo() {
     myFixture.performEditorAction(IdeActions.ACTION_EDITOR_SHOW_PARAMETER_INFO);
-    UIUtil.dispatchAllInvocationEvents();
+    waitForParameterInfo();
+  }
+
+  public static void waitForParameterInfo() {
+    // effective there is a chain of 3 nonBlockingRead actions
+    for (int i = 0; i < 3; i++) {
+      UIUtil.dispatchAllInvocationEvents();
+      NonBlockingReadActionImpl.waitForAsyncTaskCompletion();
+    }
   }
 
   protected void checkHintContents(String hintText) {
     assertEquals(hintText, myHintFixture.getCurrentHintText());
   }
 
-  public void checkResult(String text) {
+  public void checkResult(@Language("JAVA") String text) {
     myFixture.checkResult(text);
   }
 
   public void complete(String partOfItemText) {
     LookupElement[] elements = myFixture.completeBasic();
     selectItem(elements, partOfItemText);
+    waitForParameterInfo();
   }
 
   public void completeSmart() {
@@ -68,6 +79,7 @@ public abstract class AbstractParameterInfoTestCase extends LightFixtureCompleti
   public void completeSmart(String partOfItemText) {
     LookupElement[] lookupElements = myFixture.complete(CompletionType.SMART);
     selectItem(lookupElements, partOfItemText);
+    waitForParameterInfo();
   }
 
   private void selectItem(LookupElement[] elements, String partOfItemText) {
@@ -81,6 +93,7 @@ public abstract class AbstractParameterInfoTestCase extends LightFixtureCompleti
 
   private void waitForParameterInfoUpdate() throws TimeoutException {
     ParameterInfoController.waitForDelayedActions(getEditor(), 1, TimeUnit.MINUTES);
+    waitForParameterInfo();
   }
 
   public static void waitTillAnimationCompletes(Editor editor) {
@@ -92,14 +105,20 @@ public abstract class AbstractParameterInfoTestCase extends LightFixtureCompleti
     }
   }
 
-  private void waitForAutoPopup() throws TimeoutException {
-    AutoPopupController.getInstance(getProject()).waitForDelayedActions(1, TimeUnit.MINUTES);
+  protected void waitForAutoPopup() {
+    try {
+      AutoPopupController.getInstance(getProject()).waitForDelayedActions(1, TimeUnit.MINUTES);
+    }
+    catch (TimeoutException e) {
+      fail("Timed out waiting for auto-popup");
+    }
   }
 
   protected void waitForAllAsyncStuff() {
     try { waitForParameterInfoUpdate(); } catch (TimeoutException e) { fail("Timed out waiting for parameter info update"); }
     myFixture.doHighlighting();
     waitTillAnimationCompletes(getEditor());
-    try { waitForAutoPopup(); } catch (TimeoutException e) { fail("Timed out waiting for auto-popup"); }
+    waitForAutoPopup();
+    waitForParameterInfo();
   }
 }
